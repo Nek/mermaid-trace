@@ -1,0 +1,745 @@
+From f9387456a1e27315e325ada0d8a1cc583ecdf95b Mon Sep 17 00:00:00 2001
+From: Nek <dudnik@me.com>
+Date: Sat, 26 Sep 2026 00:48:18 +0200
+Subject: [PATCH] feat(flowchart): expose opt-in source mappings in render
+ results
+
+---
+ .changeset/flowchart-source-maps.md           |  5 ++
+ packages/mermaid/src/Diagram.ts               | 13 ++-
+ packages/mermaid/src/diagram-api/comments.ts  |  4 +-
+ packages/mermaid/src/diagram-api/types.ts     |  4 +
+ .../flowchart/flow-source-api.spec.ts         | 28 ++++++
+ .../mermaid/src/diagrams/flowchart/flowDb.ts  | 82 +++++++++++++++++
+ .../flowchart/parser/flow-source-map.spec.ts  | 87 +++++++++++++++++++
+ .../src/diagrams/flowchart/parser/flow.jison  | 54 ++++++------
+ .../diagrams/flowchart/parser/flowParser.ts   |  4 +-
+ .../src/diagrams/flowchart/sourceMap.ts       | 63 ++++++++++++++
+ packages/mermaid/src/docs/config/usage.md     | 16 ++++
+ packages/mermaid/src/mermaid.ts               | 18 +++-
+ packages/mermaid/src/mermaidAPI.ts            | 19 ++--
+ packages/mermaid/src/types.ts                 | 27 ++++++
+ 14 files changed, 387 insertions(+), 37 deletions(-)
+ create mode 100644 .changeset/flowchart-source-maps.md
+ create mode 100644 packages/mermaid/src/diagrams/flowchart/flow-source-api.spec.ts
+ create mode 100644 packages/mermaid/src/diagrams/flowchart/parser/flow-source-map.spec.ts
+ create mode 100644 packages/mermaid/src/diagrams/flowchart/sourceMap.ts
+
+diff --git a/.changeset/flowchart-source-maps.md b/.changeset/flowchart-source-maps.md
+new file mode 100644
+index 0000000..be1dd50
+--- /dev/null
++++ b/.changeset/flowchart-source-maps.md
+@@ -0,0 +1,5 @@
++---
++'mermaid': minor
++---
++
++feat: expose opt-in flowchart source mappings from render results, preserving original UTF-16 node, edge and label spans without changing SVG output.
+diff --git a/packages/mermaid/src/Diagram.ts b/packages/mermaid/src/Diagram.ts
+index 1fdfc08..b39c220 100644
+--- a/packages/mermaid/src/Diagram.ts
++++ b/packages/mermaid/src/Diagram.ts
+@@ -7,6 +7,7 @@ import { log } from './logger.js';
+ import { encodeEntities } from './utils.js';
+ import type { DetailedError } from './utils.js';
+ import type { DiagramCode, DiagramDefinition, DiagramMetadata } from './diagram-api/types.js';
++import type { DiagramRenderOptions } from './types.js';
+ 
+ // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+ export type ParseErrorFunction = (err: string | DetailedError | unknown, hash?: any) => void;
+@@ -18,7 +19,8 @@ export type ParseErrorFunction = (err: string | DetailedError | unknown, hash?:
+ export class Diagram {
+   public static async fromText(
+     codeObjectOrText: DiagramCode | string,
+-    metadata: Pick<DiagramMetadata, 'title'> = {}
++    metadata: Pick<DiagramMetadata, 'title'> = {},
++    options: DiagramRenderOptions = {}
+   ) {
+     // Accept either a raw string (legacy callers) or a DiagramCode object from
+     // preprocessDiagram(). When given a string we normalise to a minimal code
+@@ -48,6 +50,15 @@ export class Diagram {
+     }
+     db.clear?.();
+     init?.(config);
++    if (options.sourceMap) {
++      if (!db.enableSourceMap) {
++        throw new Error(`Source maps are not supported for ${type}`);
++      }
++      if (code.raw.length > (config.maxTextSize ?? defaultConfig.maxTextSize)) {
++        throw new Error('Source map input exceeds maxTextSize');
++      }
++      db.enableSourceMap(code.raw);
++    }
+     // This block was added for legacy compatibility. Use frontmatter instead of adding more special cases.
+     if (metadata.title) {
+       db.setDiagramTitle?.(metadata.title);
+diff --git a/packages/mermaid/src/diagram-api/comments.ts b/packages/mermaid/src/diagram-api/comments.ts
+index 8141dee..51adba1 100644
+--- a/packages/mermaid/src/diagram-api/comments.ts
++++ b/packages/mermaid/src/diagram-api/comments.ts
+@@ -1,8 +1,10 @@
++export const lineCommentPattern = /^\s*%%(?!{)[^\n]+\n?/gm;
++
+ /**
+  * Remove all lines starting with `%%` from the text that don't contain a `%%{`
+  * @param text - The text to remove comments from
+  * @returns cleaned text
+  */
+ export const cleanupComments = (text: string): string => {
+-  return text.replace(/^\s*%%(?!{)[^\n]+\n?/gm, '').trimStart();
++  return text.replace(lineCommentPattern, '').trimStart();
+ };
+diff --git a/packages/mermaid/src/diagram-api/types.ts b/packages/mermaid/src/diagram-api/types.ts
+index c0caf6b..54b8376 100644
+--- a/packages/mermaid/src/diagram-api/types.ts
++++ b/packages/mermaid/src/diagram-api/types.ts
+@@ -4,6 +4,7 @@ import type { SetOptional, SetRequired } from 'type-fest';
+ import type { Diagram } from '../Diagram.js';
+ import type { BaseDiagramConfig, MermaidConfig } from '../config.type.js';
+ import type { DiagramOrientation } from '../diagrams/git/gitGraphTypes.js';
++import type { DiagramSourceMap } from '../types.js';
+ 
+ export interface DiagramMetadata {
+   title?: string;
+@@ -42,6 +43,9 @@ export interface InjectUtils {
+  * Generic Diagram DB that may apply to any diagram type.
+  */
+ export interface DiagramDB {
++  /** Opt-in source provenance; unsupported diagram types leave these unset. */
++  enableSourceMap?: (source: string) => void;
++  getSourceMap?: () => DiagramSourceMap | undefined;
+   // config
+   getConfig?: () => BaseDiagramConfig | undefined;
+ 
+diff --git a/packages/mermaid/src/diagrams/flowchart/flow-source-api.spec.ts b/packages/mermaid/src/diagrams/flowchart/flow-source-api.spec.ts
+new file mode 100644
+index 0000000..c4e39c7
+--- /dev/null
++++ b/packages/mermaid/src/diagrams/flowchart/flow-source-api.spec.ts
+@@ -0,0 +1,28 @@
++import mermaid from '../../mermaid.js';
++import { Diagram } from '../../Diagram.js';
++import { preprocessDiagram } from '../../preprocess.js';
++
++describe('flowchart source map API', () => {
++  beforeEach(() => mermaid.initialize({ startOnLoad: false }));
++
++  it('opts in through Diagram and leaves normal parses unchanged', async () => {
++    const source = 'flowchart LR\r\n%% comment\r\nA[x] --> B';
++    const { code } = preprocessDiagram(source);
++    const mapped = await Diagram.fromText(code, {}, { sourceMap: true });
++    const saved = mapped.db.getSourceMap!()!;
++    expect(saved.source).toBe(source);
++    expect(saved.pieces[0].span).toEqual({ start: 26, end: 30 });
++    const plain = await Diagram.fromText(code);
++    expect(plain.db.getSourceMap!()).toBeUndefined();
++    expect(saved.pieces[0].semanticId).toBe('A');
++  });
++
++  it('rejects unsupported diagram types and oversized original source', async () => {
++    await expect(
++      Diagram.fromText('sequenceDiagram\nA->>B: Hi', {}, { sourceMap: true })
++    ).rejects.toThrow(/source map/i);
++    mermaid.initialize({ maxTextSize: 30 });
++    const { code } = preprocessDiagram('%% ' + 'x'.repeat(40) + '\nflowchart LR\nA --> B');
++    await expect(Diagram.fromText(code, {}, { sourceMap: true })).rejects.toThrow(/source map/i);
++  });
++});
+diff --git a/packages/mermaid/src/diagrams/flowchart/flowDb.ts b/packages/mermaid/src/diagrams/flowchart/flowDb.ts
+index 754ddf2..82c8e30 100644
+--- a/packages/mermaid/src/diagrams/flowchart/flowDb.ts
++++ b/packages/mermaid/src/diagrams/flowchart/flowDb.ts
+@@ -28,6 +28,9 @@ import type {
+   FlowVertexTypeParam,
+ } from './types.js';
+ import DOMPurify from 'dompurify';
++import type { DiagramSourceMap, DiagramSourcePiece, SourceSpan } from '../../types.js';
++import { prepareFlowSourceMap } from './sourceMap.js';
++import type { FlowLocation } from './sourceMap.js';
+ interface LinkData {
+   id: string;
+ }
+@@ -36,6 +39,64 @@ const MERMAID_DOM_ID_PREFIX = 'flowchart-';
+ 
+ // We are using arrow functions assigned to class instance fields instead of methods as they are required by flow JISON
+ export class FlowDB implements DiagramDB {
++  private sourceMapContext?: ReturnType<typeof prepareFlowSourceMap>;
++  private sourceMapSource = '';
++  private sourcePieces: Omit<DiagramSourcePiece, 'domId'>[] = [];
++  private labelLocations = new WeakMap<object, SourceSpan>();
++  private linkLocations = new WeakMap<object, { span: SourceSpan; labelSpan?: SourceSpan }>();
++
++  public enableSourceMap(source: string) {
++    this.sourceMapContext = prepareFlowSourceMap(source);
++    this.sourceMapSource = source;
++  }
++
++  public verifySourceMapInput(input: string) {
++    if (this.sourceMapContext && this.sourceMapContext.input !== input) {
++      throw new Error('Source map preprocessing does not match parser input');
++    }
++  }
++
++  public recordLabel(value: object, loc: FlowLocation) {
++    if (this.sourceMapContext) {
++      this.labelLocations.set(value, this.sourceMapContext.span(loc));
++    }
++  }
++
++  public recordVertex(id: string, loc: FlowLocation, label?: object) {
++    if (this.sourceMapContext) {
++      const labelSpan = label && this.labelLocations.get(label);
++      this.sourcePieces.push({
++        kind: 'node',
++        semanticId: id,
++        span: this.sourceMapContext.span(loc),
++        ...(labelSpan ? { labelSpan } : {}),
++      });
++    }
++  }
++
++  public recordLink(link: { text?: object }, loc: FlowLocation) {
++    if (this.sourceMapContext) {
++      const labelSpan = link.text && this.labelLocations.get(link.text);
++      this.linkLocations.set(link, {
++        span: this.sourceMapContext.span(loc, true),
++        ...(labelSpan ? { labelSpan } : {}),
++      });
++    }
++  }
++
++  public getSourceMap(): DiagramSourceMap | undefined {
++    if (!this.sourceMapContext) {
++      return undefined;
++    }
++    return {
++      source: this.sourceMapSource,
++      pieces: this.sourcePieces.map((piece) => ({
++        ...piece,
++        domId:
++          piece.kind === 'node' ? this.vertices.get(piece.semanticId)!.domId : piece.semanticId,
++      })),
++    };
++  }
+   private vertexCounter = 0;
+   private config = getConfig();
+   private diagramId = '';
+@@ -60,6 +121,9 @@ export class FlowDB implements DiagramDB {
+ 
+     // Needed for JISON since it only supports direct properties
+     this.addVertex = this.addVertex.bind(this);
++    this.recordVertex = this.recordVertex.bind(this);
++    this.recordLink = this.recordLink.bind(this);
++    this.recordLabel = this.recordLabel.bind(this);
+     this.firstGraph = this.firstGraph.bind(this);
+     this.setDirection = this.setDirection.bind(this);
+     this.addSubGraph = this.addSubGraph.bind(this);
+@@ -330,6 +394,19 @@ export class FlowDB implements DiagramDB {
+     if (this.edges.length < (this.config.maxEdges ?? 500)) {
+       log.info('Pushing edge...');
+       this.edges.push(edge);
++      if (this.sourceMapContext) {
++        const location = this.linkLocations.get(type);
++        if (!location || !edge.id) {
++          throw new Error('Missing source map edge provenance');
++        }
++        this.sourcePieces.push({
++          kind: 'edge',
++          semanticId: edge.id,
++          from: start,
++          to: end,
++          ...location,
++        });
++      }
+     } else {
+       throw new Error(
+         `Edge limit exceeded. ${this.edges.length} edges found, but the limit is ${this.config.maxEdges}.
+@@ -648,6 +725,11 @@ You have to call mermaid.initialize.`
+    *
+    */
+   public clear(ver = 'gen-2') {
++    this.sourceMapContext = undefined;
++    this.sourceMapSource = '';
++    this.sourcePieces = [];
++    this.labelLocations = new WeakMap();
++    this.linkLocations = new WeakMap();
+     this.vertices = new Map();
+     this.classes = new Map();
+     this.edges = [];
+diff --git a/packages/mermaid/src/diagrams/flowchart/parser/flow-source-map.spec.ts b/packages/mermaid/src/diagrams/flowchart/parser/flow-source-map.spec.ts
+new file mode 100644
+index 0000000..f3ddbc6
+--- /dev/null
++++ b/packages/mermaid/src/diagrams/flowchart/parser/flow-source-map.spec.ts
+@@ -0,0 +1,87 @@
++import { FlowDB } from '../flowDb.js';
++import flow from './flowParser.js';
++import { preprocessDiagram } from '../../../preprocess.js';
++import { setConfig } from '../../../config.js';
++
++describe('flowchart source maps', () => {
++  beforeEach(() => {
++    setConfig({ securityLevel: 'strict' });
++    flow.parser.yy = new FlowDB();
++  });
++
++  function parse(source: string) {
++    const db = flow.parser.yy as FlowDB;
++    db.clear();
++    db.enableSourceMap(source);
++    flow.parse(preprocessDiagram(source).code.cleaned + '\n');
++    return db.getSourceMap()!;
++  }
++
++  it('preserves original UTF-16 spans and repeated occurrences', () => {
++    const source =
++      'flowchart LR\r\n%% 😀 comment\r\nA["same"] -->|same| B["same"]\r\nA -->|same| B';
++    const map = parse(source);
++    expect(map.source).toBe(source);
++    const nodes = map.pieces.filter((p) => p.kind === 'node');
++    const edges = map.pieces.filter((p) => p.kind === 'edge');
++    expect(nodes.map((p) => source.slice(p.span.start, p.span.end))).toEqual([
++      'A["same"]',
++      'B["same"]',
++      'A',
++      'B',
++    ]);
++    expect(nodes.slice(0, 2).map((p) => p.labelSpan)).toEqual([
++      { start: 32, end: 36 },
++      { start: 52, end: 56 },
++    ]);
++    expect(edges.map((p) => p.labelSpan)).toEqual([
++      { start: 43, end: 47 },
++      { start: 66, end: 70 },
++    ]);
++    expect(edges.map((p) => source.slice(p.span.start, p.span.end))).toEqual([
++      '-->|same|',
++      '-->|same|',
++    ]);
++    expect(edges.map((p) => [p.from, p.to])).toEqual([
++      ['A', 'B'],
++      ['A', 'B'],
++    ]);
++    expect(edges[0].domId).not.toBe(edges[1].domId);
++    expect(nodes[0].domId).toBe(nodes[2].domId);
++  });
++
++  it('accounts for closing-brace whitespace normalization', () => {
++    const source = 'flowchart LR\nA{Yes}  \n\nB[No]';
++    const map = parse(source);
++    expect(map.pieces.map((p) => p.span)).toEqual([
++      { start: 13, end: 19 },
++      { start: 23, end: 28 },
++    ]);
++  });
++
++  it('does not collect mappings by default or leak them after clear', () => {
++    const db = flow.parser.yy as FlowDB;
++    flow.parse('flowchart LR\nA --> B');
++    expect(db.getSourceMap()).toBeUndefined();
++    const saved = parse('flowchart LR\nA --> B');
++    db.clear();
++    flow.parse('flowchart LR\nC --> D');
++    expect(db.getSourceMap()).toBeUndefined();
++    expect(saved.pieces.map((p) => p.semanticId)).toContain('A');
++  });
++
++  it('rejects unsupported transformations and mismatched parser input', () => {
++    for (const source of [
++      '---\ntitle: Test\n---\nflowchart LR\nA --> B',
++      'flowchart LR\nA["<b>HTML</b>"] --> B',
++      'flowchart LR\nA["`Markdown`"] --> B',
++      '%%{init: {}}%%\nflowchart LR\nA --> B',
++      'flowchart LR\nA@{label: Changed}',
++    ]) {
++      expect(() => parse(source)).toThrow(/source map/i);
++    }
++    const db = flow.parser.yy as FlowDB;
++    db.enableSourceMap('flowchart LR\nA --> B');
++    expect(() => flow.parse('flowchart LR\nC --> D')).toThrow(/source map/i);
++  });
++});
+diff --git a/packages/mermaid/src/diagrams/flowchart/parser/flow.jison b/packages/mermaid/src/diagrams/flowchart/parser/flow.jison
+index 2bf0530..f718a75 100644
+--- a/packages/mermaid/src/diagrams/flowchart/parser/flow.jison
++++ b/packages/mermaid/src/diagrams/flowchart/parser/flow.jison
+@@ -6,6 +6,7 @@
+ 
+ /* lexical grammar */
+ %lex
++%options ranges
+ %x string
+ %x md_string
+ %x acc_title
+@@ -430,44 +431,45 @@ styledVertex: vertex
+     ;
+ 
+ vertex:  idString SQS text SQE
+-        {$$ = $idString;yy.addVertex($idString,$text,'square');}
++        {$$ = $idString;yy.addVertex($idString,$text,'square');yy.recordVertex($idString, @$, $text);}
+     | idString DOUBLECIRCLESTART text DOUBLECIRCLEEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'doublecircle');}
++        {$$ = $idString;yy.addVertex($idString,$text,'doublecircle');yy.recordVertex($idString, @$, $text);}
+     | idString PS PS text PE PE
+-        {$$ = $idString;yy.addVertex($idString,$text,'circle');}
++        {$$ = $idString;yy.addVertex($idString,$text,'circle');yy.recordVertex($idString, @$, $text);}
+     | idString '(-' text '-)'
+-        {$$ = $idString;yy.addVertex($idString,$text,'ellipse');}
++        {$$ = $idString;yy.addVertex($idString,$text,'ellipse');yy.recordVertex($idString, @$, $text);}
+     | idString STADIUMSTART text STADIUMEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'stadium');}
++        {$$ = $idString;yy.addVertex($idString,$text,'stadium');yy.recordVertex($idString, @$, $text);}
+     | idString SUBROUTINESTART text SUBROUTINEEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'subroutine');}
++        {$$ = $idString;yy.addVertex($idString,$text,'subroutine');yy.recordVertex($idString, @$, $text);}
+     | idString VERTEX_WITH_PROPS_START NODE_STRING\[field] COLON NODE_STRING\[value] PIPE text SQE
+-        {$$ = $idString;yy.addVertex($idString,$text,'rect',undefined,undefined,undefined, Object.fromEntries([[$field, $value]]));}
++        {$$ = $idString;yy.addVertex($idString,$text,'rect',undefined,undefined,undefined, Object.fromEntries([[$field, $value]]));yy.recordVertex($idString, @$, $text);}
+     | idString CYLINDERSTART text CYLINDEREND
+-        {$$ = $idString;yy.addVertex($idString,$text,'cylinder');}
++        {$$ = $idString;yy.addVertex($idString,$text,'cylinder');yy.recordVertex($idString, @$, $text);}
+     | idString PS text PE
+-        {$$ = $idString;yy.addVertex($idString,$text,'round');}
++        {$$ = $idString;yy.addVertex($idString,$text,'round');yy.recordVertex($idString, @$, $text);}
+     | idString DIAMOND_START text DIAMOND_STOP
+-        {$$ = $idString;yy.addVertex($idString,$text,'diamond');}
++        {$$ = $idString;yy.addVertex($idString,$text,'diamond');yy.recordVertex($idString, @$, $text);}
+     | idString DIAMOND_START DIAMOND_START text DIAMOND_STOP DIAMOND_STOP
+-        {$$ = $idString;yy.addVertex($idString,$text,'hexagon');}
++        {$$ = $idString;yy.addVertex($idString,$text,'hexagon');yy.recordVertex($idString, @$, $text);}
+     | idString TAGEND text SQE
+-        {$$ = $idString;yy.addVertex($idString,$text,'odd');}
++        {$$ = $idString;yy.addVertex($idString,$text,'odd');yy.recordVertex($idString, @$, $text);}
+     | idString TRAPSTART text TRAPEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'trapezoid');}
++        {$$ = $idString;yy.addVertex($idString,$text,'trapezoid');yy.recordVertex($idString, @$, $text);}
+     | idString INVTRAPSTART text INVTRAPEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'inv_trapezoid');}
++        {$$ = $idString;yy.addVertex($idString,$text,'inv_trapezoid');yy.recordVertex($idString, @$, $text);}
+     | idString TRAPSTART text INVTRAPEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'lean_right');}
++        {$$ = $idString;yy.addVertex($idString,$text,'lean_right');yy.recordVertex($idString, @$, $text);}
+     | idString INVTRAPSTART text TRAPEND
+-        {$$ = $idString;yy.addVertex($idString,$text,'lean_left');}
++        {$$ = $idString;yy.addVertex($idString,$text,'lean_left');yy.recordVertex($idString, @$, $text);}
+     | idString
+-        { /*console.warn('h: ', $idString);*/$$ = $idString;yy.addVertex($idString);}
++        { /*console.warn('h: ', $idString);*/$$ = $idString;yy.addVertex($idString);yy.recordVertex($idString, @$);}
+     ;
+ 
+ 
++link: linkDefinition { yy.recordLink($linkDefinition, @$); $$ = $linkDefinition; };
+ 
+-link: linkStatement arrowText
++linkDefinition: linkStatement arrowText
+     {$linkStatement.text = $arrowText;$$ = $linkStatement;}
+     | linkStatement TESTSTR SPACE
+     {$linkStatement.text = $TESTSTR;$$ = $linkStatement;}
+@@ -482,13 +484,13 @@ link: linkStatement arrowText
+     ;
+ 
+ edgeText: edgeTextToken
+-    {$$={text:$edgeTextToken, type:'text'};}
++    {$$={text:$edgeTextToken, type:'text'};yy.recordLabel($$, @$);}
+     | edgeText edgeTextToken
+-    {$$={text:$edgeText.text+''+$edgeTextToken, type:$edgeText.type};}
++    {$$={text:$edgeText.text+''+$edgeTextToken, type:$edgeText.type};yy.recordLabel($$, @$);}
+     |STR
+-    {$$={text: $STR, type: 'string'};}
++    {$$={text: $STR, type: 'string'};yy.recordLabel($$, @$);}
+     | MD_STR
+-    {$$={text:$MD_STR, type:'markdown'};}
++    {$$={text:$MD_STR, type:'markdown'};yy.recordLabel($$, @$);}
+     ;
+ 
+ 
+@@ -504,13 +506,13 @@ arrowText:
+     ;
+ 
+ text: textToken
+-    { $$={text:$textToken, type: 'text'};}
++    { $$={text:$textToken, type: 'text'};yy.recordLabel($$, @$);}
+     | text textToken
+-    { $$={text:$text.text+''+$textToken, type: $text.type};}
++    { $$={text:$text.text+''+$textToken, type: $text.type};yy.recordLabel($$, @$);}
+     | STR
+-    { $$ = {text: $STR, type: 'string'};}
++    { $$ = {text: $STR, type: 'string'};yy.recordLabel($$, @$);}
+     | MD_STR
+-    { $$={text: $MD_STR, type: 'markdown'};}
++    { $$={text: $MD_STR, type: 'markdown'};yy.recordLabel($$, @$);}
+     ;
+ 
+ 
+diff --git a/packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts b/packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
+index acf4fa5..8f4989e 100644
+--- a/packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
++++ b/packages/mermaid/src/diagrams/flowchart/parser/flowParser.ts
+@@ -1,11 +1,13 @@
+ // @ts-ignore: JISON doesn't support types
+ import flowJisonParser from './flow.jison';
++import { closingBraceWhitespace } from '../sourceMap.js';
+ 
+ const newParser = Object.assign({}, flowJisonParser);
+ 
+ newParser.parse = (src: string): unknown => {
+   // remove the trailing whitespace after closing curly braces when ending a line break
+-  const newSrc = src.replace(/}\s*\n/g, '}\n');
++  const newSrc = src.replace(closingBraceWhitespace, '}\n');
++  flowJisonParser.yy.verifySourceMapInput(newSrc);
+   return flowJisonParser.parse(newSrc);
+ };
+ 
+diff --git a/packages/mermaid/src/diagrams/flowchart/sourceMap.ts b/packages/mermaid/src/diagrams/flowchart/sourceMap.ts
+new file mode 100644
+index 0000000..9e9654d
+--- /dev/null
++++ b/packages/mermaid/src/diagrams/flowchart/sourceMap.ts
+@@ -0,0 +1,63 @@
++import { lineCommentPattern } from '../../diagram-api/comments.js';
++import type { SourceSpan } from '../../types.js';
++
++export interface FlowLocation {
++  range?: [number, number];
++}
++
++export const closingBraceWhitespace = /}\s*\n/g;
++
++/** Track only transformations whose original offsets are known exactly. */
++export function prepareFlowSourceMap(source: string) {
++  let chars: { text: string; start: number; end: number }[] = [];
++  for (let i = 0; i < source.length; i++) {
++    const start = i;
++    const text = source[i] === '\r' ? '\n' : source[i];
++    if (source[i] === '\r' && source[i + 1] === '\n') {
++      i++;
++    }
++    chars.push({ text, start, end: i + 1 });
++  }
++  const text = () => chars.map((c) => c.text).join('');
++  const remove = (pattern: RegExp, retainBraces = false) => {
++    const kept: typeof chars = [];
++    let cursor = 0;
++    for (const match of text().matchAll(pattern)) {
++      kept.push(...chars.slice(cursor, match.index));
++      if (retainBraces) {
++        kept.push(chars[match.index], chars[match.index + match[0].length - 1]);
++      }
++      cursor = match.index + match[0].length;
++    }
++    kept.push(...chars.slice(cursor));
++    chars = kept;
++  };
++  remove(lineCommentPattern);
++  chars = chars.slice(text().length - text().trimStart().length);
++  if (
++    !/^(?:flowchart|graph)\s+(?:LR|RL|TB|BT|TD)\b/.test(text()) ||
++    /[&<`]|%%{|@{|#\w+;/.test(text())
++  ) {
++    throw new Error(
++      'Unsupported source map input: plain flowcharts without frontmatter, directives, entities, HTML, Markdown labels or shape metadata are required'
++    );
++  }
++  chars.push({ text: '\n', start: source.length, end: source.length });
++  remove(closingBraceWhitespace, true);
++  const input = text();
++  return {
++    input,
++    span(loc: FlowLocation, trim = false): SourceSpan {
++      let [start, end] = loc.range ?? [-1, -1];
++      if (trim) {
++        const value = input.slice(start, end);
++        start += value.length - value.trimStart().length;
++        end -= value.length - value.trimEnd().length;
++      }
++      if (!chars[start] || !chars[end - 1] || end <= start) {
++        throw new Error('Invalid source map parser range');
++      }
++      return { start: chars[start].start, end: chars[end - 1].end };
++    },
++  };
++}
+diff --git a/packages/mermaid/src/docs/config/usage.md b/packages/mermaid/src/docs/config/usage.md
+index b0e977e..0987127 100644
+--- a/packages/mermaid/src/docs/config/usage.md
++++ b/packages/mermaid/src/docs/config/usage.md
+@@ -1,5 +1,21 @@
+ # Usage
+ 
++## Experimental flowchart source maps (v<MERMAID_RELEASE_VERSION>+)
++
++Pass `{ sourceMap: true }` as the fourth argument to `mermaid.render` to receive a source map alongside the SVG:
++
++```js
++const { svg, sourceMap } = await mermaid.render('diagram', code, undefined, { sourceMap: true });
++const piece = sourceMap.pieces[0];
++const selectedSource = sourceMap.source.slice(piece.span.start, piece.span.end);
++```
++
++The map contains the exact original source and separate node/edge occurrences. Spans are zero-based UTF-16 offsets with an exclusive end; optional `labelSpan` selects label content. Repeated node references share a semantic identity but retain separate spans. Node `domId` identifies the suffix of the rendered node ID (`diagramId + '-' + domId`); edge `domId` matches the edge's `data-id`. Edges also include `from` and `to` node identities. The map is a source projection, not a complete editable AST.
++
++This initial implementation supports plain flowcharts, including CRLF and comments. Mapped rendering rejects frontmatter, directives, HTML/entities/Markdown labels and shape metadata. Groups, styling and accessibility text do not have mapped occurrences. Unsupported diagrams and preprocessing throw instead of returning approximate positions. Rendering without the option retains existing behavior and returns no `sourceMap` property.
++
++The option does not alter the SVG or install event handlers. Applications can serialize mapping data or implement selection separately. The mapping API is experimental.
++
+ Mermaid is a JavaScript tool that makes use of a Markdown based syntax to render customizable diagrams, charts and visualizations.
+ 
+ Diagrams can be re-rendered/modified by modifying their descriptions.
+diff --git a/packages/mermaid/src/mermaid.ts b/packages/mermaid/src/mermaid.ts
+index 3e6f565..351ef98 100644
+--- a/packages/mermaid/src/mermaid.ts
++++ b/packages/mermaid/src/mermaid.ts
+@@ -18,7 +18,15 @@ import { mermaidAPI } from './mermaidAPI.js';
+ import type { LayoutLoaderDefinition, RenderOptions } from './rendering-util/render.js';
+ import { registerLayoutLoaders } from './rendering-util/render.js';
+ import type { LayoutData } from './rendering-util/types.js';
+-import type { ParseOptions, ParseResult, RenderResult } from './types.js';
++import type {
++  ParseOptions,
++  ParseResult,
++  RenderResult,
++  DiagramRenderOptions,
++  DiagramSourceMap,
++  DiagramSourcePiece,
++  SourceSpan,
++} from './types.js';
+ import type { DetailedError } from './utils.js';
+ import utils, { isDetailedError } from './utils.js';
+ 
+@@ -36,6 +44,10 @@ export type {
+   ParseResult,
+   RenderOptions,
+   RenderResult,
++  DiagramRenderOptions,
++  DiagramSourceMap,
++  DiagramSourcePiece,
++  SourceSpan,
+   SVG,
+   SVGGroup,
+   SyncIconLoader,
+@@ -393,13 +405,13 @@ const parse: typeof mermaidAPI.parse = async (text, parseOptions) => {
+  *   element will be removed when rendering is completed.
+  * @returns Returns the SVG Definition and BindFunctions.
+  */
+-const render: typeof mermaidAPI.render = (id, text, container) => {
++const render: typeof mermaidAPI.render = (id, text, container, options) => {
+   return new Promise((resolve, reject) => {
+     // This promise will resolve when the mermaidAPI.render call is done.
+     // It will be queued first and will be executed when it is first in line
+     const performCall = () =>
+       new Promise((res, rej) => {
+-        mermaidAPI.render(id, text, container).then(
++        mermaidAPI.render(id, text, container, options).then(
+           (r) => {
+             // This resolves for the promise for the queue handling
+             res(r);
+diff --git a/packages/mermaid/src/mermaidAPI.ts b/packages/mermaid/src/mermaidAPI.ts
+index 64d8255..fc04451 100644
+--- a/packages/mermaid/src/mermaidAPI.ts
++++ b/packages/mermaid/src/mermaidAPI.ts
+@@ -41,6 +41,7 @@ import type {
+   ParseOptions,
+   ParseResult,
+   RenderResult,
++  DiagramRenderOptions,
+ } from './types.js';
+ import { decodeEntities, getErrorMessage } from './utils.js';
+ import { toBase64 } from './utils/base64.js';
+@@ -477,7 +478,8 @@ export const removeExistingElements = (
+ const renderDiagram = async function (
+   id: string,
+   text: string,
+-  svgContainingElement?: Element
++  svgContainingElement?: Element,
++  options: DiagramRenderOptions = {}
+ ): Promise<RenderResult> {
+   addDiagrams();
+ 
+@@ -499,6 +501,9 @@ const renderDiagram = async function (
+   // Check the maximum allowed text size. `Diagram.fromText` separately caps the
+   // comment-preserving variant, which only diagrams that report source
+   // positions ever parse.
++  if (options.sourceMap && code.raw.length > (config?.maxTextSize ?? MAX_TEXTLENGTH)) {
++    throw new Error('Source map input exceeds maxTextSize');
++  }
+   if (text.length > (config?.maxTextSize ?? MAX_TEXTLENGTH)) {
+     text = MAX_TEXTLENGTH_EXCEEDED_MSG;
+     code = { raw: text, cleaned: text };
+@@ -575,8 +580,10 @@ const renderDiagram = async function (
+ 
+   try {
+     diag = injected.profiling
+-      ? await profiler.span('parse', () => Diagram.fromText(code, { title: processed.title }))
+-      : await Diagram.fromText(code, { title: processed.title });
++      ? await profiler.span('parse', () =>
++          Diagram.fromText(code, { title: processed.title }, options)
++        )
++      : await Diagram.fromText(code, { title: processed.title }, options);
+   } catch (error) {
+     if (config.suppressErrorRendering) {
+       removeTempElements();
+@@ -678,6 +685,7 @@ const renderDiagram = async function (
+     diagramType,
+     svg: svgCode,
+     bindFunctions: diag.db.bindFunctions,
++    ...(options.sourceMap ? { sourceMap: diag.db.getSourceMap?.() } : {}),
+   };
+ };
+ 
+@@ -689,10 +697,11 @@ const renderDiagram = async function (
+ const render = async function (
+   id: string,
+   text: string,
+-  svgContainingElement?: Element
++  svgContainingElement?: Element,
++  options: DiagramRenderOptions = {}
+ ): Promise<RenderResult> {
+   try {
+-    return await renderDiagram(id, text, svgContainingElement);
++    return await renderDiagram(id, text, svgContainingElement, options);
+   } finally {
+     configApi.setDiagramConfigScope(undefined);
+   }
+diff --git a/packages/mermaid/src/types.ts b/packages/mermaid/src/types.ts
+index 4650c11..5c191b4 100644
+--- a/packages/mermaid/src/types.ts
++++ b/packages/mermaid/src/types.ts
+@@ -132,7 +132,34 @@ export type D3Selection<T extends SVGElement> = D3HtmlSelection<T>;
+  */
+ export type D3HtmlSelection<T extends Element> = d3.Selection<T, unknown, Element | null, unknown>;
+ 
++export interface SourceSpan {
++  readonly start: number;
++  readonly end: number;
++}
++
++export interface DiagramSourcePiece {
++  readonly kind: 'node' | 'edge';
++  readonly semanticId: string;
++  readonly domId: string;
++  readonly span: SourceSpan;
++  readonly labelSpan?: SourceSpan;
++  readonly from?: string;
++  readonly to?: string;
++}
++
++export interface DiagramSourceMap {
++  readonly source: string;
++  readonly pieces: readonly DiagramSourcePiece[];
++}
++
++export interface DiagramRenderOptions {
++  /** Opt in to experimental original-source mappings for supported flowcharts. */
++  sourceMap?: boolean;
++}
++
+ export interface RenderResult {
++  /** Original UTF-16, end-exclusive source spans; present only when requested. */
++  sourceMap?: DiagramSourceMap;
+   /**
+    * The svg code for the rendered graph.
+    */
+-- 
+2.55.0
+

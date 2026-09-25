@@ -23,6 +23,7 @@ Markdown integration is part of initial delivery: markdown-it first, unified/rem
 | [Artifact and integration contracts](docs/specs/source-mapping/contracts.md) | Static SVG, mapping integrity, and activation boundaries |
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
+| [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
 | [SVG baselines](docs/specs/svg-baselines/spec.md) | Upstream fixtures, deterministic rendering, and verification |
 | [Toolchain](docs/specs/toolchain/spec.md) | Pinned tools, setup contract, and verification |
 | [Roadmap](docs/ROADMAP.md) | Milestones, dependencies, and completion evidence |
@@ -34,6 +35,8 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 ## Development
 
 Use Node.js 24.x, as declared in `package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
+
+First build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
 
 ```sh
 corepack pnpm install --frozen-lockfile
@@ -53,6 +56,6 @@ corepack pnpm snapshots:update
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
-The mapping proof uses Mermaid's existing parser and renderer without a fork; removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). Activation and Markdown adapters remain unimplemented; the supported subset and fresh-page lifecycle are documented in the mapping spec.
+The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). Activation and Markdown adapters remain unimplemented. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
 
 Follow [SDD.md](docs/SDD.md): select one ready story, define its contracts and plan, derive tests, implement, verify, and record results. Read [SDD-PLANNING.md](docs/SDD-PLANNING.md) for planning and [SDD-DELIVERY.md](docs/SDD-DELIVERY.md) before implementation. Planned checks are not passing tests.

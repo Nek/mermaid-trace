@@ -40,7 +40,11 @@ export async function readFixtures(): Promise<readonly Fixture[]> {
   })));
 }
 
-export async function renderReferences(fixtures: readonly Fixture[], mapped = false) {
+export const forkBundle = resolve(process.env.MERMAID_TRACE_BUNDLE ?? '../mermaid/packages/mermaid/dist/mermaid.min.js');
+
+export async function renderReferences(fixtures: readonly Fixture[], mapped = false, bundle = mapped
+  ? forkBundle
+  : 'node_modules/mermaid/dist/mermaid.min.js') {
   const font = await readFile('node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2');
   const versions: Record<string, string> = {};
   for (const name of ['mermaid', 'playwright', '@fontsource/noto-sans']) {
@@ -64,9 +68,9 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped = fa
           @font-face { font-family: TraceBaseline; src: url(data:font/woff2;base64,${font.toString('base64')}) format('woff2'); font-weight: 400; }
           body { margin: 0; font-family: TraceBaseline; }
         </style><body></body>`);
-        await page.addScriptTag({ path: resolve('node_modules/mermaid/dist/mermaid.min.js') });
+        await page.addScriptTag({ path: resolve(bundle) });
         if (mapped) {
-          for (const [file, exports] of [['flowchart-source', 'traceFlowchart'], ['svg-mapping', 'annotateSvg']] as const) {
+          for (const [file, exports] of [['flowchart-source', 'renderFlowchart'], ['svg-mapping', 'annotateSvg']] as const) {
             await page.addScriptTag({ type: 'module', content: await readFile(`dist/src/${file}.js`, 'utf8') + `\nwindow.${exports} = ${exports};` });
           }
         }
@@ -76,17 +80,19 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped = fa
           await document.fonts.ready;
           const mermaid = (window as unknown as { mermaid: {
             initialize(config: unknown): void;
-            render(id: string, source: string): Promise<{ svg: string }>;
-            mermaidAPI: { getDiagramFromText(source: string): Promise<unknown> };
+            render: import('../src/flowchart-source.js').MermaidRenderHost['render'];
           } }).mermaid;
           mermaid.initialize(config);
           const api = window as unknown as {
-            traceFlowchart: typeof import('../src/flowchart-source.js').traceFlowchart;
+            renderFlowchart: typeof import('../src/flowchart-source.js').renderFlowchart;
             annotateSvg: typeof import('../src/svg-mapping.js').annotateSvg;
           };
-          const mapping = mapped ? await api.traceFlowchart(source, mermaid) : undefined;
-          const svg = (await mermaid.render(`baseline-${id}`, source)).svg;
-          return mapping ? api.annotateSvg(svg, mapping) : svg;
+          if (mapped) {
+            Object.defineProperty(mermaid, 'mermaidAPI', { get() { throw new Error('Private Mermaid API must not be accessed'); } });
+            const { svg, mapping } = await api.renderFlowchart(`baseline-${id}`, source, mermaid);
+            return api.annotateSvg(svg, mapping);
+          }
+          return (await mermaid.render(`baseline-${id}`, source)).svg;
         }, { id, source, config, mapped });
       } finally {
         await page.close();

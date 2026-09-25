@@ -1,6 +1,6 @@
 # MAP-1: flowchart source provenance in static SVG
 
-Status: implemented and verified on 2026-09-26. Scope: prove parser → source → SVG for the existing flowchart fixtures, before a public renderer API.
+Status: original proof implemented and verified on 2026-09-26. Its private-parser adapter has since been replaced by [FORK-1](../mermaid-fork/spec.md). The findings below record the original experiment; the fork spec describes the current producer and supported input. The SVG format and reader remain in use.
 
 ## Findings and decision
 
@@ -33,12 +33,12 @@ Source inspection used the installed Mermaid 12.0.0 source map: `flow.jison`, `f
 
 ## Implementation and verification
 
-- [Parser adapter](../../../src/flowchart-source.ts): isolated Jison reductions become source-occurrence projections; no Mermaid/Markdown fork or copied grammar. Native arrays, Maps and WeakMaps suffice for this slice; no additional dependencies were added.
+- Original adapter: isolated Jison reductions became source-occurrence projections. [The current adapter](../../../src/flowchart-source.ts) instead consumes the fork's explicit render result, with no private parser access.
 - [SVG writer/reader](../../../src/svg-mapping.ts): DOM identity checks plus insertion into original start tags preserve raw SVG bytes. The independent reader imports no renderer and verifies spans, IDs, element identity and optional external source.
 - TDD: tests first failed on the missing mapping path. A further negative test exposed acceptance of a mismatched node DOM identity; it failed before the validation fix and passes afterward.
 - All six integration tests pass: four mapping tests and two unchanged reference tests. All four original SVG baselines are unchanged. CRLF/comment/astral-Unicode offsets and duplicate node/edge labels have independently specified expected ranges. Saved SVG was read in a new page without Mermaid; invalid payload, out-of-bounds range, unknown reference, wrong DOM identity, stale source and unsupported syntax were rejected.
 - [Annotated example](../../examples/repeated-labels.svg) contains the exact Mermaid source and mapped pieces. It is generated from the existing repeated-label fixture; stripping only `data-mt-*` attributes recovers the original reference bytes.
 
-Current lifecycle: one fresh Mermaid page per artifact, as in the reference harness. The bootstrap uses `getDiagramFromText` to load the flowchart definition, which has Mermaid's normal shared registry effects. This adapter is not a reentrant wrapper for an application concurrently using that registry. The capture itself uses separate parser/DB objects. Repeated rendering on a reused page and nondefault render configuration require a later integration story.
+Original lifecycle: one fresh Mermaid page per artifact, using `getDiagramFromText` to load the flowchart definition. FORK-1 removes this bootstrap and uses Mermaid's queued public render API; repeated mapped and unmapped renders are now tested.
 
-The adapter recognizes named grammar symbols, supported node delimiters and arrow semantics, without hardcoded production numbers. It still depends on private Jison/FlowDB interfaces in the pinned Mermaid release; upgrades must rerun and review the integration tests. This is a feasibility proof, not a supported upstream source-location API or a stable public package API. URI-encoded root metadata is deliberately simple and can be larger than the diagram; payload compaction belongs to the format-v1 decision.
+The original adapter recognized named grammar symbols, node delimiters and arrow semantics rather than hardcoded production numbers. FORK-1 moves provenance into Mermaid's grammar and database. Neither the fork API nor format 0 is a stable upstream contract. URI-encoded root metadata can be larger than the diagram; compaction belongs to the format-v1 decision.

@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: documentation baseline established; product implementation has not started. Stories and criteria are defined in the [spec](specs/source-mapping/spec.md). Complete one implementation story at a time.
+Status: experimental flowchart producer and independent SVG reader implemented. Stories and criteria are defined in the [spec](specs/source-mapping/spec.md). Complete one implementation story at a time.
 
 | Milestone | Scope | Exit evidence | Status |
 |---|---|---|---|
@@ -12,6 +12,8 @@ Status: documentation baseline established; product implementation has not start
 | M5 — Rust parity | Implement S5 against the agreed format | Shared fixtures pass in both implementations; Rust SVG activates in the same JS library; measured performance with methodology | Not started |
 
 M1 has a [deterministic upstream SVG baseline](specs/svg-baselines/spec.md). The [first mapping proof](specs/flowchart-mapping/spec.md) now preserves exact node/edge spans and baseline SVG bytes. Markdown extraction provenance and the stable artifact contract are next. A renderer that merely places guessed locations in SVG does not satisfy M1 or M2. Browser-based rendering may be the initial approach; Node rendering without a browser is not promised.
+
+[FORK-1](specs/mermaid-fork/spec.md) replaces parser interception with explicit source maps from a local Mermaid fork. Next: Markdown extraction provenance, then a clickable Markdown demonstration using a separate activation module. Hosting the fork and discussing the upstream API remain pending.
 
 ## Foundation story: toolchain and initialization
 

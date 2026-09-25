@@ -81,7 +81,7 @@ test('MAP-AC3: saved SVG decodes without Mermaid and rejects bad mappings or sta
 });
 
 test('MAP-AC4: unsupported mapping syntax produces explicit errors', async () => {
-  for (const source of ['flowchart LR\nA((circle)) --> B', 'flowchart LR\nA["`markdown`"] --> B', 'flowchart LR\nA[x]\nA[y] --> B']) {
-    await assert.rejects(renderReferences([{ id: 'unsupported', source }], true), /Unsupported mapping/);
+  for (const source of ['flowchart LR\nA@{label: Changed} --> B', 'flowchart LR\nA["`markdown`"] --> B', 'flowchart LR\nA[x]\nA[y] --> B']) {
+    await assert.rejects(renderReferences([{ id: 'unsupported', source }], true), /Unsupported (?:mapping|source map)/);
   }
 });
