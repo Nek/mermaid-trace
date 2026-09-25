@@ -1,6 +1,6 @@
 # INIT-1: TypeScript foundation
 
-Status: dependency setup complete; product implementation has not started.
+Status: dependency setup complete; the [reference SVG harness](../svg-baselines/spec.md) now provides real rendering tests. Source mapping has not started.
 
 As a contributor, I want pinned tools and a locked dependency install so I can begin the first mapping story.
 
@@ -17,12 +17,12 @@ As a contributor, I want pinned tools and a locked dependency install so I can b
 |---|---|---|
 | INIT-AC1 | Frozen dependency installation leaves the lockfile unchanged | Verified, including offline install, 2026-09-25 |
 | INIT-AC2, INIT-AC3, INIT-C1 | Synthetic compiler/import test requirements | Retired: these tested the toolchain rather than project behavior; test and emitted artifacts removed |
-| INIT-AC4 | Setup instructions match available commands and distinguish setup from product verification | Updated: `typecheck` and `build` need real source files; no test/check command yet |
+| INIT-AC4 | Setup instructions match available commands and distinguish setup from product verification | Updated: typecheck/build/test now cover the reference SVG harness; no synthetic toolchain test |
 
-The former dummy test's passing results are not product evidence. No source files currently exist, so compilation reports no inputs. Do not add placeholders to manufacture a passing build.
+The former dummy test's passing results are not product evidence. The current tests render real diagram inputs and compare SVG; do not add placeholders to manufacture a passing build.
 
 ## Maintenance plan
 
-Keep documentation under `docs/` except root README and AGENTS; update links when moving files. Keep only typecheck/build scripts until real tests exist. Verify file layout, local links, and script references after cleanup; no behavior tests are needed for documentation moves or removal of the dummy test.
+Keep documentation under `docs/` except root README and AGENTS; update links when moving files. Keep scripts tied to real implementation and verification. Verify file layout, local links, and script references after cleanup; no behavior tests are needed for documentation moves or removal of the dummy test.
 
 Setup notes: pnpm 12.6.0 stalled on registry resolution in this environment, so 11.28.0 is pinned. Local verification used Node 24.19.0; that patch version and mise are not contributor requirements. Sandbox verification needs access to the user caches; do not work around it with project-local caches.

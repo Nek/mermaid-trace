@@ -1,0 +1,8 @@
+flowchart LR
+  subgraph Outer
+    subgraph Inner
+      A["Café"] -->|same| B["Café"]
+    end
+    B --> C["Ångström"]
+  end
+  A -->|same| C

@@ -1,0 +1,39 @@
+{
+  "versions": {
+    "mermaid": "12.0.0",
+    "playwright": "1.63.0",
+    "@fontsource/noto-sans": "5.3.0"
+  },
+  "browser": "153.0.8010.12",
+  "platform": "darwin",
+  "arch": "arm64",
+  "fontSha256": "09aee8065d25508f23a4c3d92cd777ac869c52d93fd868a88f025d888a7937d6",
+  "config": {
+    "startOnLoad": false,
+    "securityLevel": "strict",
+    "theme": "default",
+    "look": "classic",
+    "layout": "dagre",
+    "fontFamily": "TraceBaseline",
+    "fontSize": 16,
+    "htmlLabels": false,
+    "deterministicIds": true,
+    "deterministicIDSeed": "mermaid-trace-baseline",
+    "flowchart": {
+      "htmlLabels": false,
+      "useMaxWidth": false
+    }
+  },
+  "context": {
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "locale": "en-US",
+    "timezoneId": "UTC",
+    "colorScheme": "light",
+    "reducedMotion": "reduce",
+    "serviceWorkers": "block"
+  }
+}

@@ -51,3 +51,5 @@ Start with strict TypeScript, ES modules, plain immutable-by-convention data, an
 Evaluate shortlisted utilities against the first real diagram mapping flow. Add the smallest useful set when implementing that flow, and verify type inference, emitted bundle, and actual behavior. No framework, persistent collection library, optics layer, or transducer abstraction is mandatory just to call the code functional.
 
 Expose ordinary JavaScript functions/data and TypeScript declarations. Preserve the common source-mapping contract for Rust without requiring identical internal data structures.
+
+The [reference SVG harness](specs/svg-baselines/spec.md) pins upstream Mermaid and checks raw SVG equality before mapping work. Rendering snapshots remain independent of future metadata assertions. It is test tooling, not the public renderer API.
