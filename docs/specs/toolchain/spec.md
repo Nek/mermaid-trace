@@ -1,0 +1,28 @@
+# INIT-1: TypeScript foundation
+
+Status: dependency setup complete; product implementation has not started.
+
+As a contributor, I want pinned tools and a locked dependency install so I can begin the first mapping story.
+
+## Decisions and scope
+
+- Node 24.x declared in `package.json` engines; contributors choose how to install it. `mise.toml` is an ignored local preference. pnpm 11.28.0 is selected by `packageManager`; TypeScript 7.0.2 and Node types 24.13.6 are locked dependencies.
+- One private ESM package with strict TypeScript, declarations, and source maps. No product entry point yet.
+- Use standard user-level caches. No project cache folder, global tool replacement, remote, or publishing.
+- Add Node test-runner tests for actual behavior with the first implementation. Add browser tooling and libraries when a product story needs them.
+
+## Acceptance and verification
+
+| ID | Requirement | Status |
+|---|---|---|
+| INIT-AC1 | Frozen dependency installation leaves the lockfile unchanged | Verified, including offline install, 2026-09-25 |
+| INIT-AC2, INIT-AC3, INIT-C1 | Synthetic compiler/import test requirements | Retired: these tested the toolchain rather than project behavior; test and emitted artifacts removed |
+| INIT-AC4 | Setup instructions match available commands and distinguish setup from product verification | Updated: `typecheck` and `build` need real source files; no test/check command yet |
+
+The former dummy test's passing results are not product evidence. No source files currently exist, so compilation reports no inputs. Do not add placeholders to manufacture a passing build.
+
+## Maintenance plan
+
+Keep documentation under `docs/` except root README and AGENTS; update links when moving files. Keep only typecheck/build scripts until real tests exist. Verify file layout, local links, and script references after cleanup; no behavior tests are needed for documentation moves or removal of the dummy test.
+
+Setup notes: pnpm 12.6.0 stalled on registry resolution in this environment, so 11.28.0 is pinned. Local verification used Node 24.19.0; that patch version and mise are not contributor requirements. Sandbox verification needs access to the user caches; do not work around it with project-local caches.
