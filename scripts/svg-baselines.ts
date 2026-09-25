@@ -40,7 +40,7 @@ export async function readFixtures(): Promise<readonly Fixture[]> {
   })));
 }
 
-export async function renderReferences(fixtures: readonly Fixture[]) {
+export async function renderReferences(fixtures: readonly Fixture[], mapped = false) {
   const font = await readFile('node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2');
   const versions: Record<string, string> = {};
   for (const name of ['mermaid', 'playwright', '@fontsource/noto-sans']) {
@@ -65,17 +65,29 @@ export async function renderReferences(fixtures: readonly Fixture[]) {
           body { margin: 0; font-family: TraceBaseline; }
         </style><body></body>`);
         await page.addScriptTag({ path: resolve('node_modules/mermaid/dist/mermaid.min.js') });
-        svgs[id] = await page.evaluate(async ({ id, source, config }) => {
+        if (mapped) {
+          for (const [file, exports] of [['flowchart-source', 'traceFlowchart'], ['svg-mapping', 'annotateSvg']] as const) {
+            await page.addScriptTag({ type: 'module', content: await readFile(`dist/src/${file}.js`, 'utf8') + `\nwindow.${exports} = ${exports};` });
+          }
+        }
+        svgs[id] = await page.evaluate(async ({ id, source, config, mapped }) => {
           const faces = await document.fonts.load('16px TraceBaseline');
           if (faces.length !== 1 || faces[0]?.status !== 'loaded') throw new Error('Baseline font did not load');
           await document.fonts.ready;
           const mermaid = (window as unknown as { mermaid: {
             initialize(config: unknown): void;
             render(id: string, source: string): Promise<{ svg: string }>;
+            mermaidAPI: { getDiagramFromText(source: string): Promise<unknown> };
           } }).mermaid;
           mermaid.initialize(config);
-          return (await mermaid.render(`baseline-${id}`, source)).svg;
-        }, { id, source, config });
+          const api = window as unknown as {
+            traceFlowchart: typeof import('../src/flowchart-source.js').traceFlowchart;
+            annotateSvg: typeof import('../src/svg-mapping.js').annotateSvg;
+          };
+          const mapping = mapped ? await api.traceFlowchart(source, mermaid) : undefined;
+          const svg = (await mermaid.render(`baseline-${id}`, source)).svg;
+          return mapping ? api.annotateSvg(svg, mapping) : svg;
+        }, { id, source, config, mapped });
       } finally {
         await page.close();
       }

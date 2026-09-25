@@ -1,6 +1,6 @@
 # Feature: source-mapped Mermaid diagrams
 
-Status: initial behavioral baseline. Product stories need a concrete diagram/backend/format decision and a per-story plan before implementation. Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
+Status: behavioral baseline; the [MAP-1 proof](../flowchart-mapping/spec.md) implements a limited flowchart slice. Product stories need a concrete diagram/backend/format decision and a per-story plan before implementation. Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
 
 ## Problem, users, and goals
 
@@ -77,7 +77,7 @@ As a Rust host author, I want native mapping and SVG generation so I can embed t
 
 ## Open questions and readiness
 
-- [NEEDS CLARIFICATION: Which initial diagram type and syntax subset?] Recommendation: a small flowchart subset with nodes, edge labels, repeated references, and subgraphs. Blocks S1 implementation, not toolchain work.
+- Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Broader S1 coverage and format-v1 guarantees still need a selected implementation story.
 - [NEEDS CLARIFICATION: Which parser/renderer preserves reliable source spans and visual identity?] Resolve through M1 investigation, including browser versus Node execution needs.
 - [NEEDS CLARIFICATION: Exact v1 attribute names, span units, metadata/source encoding, AST projection, source-version check, and size limits?] Resolve before S1/S2 format implementation; do not promise a stable wire format yet.
 - [NEEDS CLARIFICATION: Primary span and source-overlap selection policy?] Recommend declaration first where known, otherwise source order; expose all alternatives. Resolve before S2.
