@@ -72,6 +72,8 @@ Open the local URL printed by Vite. The command renders [the example Markdown](d
 
 Diagram clicks, keyboard activation and occurrence choices automatically copy the selected location, for example `interactive.md:18:10-18:15`. The visible location uses one-based lines/UTF-16 columns with an exclusive end. Source-view selection updates the location without overwriting the clipboard. If the browser denies clipboard access, the demo reports it and keeps the location selectable for manual copying.
 
+Keyboard focus is the diagram selection: Tab/Shift+Tab updates highlights, source and location while keeping focus in the diagram. Enter/Space copies the current location. Focus navigation alone does not overwrite the clipboard. Native text dragging inside SVG is disabled; source text remains normally selectable.
+
 Connectors have an invisible 12-pixel click target while activated. Clicking the line selects its connector syntax (`-->` or `-->|review|`); clicking just a label selects and highlights only that label. The same distinction applies to source-view highlighting. Disposal removes the extra hit targets, leaving the original static SVG intact.
 
 Hosts own sanitization before insertion, document identity/revision and editor selection. Activation validates mappings but is not a sanitizer. `prepareMarkdown(document, namespace)` returns blocks and a synchronous renderer consuming trusted prepared SVGs. `toMarkdown` returns exact segments plus an enclosing editor range; `fromMarkdown` performs reverse lookup. Expanded indentation tabs that cannot be mapped exactly fail explicitly. No arbitrary SVG upload UI, source editing, unified adapter or VS Code extension is included yet.

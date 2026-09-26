@@ -19,7 +19,7 @@ export async function writeDemo(): Promise<void> {
 <title>Mermaid Trace · Markdown demo</title>
 <style>
 @font-face{font-family:TraceBaseline;src:url(data:font/woff2;base64,${font}) format('woff2');font-weight:400}
-*{box-sizing:border-box}body{margin:0;background:#f5f7f9;color:#172c3e;font:15px/1.6 system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#f5f7f9;color:#172c3e;font:15px/1.6 system-ui,sans-serif;overflow-anchor:none}
 header{padding:24px 32px;background:#172c3e;color:white}header h1{font-size:26px;margin:0}header p{margin:4px 0 0;color:#d9e5ee}
 main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;padding:24px 32px}
 article,.source{background:white;border:1px solid #d9e2e9;border-radius:12px;padding:24px;min-width:0}

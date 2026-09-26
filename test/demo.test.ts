@@ -33,6 +33,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     }));
     assert.equal(selection.text, 'Draft');
     assert.equal(selection.start, selection.expected);
+    assert.equal(await page.locator('svg').nth(1).locator('[data-mt-role="node-label"]').first().evaluate(element => element === document.activeElement), true, 'selection keeps focus in the diagram');
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:18:10-18:15');
     await page.getByText('Location copied.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:18:10-18:15');
@@ -49,12 +50,19 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     assert.equal(await page.locator('svg').first().locator('[data-mt-role="edge"][data-mt-selected]').count(), 0);
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:7:18-7:24');
     for (const [index, text, location] of [[0, '-->|review|', 'interactive.md:7:14-7:25'], [1, '-->', 'interactive.md:8:5-8:8']] as const) {
+      const previousClipboard = await page.evaluate(() => navigator.clipboard.readText());
       await page.locator('svg').first().locator('[data-mt-role="edge"]').nth(index).focus();
+      assert.equal(await page.locator('#selection-location').inputValue(), location, 'focus updates the displayed selection');
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), previousClipboard, 'focus alone does not copy');
       await page.keyboard.press('Enter');
       await page.getByText('Location copied.', { exact: true }).waitFor();
       assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), text);
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), location);
     }
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:9:5-9:8');
+    assert.equal(await page.locator('svg').first().locator('[data-mt-role="edge"]').nth(2).evaluate(element => element === document.activeElement && element.hasAttribute('data-mt-selected')), true);
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:8:5-8:8');
     await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
       const start = input.value.indexOf('Review');
       input.focus(); input.setSelectionRange(start, start + 6);

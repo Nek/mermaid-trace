@@ -19,7 +19,9 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
       roots[0]!.querySelector('[data-mt-role="node"]')!.setAttribute('tabindex', '7');
       const originals = roots.map(root => root.outerHTML);
       const events: unknown[][] = [[], []];
-      const handles = roots.map((root, i) => activateSvg(root, { onSelect: (event: unknown) => events[i]!.push(event) }));
+      const handles = roots.map((root, i) => activateSvg(root, { onSelect: (event: { trigger?: string }) => {
+        if (event.trigger !== 'focus') events[i]!.push(event);
+      } }));
       Object.assign(window, { roots, originals, events, handles, activateSvg });
     }, { activation });
     const first = page.locator('svg').nth(0);
@@ -69,6 +71,21 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
       assert.equal(point.text, labeled ? '-->|same|' : '-->');
       assert.equal(await first.locator('[data-mt-role="edge"][data-mt-selected]').count(), 1);
     }
+    // Focus is selection; dragging SVG text must not create another selection.
+    const labelBox = await first.locator('[data-mt-role="node-label"] text').first().boundingBox();
+    assert.ok(labelBox);
+    await first.locator('[data-mt-role="edge"]').first().focus();
+    await page.mouse.move(labelBox.x + 2, labelBox.y + labelBox.height / 2);
+    await page.mouse.down();
+    assert.equal(await first.evaluate(root => root.contains(document.activeElement) && document.activeElement!.hasAttribute('data-mt-selected')), true, 'focused diagram target is selected');
+    await page.mouse.move(labelBox.x + labelBox.width - 2, labelBox.y + labelBox.height / 2, { steps: 5 });
+    await page.mouse.up();
+    assert.equal(await page.evaluate(() => window.getSelection()!.toString()), '', 'diagram text must not become a second native selection');
+    await first.locator('[data-mt-role="edge"]').first().focus();
+    const beforeTab = await page.evaluate(() => (window as any).events[0].length);
+    await page.keyboard.press('Tab');
+    assert.equal(await first.locator('[data-mt-role="edge"]').nth(1).evaluate(element => element === document.activeElement && element.matches(':focus-visible') && element.hasAttribute('data-mt-selected')), true, 'Tab focus is the actual selection');
+    assert.equal(await page.evaluate(() => (window as any).events[0].length), beforeTab, 'focus is distinct from clipboard activation');
     const outcomes = await page.evaluate(() => {
       const w = window as any;
       const [root] = w.roots;
@@ -99,7 +116,7 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
       const before = w.events[0].length;
       root.querySelector('[data-mt-role="node"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const after = w.events[0].length;
-      const next = w.activateSvg(root, { onSelect: (e: unknown) => w.events[0].push(e) });
+      const next = w.activateSvg(root, { onSelect: (e: { trigger?: string }) => { if (e.trigger !== 'focus') w.events[0].push(e); } });
       root.querySelector('[data-mt-role="node"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
       root.setAttribute('role', 'presentation'); // A later host edit is not ours to undo.
       next.dispose();

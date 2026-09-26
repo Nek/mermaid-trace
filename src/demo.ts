@@ -13,11 +13,13 @@ const occurrences = document.querySelector<HTMLElement>('#occurrences')!;
 const location = document.querySelector<HTMLInputElement>('#selection-location')!;
 const copyStatus = document.querySelector<HTMLElement>('#copy-status')!;
 const showLocation = (span: Span) => {
-  location.value = formatLocation(data.document, span);
-  copyStatus.textContent = '';
+  const value = formatLocation(data.document, span);
+  if (location.value !== value) copyStatus.textContent = '';
+  location.value = value;
 };
 const copyLocation = async () => {
   const value = location.value;
+  copyStatus.textContent = '';
   try {
     await navigator.clipboard.writeText(value);
     if (location.value === value) copyStatus.textContent = 'Location copied.';
@@ -36,10 +38,9 @@ try {
       try {
         const { segments, envelope } = toMarkdown(block, selection.span, data.document);
         diagramRange = envelope;
-        source.focus({ preventScroll: true });
         source.setSelectionRange(envelope.start, envelope.end);
         showLocation(envelope);
-        void copyLocation();
+        if (selection.trigger === 'activation') void copyLocation();
         status.textContent = `${selection.role} · ${selection.pieces[0]!.semanticId} · ${block.id} · exact Markdown segments ${segments.map(s => `[${s.start}, ${s.end})`).join(', ')}${segments.length > 1 ? ' · editor selection includes intervening Markdown prefixes' : ''}`;
         for (const instance of instances) instance.activation.highlight(instance.block.id === block.id ? [selection.span] : []);
         occurrences.replaceChildren();

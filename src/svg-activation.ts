@@ -1,7 +1,7 @@
 import type { Piece, SourceMapping, Span } from './flowchart-source.js';
 import { readSvgMapping } from './svg-mapping.js';
 
-export type Selection = { readonly role: string; readonly pieces: readonly Piece[]; readonly span: Span };
+export type Selection = { readonly role: string; readonly pieces: readonly Piece[]; readonly span: Span; readonly trigger: 'focus' | 'activation' };
 export type Activation = {
   readonly mapping: SourceMapping;
   highlight(ranges: readonly Span[]): readonly Piece[];
@@ -60,13 +60,26 @@ export function activateSvg(svg: SVGSVGElement, options: {
     highlight([selection.span]);
     options.onSelect(selection);
   };
-  const gesture = (event: Event) => {
-    if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+  const targetFor = (event: Event) => {
     const element = event.target instanceof Element
       ? hitTargets.get(event.target) ?? event.target.closest('[data-mt-refs]') : null;
-    if (!element || element.closest('svg') !== svg || !elements.includes(element)) return;
+    return element && element.closest('svg') === svg && elements.includes(element) ? element as SVGElement : null;
+  };
+  const pointerFocus = (event: MouseEvent) => {
+    const element = targetFor(event);
+    if (!element || event.button !== 0) return;
     event.preventDefault();
-    emit({ role: element.getAttribute('data-mt-role')!, pieces: refs(element).map(id => byId.get(id)!),
+    element.focus({ preventScroll: true });
+  };
+  const gesture = (event: Event) => {
+    if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+    const element = targetFor(event);
+    if (!element) return;
+    if (event.type !== 'focusin') {
+      event.preventDefault();
+      element.focus({ preventScroll: true });
+    }
+    emit({ trigger: event.type === 'focusin' ? 'focus' : 'activation', role: element.getAttribute('data-mt-role')!, pieces: refs(element).map(id => byId.get(id)!),
       span: { start: Number(element.getAttribute('data-mt-start')), end: Number(element.getAttribute('data-mt-end')) } });
   };
   set(svg, 'role', 'group');
@@ -89,6 +102,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
   }
   svg.addEventListener('click', gesture);
   svg.addEventListener('keydown', gesture);
+  svg.addEventListener('focusin', gesture);
+  svg.addEventListener('mousedown', pointerFocus);
+  const preventTextSelection = (event: Event) => { event.preventDefault(); };
+  svg.addEventListener('selectstart', preventTextSelection);
   active.add(svg);
   return {
     mapping,
@@ -97,12 +114,17 @@ export function activateSvg(svg: SVGSVGElement, options: {
       checkActive();
       const piece = byId.get(pieceId);
       if (!piece) throw new Error(`Unknown piece: ${pieceId}`);
-      emit({ role: piece.kind, pieces: [piece], span: piece.span });
+      const element = elements.find(element => element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))!;
+      (element as SVGElement).focus({ preventScroll: true });
+      emit({ trigger: 'activation', role: piece.kind, pieces: [piece], span: piece.span });
     },
     dispose() {
       if (disposed) return;
       svg.removeEventListener('click', gesture);
       svg.removeEventListener('keydown', gesture);
+      svg.removeEventListener('focusin', gesture);
+      svg.removeEventListener('mousedown', pointerFocus);
+      svg.removeEventListener('selectstart', preventTextSelection);
       for (const target of hitTargets.keys()) target.remove();
       for (const [element, attributes] of changes) for (const [name, { before, after }] of attributes) {
         if (element.getAttribute(name) !== after) continue;
