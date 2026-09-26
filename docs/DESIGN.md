@@ -52,7 +52,7 @@ Evaluate shortlisted utilities against the first real diagram mapping flow. Add 
 
 Expose ordinary JavaScript functions/data and TypeScript declarations. Preserve the common source-mapping contract for Rust without requiring identical internal data structures.
 
-The [reference SVG harness](specs/svg-baselines/spec.md) pins upstream Mermaid and checks raw SVG equality before mapping work. Rendering snapshots remain independent of future metadata assertions. The browser backend is shared internally with the watch CLI; the baseline harness remains test tooling, not a public library renderer API.
+The [reference SVG harness](specs/svg-baselines/spec.md) pins upstream Mermaid and checks raw SVG equality before mapping work. Rendering snapshots remain independent of future metadata assertions. The browser backend remains the transitional mapped-flowchart path in the watch CLI; the baseline harness remains test tooling, not a public library renderer API.
 
 The [first mapping proof](specs/flowchart-mapping/spec.md) captured source ranges from isolated instances of Mermaid 12's existing Jison parser and FlowDB. That runtime interception has been replaced by the fork's explicit API. A separate SVG metadata module reads saved artifacts without the renderer; its format remains experimental `mermaid-trace/0`.
 
@@ -62,7 +62,7 @@ The demo source view is read-only text in a same-origin frame containing only es
 
 The [watch CLI](specs/watch-cli/spec.md) serves a minimal rendered document using Vite's middleware and watcher with a Node HTTP server. The CLI owns process shutdown so it can finish closing Chromium as well as the server. It consumes standard Mermaid fences through the existing adapters and keeps the browser free of producer/parser code. Invalid edits retain the last good document. The source-view demo remains a separate debugging consumer.
 
-Mermaid's public diagram detector distinguishes flowcharts from types without our fork's source-map support. Viewer rendering of those types embeds exact whole-source metadata with an empty piece list; sequence diagrams have whole-diagram selection only. Strict mapped rendering still rejects unsupported diagram types. This does not establish AST/element coverage for sequence diagrams or other Mermaid types.
+The preview producer uses Merman's native semantic result to identify flowcharts for the retained legacy mapped path. Native rendering of other types embeds exact whole-source metadata with an empty piece list; sequence diagrams have whole-diagram selection only. Strict mapped rendering still rejects unsupported diagram types. This does not establish AST/element coverage for sequence diagrams or other Mermaid types.
 
 ## Required diagram coverage
 

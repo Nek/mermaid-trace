@@ -35,3 +35,9 @@ TDD: new CLI/integration tests failed before implementation because the entry po
 `corepack pnpm test`: 18/18 passed. `corepack pnpm run typecheck` and `git diff --check`: passed. Existing raw SVG baselines and environment are unchanged. Sequence probe: normal SVG rendering succeeds; strict fork mapped render fails with `Source maps are not supported for sequence`. Manual in-app inspection verified the minimal document, both diagrams and keyboard label highlighting at `http://127.0.0.1:5174/`. Pointer/clipboard checks are automated in Chromium; browser permission policies may deny clipboard writes, which are logged in its console. Broader browser acceptance remains pending.
 
 The source-view demo remains available separately. No new dependency, external include convention, GFM support, sequence AST/participant/message mapping or browser-free renderer was added.
+
+## Merman migration (2026-09-26)
+
+[MERMAN-1](../merman-backend/spec.md) now owns producer routing. Non-flowchart diagrams use the pinned Merman native Node addon and safe static SVG pipeline. Flowcharts keep the legacy mapped producer until native source-map parity. One engine is reused across rebuilds and disposed during preview shutdown, including initialization errors. Runtime browser modules remain unchanged. The native binding does not expose occurrence spans; exact sequence/all-family selection remains incomplete. The earlier browser-detector viewer mode has been removed.
+
+The live preview, original-file clipboard selections, static display, save/rename/recovery and actual CLI shutdown tests pass after migration. Current full suite: 20/20 tests. The new native producer test also proves the sequence SVG bytes come from Merman and that retained flowcharts still contain mapped labels.

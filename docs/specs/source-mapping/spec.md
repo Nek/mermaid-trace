@@ -10,7 +10,7 @@ Produce static annotated SVG first, then provide optional interaction that works
 
 ## Constraints and non-goals
 
-- One TypeScript implementation, with Clojure-inspired data transformations and thi.ng preferred as described in [DESIGN.md](../../DESIGN.md). Rust is a later native implementation, not another frontend.
+- One TypeScript host/activation implementation, with Clojure-inspired data transformations and thi.ng preferred as described in [DESIGN.md](../../DESIGN.md). Merman supplies the Rust rendering core through a native Node binding. Trace-owned Rust integration belongs in `mermaid-trace-rs/`; TypeScript lives in `mermaid-trace-ts/`.
 - Core/rendering accept source text; the host owns document paths, Markdown extraction provenance, and source-file access.
 - All built-in Mermaid diagram types are mandatory release scope, not a later extension. The flowchart subset is an implementation slice only. Rendering or whole-diagram fallback does not establish element mapping support. Unsupported syntax must be reported; it must not produce confident but incorrect mappings.
 - No collaboration, CRDTs, visual source rewriting, AST mutation API, round-trip formatter, complete IDE, or production VS Code extension in the initial release.
@@ -89,7 +89,7 @@ As a Mermaid author, I want the same source-mapping interactions for every built
 ## Open questions and readiness
 
 - Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Full S1/S6 coverage is mandatory; per-family implementation plans and format-v1 guarantees remain unfinished.
-- Backend chosen for the current subset: the [Mermaid fork](../mermaid-fork/spec.md) preserves grammar provenance and visual identity; rendering uses Chromium. Broader diagram coverage is required and unimplemented; browser-free rendering remains an architectural question.
+- Backend decision: [Merman](../merman-backend/spec.md) supplies native rendering and semantic JSON. The [Mermaid fork](../mermaid-fork/spec.md) remains the explicit transitional mapped-flowchart path. The pinned Merman binding lacks native source occurrence/visual exports; adding those is the next required story. All-family mapping is still unimplemented; native static rendering is verified independently of mapping.
 - [NEEDS CLARIFICATION: Exact v1 attribute names, span units, metadata/source encoding, AST projection, source-version check, and size limits?] Resolve before S1/S2 format implementation; do not promise a stable wire format yet.
 - ACT-1 resolves the experimental selection policy: declarations first, otherwise first occurrence; labels select label spans; half-open overlap returns all matching projections. Occurrence alternatives are exposed. Stable v1 should retain or explicitly revise this policy.
 - ACT-1 is verified in pinned Chromium; wider browser support remains open. Click/Enter/Space selects source and suppresses hyperlink navigation. markdown-it is implemented first; unified/rehype follows before the integration milestone closes.

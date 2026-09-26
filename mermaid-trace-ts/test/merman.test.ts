@@ -32,3 +32,25 @@ test('MERMAN-AC1/2: native SVG preserves input and identities, repeats determini
   await producer.close();
   await assert.rejects(producer.render('closed', sequence), /disposed|closed/i);
 });
+
+test('MERMAN-AC2/3: preview uses native sequence SVG and preserves mapped flowcharts during migration', async () => {
+  const { createPreviewProducer } = await import('../src/producer/preview.js');
+  const preview = await createPreviewProducer();
+  const native = await createMermanProducer();
+  try {
+    const result = await preview.render([
+      { id: 'sequence', source: sequence },
+      { id: 'flowchart', source: 'flowchart LR\nA -->|review| B' },
+    ]);
+    const svg = result.svgs.sequence!;
+    assert.equal(svg.replace(/ data-mt-map="[^"]*"/, ''), (await native.render('baseline-sequence', sequence)).svg);
+    const mapping = JSON.parse(decodeURIComponent(svg.match(/ data-mt-map="([^"]*)"/)![1]!));
+    assert.equal(mapping.source, sequence);
+    assert.deepEqual(mapping.pieces, []);
+    assert.deepEqual(result.diagramOnly, ['sequence']);
+    assert.match(result.svgs.flowchart!, /data-mt-role="edge-label"/);
+    assert.deepEqual(await preview.render([]), { svgs: {}, diagramOnly: [] });
+    await assert.rejects(preview.render([{ id: 'same', source: sequence }, { id: 'same', source: sequence }]), /duplicate/i);
+    await assert.rejects(preview.render([{ id: 'unsafe"', source: sequence }]), /ID/i);
+  } finally { await preview.close(); await native.close(); }
+});

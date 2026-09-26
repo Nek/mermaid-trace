@@ -37,11 +37,13 @@ Switch mapped flowcharts only after the native producer passes their existing se
 | Contract | Check | Status |
 |---|---|---|
 | MERMAN-AC1/2 | Native Node test: exact CRLF/Unicode source and repeated-message semantics, fresh instance IDs, interleaved repeatability, bounds, syntax/unsupported errors, recovery and disposal | Passed on macOS arm64 / Node 24 |
-| MERMAN-AC3 | Existing live Markdown/standalone sequence and save/recovery/shutdown browser checks | Planned |
-| MERMAN-AC4 | Typecheck, full existing suite, unchanged reference snapshots, renderer-free activation | Planned |
+| MERMAN-AC3 | Native sequence SVG equality + retained mapped flowchart test; real Markdown/standalone preview, clipboard, saves, recovery and CLI shutdown | Passed |
+| MERMAN-AC4 | Full suite including unchanged upstream references, renderer-free activation and moved workspace | Passed: 20/20 |
 
 Sources: [native Node package](https://github.com/Latias94/merman/tree/main/platforms/node), [Merman coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md). Package contents and public runtime operations were inspected locally; source-map export is not currently available through the selected binding.
 
 TDD: the native producer test failed with `Merman producer not implemented` before implementation and passes against the real native addon. No DOM or browser is loaded. TypeScript build passes; source-span export remains unavailable. The preceding mapping/legacy-producer refactor passed all 18 existing checks with unchanged raw baselines. Sandbox browser startup/file-watcher failures required running the existing integration suite outside the sandbox.
 
 Workspace restructuring: the root scripts delegate to `mermaid-trace-ts/`, while the preview command keeps root-relative input paths. The pnpm lock remains shared. `mermaid-trace-rs/` reserves the native package boundary without inventing an unused Cargo crate. Root `pnpm test` passed all 19 tests after the move; raw upstream SVGs remain unchanged. Frozen workspace install and TypeScript build passed.
+
+MERMAN-1 implementation: `mermaid-trace-ts/src/producer/merman.ts` is the reusable native producer; `producer/preview.ts` explicitly routes flowcharts to the isolated legacy producer and other types to Merman. The latter adds inert whole-source metadata only. The native preview test failed with `Native preview producer not implemented` before implementation. Current checks pass without updating any upstream SVG/environment baseline. Exact native visual provenance remains the next story and S6/C8 is still incomplete.

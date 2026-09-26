@@ -52,7 +52,7 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 
 Use Node.js 24.x, as declared in `package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
 
-First build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
+For retained mapped flowcharts and upstream-reference tests, first build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
 
 ```sh
 corepack pnpm install --frozen-lockfile
@@ -90,7 +90,7 @@ The page contains only rendered Markdown/diagrams and selection highlighting. Cl
 
 Use standard fenced `mermaid` blocks, as supported by Mermaid CLI and Markdown renderers. The existing markdown-it provenance adapter and CommonMark mdast/hast view preserve original file locations; relative images resolve beside the document. `.md`, `.markdown`, `.mmd`, and `.mermaid` inputs are supported. External Mermaid include syntax and GFM extensions are not introduced.
 
-**Sequence diagrams render and support whole-diagram selection. Participant/message/label source mapping is not implemented in the current Mermaid fork.** The CLI reports that limitation in the terminal. Precise flowchart selection remains available; no sequence element positions are guessed. Rendering needs the built Mermaid fork and installed Playwright Chromium; the browser itself loads neither Mermaid nor a Markdown parser.
+**Sequence diagrams render and support whole-diagram selection. Participant/message/label source mapping is not exposed by the selected Merman binding.** The CLI reports that limitation in the terminal. Precise flowchart selection remains available; no sequence element positions are guessed. Sequence and other non-flowchart rendering now use the pinned Merman native Node addon. The transitional mapped flowchart path still needs the built Mermaid fork and installed Playwright Chromium; the browser itself loads neither renderer nor a Markdown parser. Merman source-to-element export is the next required implementation; successful native rendering does not satisfy mapped coverage.
 
 The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 

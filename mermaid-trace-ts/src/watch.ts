@@ -7,13 +7,13 @@ import { createServer } from 'vite';
 import MarkdownIt from 'markdown-it';
 import { prepareMarkdown } from './markdown-it.js';
 import { renderMarkdownView } from './markdown-view.js';
-import { renderReferences } from './producer/mermaid-browser.js';
+import { createPreviewProducer } from './producer/preview.js';
 import type { MarkdownBlock } from './markdown-source.js';
 
 const escape = new MarkdownIt().utils.escapeHtml;
 const runtimeFiles = new Set(['viewer.js', 'svg-activation.js', 'svg-mapping.js', 'markdown-source.js', 'document-selection.js']);
 
-async function renderFile(filename: string) {
+async function renderFile(filename: string, producer: Awaited<ReturnType<typeof createPreviewProducer>>) {
   const source = await readFile(filename, 'utf8');
   const document = { id: filename, revision: createHash('sha256').update(source).digest('hex'), source };
   const standalone = ['.mmd', '.mermaid'].includes(extname(filename).toLowerCase());
@@ -21,7 +21,7 @@ async function renderFile(filename: string) {
   const blocks: readonly MarkdownBlock[] = standalone
     ? [{ id: 'preview-0', source, span, document, origins: [{ logical: span, original: span }] }]
     : prepareMarkdown(document, 'preview').blocks;
-  const { svgs, diagramOnly = [] } = blocks.length ? await renderReferences(blocks, 'viewer') : { svgs: {} as Record<string, string> };
+  const { svgs, diagramOnly = [] } = blocks.length ? await producer.render(blocks) : { svgs: {} as Record<string, string> };
   const view = standalone ? { html: `<div data-mt-block="preview-0">${svgs['preview-0']}</div>`, targets: [], texts: [] }
     : renderMarkdownView(document, blocks, new Map(Object.entries(svgs)));
   for (const id of diagramOnly) {
@@ -49,6 +49,7 @@ export async function watchPreview(input: string, options: { port?: number; onEr
   let dirty = false;
   let closed = false;
   let pending: Promise<void> | undefined;
+  let producer: Awaited<ReturnType<typeof createPreviewProducer>> | undefined;
   const report = options.onError ?? console.error;
   const server = await createServer({
     configFile: false, root: dirname(watchedFile), appType: 'custom', logLevel: 'warn',
@@ -81,7 +82,7 @@ export async function watchPreview(input: string, options: { port?: number; onEr
     while (dirty && !closed) {
       dirty = false;
       try {
-        const next = await renderFile(filename);
+        const next = await renderFile(filename, producer!);
         if (!dirty && !closed) {
           const initial = !html;
           html = next;
@@ -103,9 +104,10 @@ export async function watchPreview(input: string, options: { port?: number; onEr
     closed = true;
     await server.close();
     if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
-    await pending;
+    try { await pending; } finally { await producer?.close(); }
   };
   try {
+    producer = await createPreviewProducer();
     // Watch before the first render too: a save during Chromium startup must not be lost.
     dirty = true;
     pending = rebuild();

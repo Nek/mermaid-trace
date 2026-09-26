@@ -34,7 +34,7 @@ export type Fixture = { readonly id: string; readonly source: string };
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 export const forkBundle = process.env.MERMAID_TRACE_BUNDLE ? resolve(process.env.MERMAID_TRACE_BUNDLE) : resolve(root, '../../mermaid/packages/mermaid/dist/mermaid.min.js');
 
-export async function renderReferences(fixtures: readonly Fixture[], mapped: boolean | 'viewer' = false, bundle = mapped
+export async function renderReferences(fixtures: readonly Fixture[], mapped = false, bundle = mapped
   ? forkBundle
   : resolve(root, 'node_modules/mermaid/dist/mermaid.min.js')) {
   const font = await readFile(resolve(root, 'node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2'));
@@ -51,7 +51,6 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
       return route.abort();
     });
     const svgs: Record<string, string> = {};
-    const diagramOnly: string[] = [];
     for (const { id, source } of fixtures) {
       assert.match(id, /^[a-z][a-z0-9-]*$/, 'Fixture ID must be safe for SVG and filenames');
       assert.ok(!Object.hasOwn(svgs, id), `Duplicate fixture ID: ${id}`);
@@ -74,7 +73,6 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
           const mermaid = (window as unknown as { mermaid: {
             initialize(config: unknown): void;
             render: import('../flowchart-source.js').MermaidRenderHost['render'];
-            detectType(source: string): string;
           } }).mermaid;
           mermaid.initialize(config);
           const api = window as unknown as {
@@ -83,17 +81,12 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
           };
           if (mapped) {
             Object.defineProperty(mermaid, 'mermaidAPI', { get() { throw new Error('Private Mermaid API must not be accessed'); } });
-            if (mapped === 'viewer' && !['flowchart', 'flowchart-v2'].includes(mermaid.detectType(source))) {
-              const { svg } = await mermaid.render(`baseline-${id}`, source);
-              return { svg: api.annotateSvg(svg, { format: 'mermaid-trace/0', source, pieces: [] }), diagramOnly: true };
-            }
             const { svg, mapping } = await api.renderFlowchart(`baseline-${id}`, source, mermaid);
-            return { svg: api.annotateSvg(svg, mapping), diagramOnly: false };
+            return api.annotateSvg(svg, mapping);
           }
-          return { svg: (await mermaid.render(`baseline-${id}`, source)).svg, diagramOnly: false };
+          return (await mermaid.render(`baseline-${id}`, source)).svg;
         }, { id, source, config, mapped });
-        svgs[id] = rendered.svg;
-        if (rendered.diagramOnly) diagramOnly.push(id);
+        svgs[id] = rendered;
       } finally {
         await page.close();
       }
@@ -101,7 +94,6 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
     assert.deepEqual(requests, [], 'Reference rendering attempted network access');
     return {
       svgs,
-      ...(mapped === 'viewer' ? { diagramOnly } : {}),
       environment: {
         versions, browser: browser.version(), platform: process.platform, arch: process.arch,
         fontSha256: createHash('sha256').update(font).digest('hex'), config, context: contextOptions,
