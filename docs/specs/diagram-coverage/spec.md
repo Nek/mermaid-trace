@@ -24,7 +24,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 | `er` | Missing |
 | `c4` | Missing |
 | `gitGraph` | Missing |
-| `gantt` | Next: GANTT-1 planned |
+| `gantt` | Native task bars/milestones/labels, sections and title implemented; complete syntax/configuration conformance pending |
 | `journey` | Next: JOURNEY-1 planned after Gantt |
 | `pie` | Missing |
 | `quadrantChart` | Missing |

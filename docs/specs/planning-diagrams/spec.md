@@ -28,4 +28,4 @@ Before each implementation, run failing exact-span tests and a production mappin
 
 ## Verification
 
-All three stories planned; implementation and acceptance checks pending.
+GANTT-1 implemented: two native tests verify original UTF-16 spans through frontmatter/CRLF/Unicode, repeated task labels, dependencies, milestones, sections/title, determinism and mapped/plain SVG byte equality after removing inert trace attributes. Saved SVG and the production nested-Markdown test verify task/label selection, instance isolation, clipboard, reverse source selection, background selection and saves. Full suite: 8 Rust and 25 TypeScript/browser tests pass; 86 upstream Gantt parser checks pass. Full Gantt syntax/configuration conformance is not yet claimed. JOURNEY-1 and KANBAN-1 remain next.

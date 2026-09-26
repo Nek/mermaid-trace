@@ -1,4 +1,6 @@
+mod support;
 use serde_json::Value;
+use support::strip_trace;
 
 #[test]
 fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
@@ -100,33 +102,6 @@ fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
             "annotation changed {name} rendering"
         );
     }
-}
-
-fn strip_trace(svg: &str) -> String {
-    let document = roxmltree::Document::parse(svg).unwrap();
-    let mut ranges = Vec::new();
-    for node in document.descendants() {
-        if node.has_tag_name("metadata") && node.has_attribute("data-mt-native") {
-            ranges.push(node.range());
-        } else {
-            for attribute in node
-                .attributes()
-                .filter(|a| a.name().starts_with("data-mt-"))
-            {
-                let mut range = attribute.range();
-                if svg.as_bytes()[range.start - 1] == b' ' {
-                    range.start -= 1;
-                }
-                ranges.push(range);
-            }
-        }
-    }
-    ranges.sort_by_key(|r| r.start);
-    let mut result = svg.to_owned();
-    for range in ranges.into_iter().rev() {
-        result.replace_range(range, "");
-    }
-    result
 }
 
 #[test]

@@ -11,16 +11,17 @@ index 7d5d02b6..5fb38f79 100644
          acc_descr: None,
          title: None,
 diff --git a/crates/merman-core/src/diagram/mod.rs b/crates/merman-core/src/diagram/mod.rs
-index fe6e3b0e..51131bad 100644
+index fe6e3b0e..e34b9014 100644
 --- a/crates/merman-core/src/diagram/mod.rs
 +++ b/crates/merman-core/src/diagram/mod.rs
-@@ -525,6 +525,18 @@ impl RenderSemanticParseOutput {
+@@ -525,6 +525,19 @@ impl RenderSemanticParseOutput {
          &self.model
      }
  
 +    pub(crate) fn source_occurrences_mut(&mut self) -> Option<&mut Vec<Value>> {
 +        match &mut self.model {
 +            RenderSemanticModel::Sequence(model) => Some(&mut model.source_occurrences),
++            RenderSemanticModel::Gantt(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Flowchart(_) => self
 +                .context
 +                .flowchart
@@ -291,6 +292,87 @@ index 185ff516..5956a269 100644
  };
  
  NodeGroup: Vec<Node> = {
+diff --git a/crates/merman-core/src/diagrams/gantt/model.rs b/crates/merman-core/src/diagrams/gantt/model.rs
+index 4ca3acbd..d3c86d82 100644
+--- a/crates/merman-core/src/diagrams/gantt/model.rs
++++ b/crates/merman-core/src/diagrams/gantt/model.rs
+@@ -3,6 +3,8 @@ use crate::{OperationControl, OperationControlResult};
+ 
+ #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+ pub struct GanttDiagramRenderModel {
++    #[serde(skip)]
++    pub source_occurrences: Vec<serde_json::Value>,
+     #[serde(default)]
+     pub title: Option<String>,
+     #[serde(default, rename = "accTitle")]
+@@ -235,6 +237,8 @@ pub(super) struct RawTask {
+ 
+ #[derive(Debug, Clone, Default)]
+ pub(super) struct GanttDb {
++    pub(super) trace_source: bool,
++    pub(super) source_occurrences: Vec<serde_json::Value>,
+     pub(super) acc_title: String,
+     pub(super) acc_descr: String,
+     pub(super) diagram_title: String,
+diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
+index 242dc0f3..a15eda6d 100644
+--- a/crates/merman-core/src/diagrams/gantt/parse.rs
++++ b/crates/merman-core/src/diagrams/gantt/parse.rs
+@@ -961,6 +961,12 @@ fn parse_gantt_semantic_source_once(
+     control.checkpoint()?;
+     let mut db = GanttDb::default();
+     db.clear();
++    db.trace_source = meta
++        .effective_config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        == Some(true);
+     db.set_security_level(meta.effective_config.get_str("securityLevel"));
+     if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
+         db.set_display_mode(dm);
+@@ -1213,6 +1219,7 @@ pub(super) fn gantt_db_to_render_model_controlled(
+ 
+     control.checkpoint()?;
+     Ok(Ok(GanttDiagramRenderModel {
++        source_occurrences: db.source_occurrences,
+         title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
+         acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
+         acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
+@@ -1503,12 +1510,21 @@ fn parse_gantt_statement(
+             EditorSemanticKind::String,
+             facts,
+         );
++        if db.trace_source {
++            db.source_occurrences
++                .retain(|p| p["domId"] != "gantt:title");
++            db.source_occurrences.push(json!({"kind":"control","semanticId":"title","domId":"gantt:title","span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
++        }
+         db.set_diagram_title(v.text);
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
+         facts.push_directive_prefix("section");
+         collect_gantt_section_symbol(stripped, line_start, v, facts);
++        if db.trace_source {
++            let key = format!("gantt:section:{}", v.text.trim());
++            db.source_occurrences.push(json!({"kind":"control","semanticId":v.text.trim(),"domId":key,"span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
++        }
+         db.add_section(v.text.trim());
+         return Ok(Ok(()));
+     }
+@@ -1616,5 +1632,11 @@ fn parse_gantt_statement(
+     let field_text = fields.iter().map(|field| field.text).collect::<Vec<_>>();
+     let task_info = db.parse_task_info(&field_text);
+     db.add_task(task_txt, &format!(":{task_data}"), task_info);
++    if db.trace_source {
++        let id = db.last_task_id.as_ref().expect("assigned task identity");
++        let label = task_txt.trim();
++        let start = statement_span.start + task_txt.len() - task_txt.trim_start().len();
++        db.source_occurrences.push(json!({"kind":"node","semanticId":id,"domId":format!("gantt:task:{id}"),"span":statement_span,"labelSpan":SourceSpan::new(start, start+label.len())}));
++    }
+     Ok(Ok(()))
+ }
 diff --git a/crates/merman-core/src/diagrams/sequence/ast.rs b/crates/merman-core/src/diagrams/sequence/ast.rs
 index e42b2af3..f84a2bb7 100644
 --- a/crates/merman-core/src/diagrams/sequence/ast.rs
@@ -6688,6 +6770,37 @@ index a80d80c0..a3608f6d 100644
              acc_title: None,
              acc_descr: None,
              title: None,
+diff --git a/crates/merman-render/src/svg/parity.rs b/crates/merman-render/src/svg/parity.rs
+index 1fb7fe45..470bb0c4 100644
+--- a/crates/merman-render/src/svg/parity.rs
++++ b/crates/merman-render/src/svg/parity.rs
+@@ -1401,3 +1401,26 @@ mod diagram_id_projection_tests {
+         assert_eq!(details.max, 5);
+     }
+ }
++
++fn source_attrs(occurrences: &[serde_json::Value], key: &str, label: bool) -> String {
++    if !occurrences.iter().any(|p| p["domId"] == key) {
++        return String::new();
++    }
++    format!(
++        " data-mt-key=\"{}\"{}",
++        util::escape_attr(key),
++        if label { " data-mt-label=\"true\"" } else { "" }
++    )
++}
++
++fn write_source_metadata(out: &mut String, occurrences: &[serde_json::Value]) {
++    use std::fmt::Write;
++    if !occurrences.is_empty() {
++        let payload = serde_json::to_string(occurrences).expect("native provenance");
++        let _ = write!(
++            out,
++            "<metadata data-mt-native=\"{}\"/>",
++            util::escape_attr(&payload)
++        );
++    }
++}
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs b/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs
 index 7c095d7d..d883afa9 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/edge_label.rs
@@ -6898,6 +7011,71 @@ index 8e2e7251..d5efd965 100644
      out.push_str("<style>");
      out.push_str(&css);
      out.push_str("</style>");
+diff --git a/crates/merman-render/src/svg/parity/gantt/render.rs b/crates/merman-render/src/svg/parity/gantt/render.rs
+index 5e83e058..84402f73 100644
+--- a/crates/merman-render/src/svg/parity/gantt/render.rs
++++ b/crates/merman-render/src/svg/parity/gantt/render.rs
+@@ -168,6 +168,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         );
+     }
+ 
++    crate::svg::parity::write_source_metadata(&mut out, &model.source_occurrences);
+     let css = gantt_css(diagram_id, effective_config);
+     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+     out.push_str(r#"<g/>"#);
+@@ -293,7 +294,15 @@ pub(crate) fn render_gantt_diagram_svg_model(
+                 fmt_allow_nan(center_y)
+             );
+ 
+-            let _ = write!(&mut out, r#"<rect"#);
++            let _ = write!(
++                &mut out,
++                r#"<rect{}"#,
++                crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("gantt:task:{}", t.id),
++                    false
++                )
++            );
+             let _ = write!(
+                 &mut out,
+                 r#" id="{}""#,
+@@ -373,6 +382,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+                 x = fmt(t.label.x),
+                 y = fmt(t.label.y),
+             );
++            out.push_str(&crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("gantt:task:{}", t.id),
++                true,
++            ));
+             options.checkpoint_emit()?;
+             if preserve_task_text_height {
+                 let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
+@@ -395,7 +409,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         for st in &layout.section_titles {
+             let _ = write!(
+                 &mut out,
+-                r#"<text dy="{dy}em" x="{x}" y="{y}" font-size="{fs}" class="{cls}">"#,
++                r#"<text{trace} dy="{dy}em" x="{x}" y="{y}" font-size="{fs}" class="{cls}">"#,
++                trace = crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("gantt:section:{}", st.section),
++                    false
++                ),
+                 dy = fmt(st.dy_em),
+                 x = fmt(st.x),
+                 y = fmt(st.y),
+@@ -459,7 +478,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
+     let title = layout.title.as_deref().unwrap_or_default();
+     let _ = write!(
+         &mut out,
+-        r#"<text x="{x}" y="{y}" class="titleText">{txt}</text>"#,
++        r#"<text{trace} x="{x}" y="{y}" class="titleText">{txt}</text>"#,
++        trace = crate::svg::parity::source_attrs(&model.source_occurrences, "gantt:title", false),
+         x = fmt(layout.title_x),
+         y = fmt(layout.title_y),
+         txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/sequence/activation.rs b/crates/merman-render/src/svg/parity/sequence/activation.rs
 index 5d83a6fe..a0f05763 100644
 --- a/crates/merman-render/src/svg/parity/sequence/activation.rs
