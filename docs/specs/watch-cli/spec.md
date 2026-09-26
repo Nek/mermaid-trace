@@ -8,7 +8,7 @@ Scope: `mermaid-trace watch <file.md|file.mmd> [--port N]`, localhost-only previ
 
 - **WATCH-AC1:** The CLI accepts `.md`, `.markdown`, `.mmd`, `.mermaid`; `--help` documents usage. Port 0 can request an available port. Invalid arguments/files fail with a useful terminal diagnostic. It runs from another working directory using installed/compiled runtime paths.
 - **WATCH-AC2:** Saving or atomically replacing the input rerenders and reloads the open page, including Mermaid changes. Rebuilds are serialized and outdated results are not published. Invalid edits preserve the last good page, report errors in the terminal and recover on the next valid save. SIGINT/SIGTERM close watchers/server and renderer resources.
-- **WATCH-AC3:** Page contains only rendered document/diagram and highlighting. No source pane, toolbar, filename/status widgets, occurrence buttons, or error overlay. Block/heading and precise mapped flowchart node/connector/label focus/click update one selection; native rendered-text drags highlight text. Click/Enter/Space/drag completion still copies its original location. No clipboard writes on focus alone. Local Markdown assets retain normal renderer behavior.
+- **WATCH-AC3:** By default, page contains only rendered document/diagram and highlighting. Without `--source`, no source pane; no toolbar, filename/status widgets, occurrence buttons, or error overlay. Block/heading and precise mapped flowchart node/connector/label focus/click update one selection; native rendered-text drags highlight text. Click/Enter/Space/drag completion still copies its original location. No clipboard writes on focus alone. Local Markdown assets retain normal renderer behavior.
 - **WATCH-AC4:** Standard Mermaid fenced code works through the existing stock Markdown adapters. Browser activation loads no Mermaid/parser. SVG is static before activation. IDs stay scoped. HTML input remains safe.
 - **WATCH-AC5:** Sequence diagrams render in Markdown and standalone Mermaid files. Check actual upstream/fork support: the current fork rejects `{sourceMap:true}` for sequence diagrams. The current prototype is explicitly diagram-only for these types, an incomplete state rather than supported element mapping; no guessed participant/message locations. Record this limit in terminal/docs and verify rendering/background selection separately from precise flowchart mapping.
 
@@ -41,3 +41,23 @@ The source-view demo remains available separately. No new dependency, external i
 [MERMAN-1](../merman-backend/spec.md) now owns producer routing. Non-flowchart diagrams use the pinned Merman native Node addon and safe static SVG pipeline. Flowcharts keep the legacy mapped producer until native source-map parity. One engine is reused across rebuilds and disposed during preview shutdown, including initialization errors. Runtime browser modules remain unchanged. The native binding does not expose occurrence spans; exact sequence/all-family selection remains incomplete. The earlier browser-detector viewer mode has been removed.
 
 The live preview, original-file clipboard selections, static display, save/rename/recovery and actual CLI shutdown tests pass after migration. Current full suite: 20/20 tests. The new native producer test also proves the sequence SVG bytes come from Merman and that retained flowcharts still contain mapped labels.
+
+## WATCH-SOURCE-1: optional source selection
+
+As a preview user, I want an optional original-source pane so I can see exactly what a selected Markdown or diagram piece refers to and select source to highlight matching visuals. Ready story; applies to the native Rust preview.
+
+- **WATCH-SOURCE-AC1:** `watch <file> --source` and `watchPreview(file, { sourceView: true })` show a read-only source pane for Markdown and standalone Mermaid. Default output stays minimal. No copy button or editing controls.
+- **WATCH-SOURCE-AC2:** Preview focus/click/text selection selects the exact original range using native text selection, scrolling it into view without stealing preview focus. Source selection highlights matching diagram pieces or the smallest enclosing Markdown block. Ordinary Copy in the source pane copies selected text; preview activation still copies its location.
+- **WATCH-SOURCE-AC3:** Saves reload both views with current source and mappings. Source is escaped as text, preserves exact UTF-16 offsets (including CRLF), and cannot execute markup.
+
+Plan: extract the existing demo's native iframe selection helper and reuse it in both consumers; add an opt-in pane to the watch host and CLI boolean. Keep producer and SVG artifact unchanged. Browser regression checks cover default absence, optional pane, bidirectional selection, scrolling/focus, native Copy, safe exact source and saves; actual CLI checks cover flag wiring. No new dependencies.
+
+Verification: CLI help/unknown-option tests and the source-pane regression failed before implementation (missing flag/pane). A visual check exposed vertical centering; a failing layout assertion now prevents it. `corepack pnpm test` passed 3 Rust integration and 22 TypeScript/browser tests; after the final CSS fix all 22 TypeScript/browser tests passed again. Typecheck passed. The existing demo also passes with the shared helper.
+
+| Contract | Evidence | Result |
+|---|---|---|
+| WATCH-SOURCE-AC1 | Actual CLI `--source`, opt-in Markdown and standalone Mermaid; existing default absence check | Passed |
+| WATCH-SOURCE-AC2 | Native label range, source scroll and retained preview focus, normal Copy, reverse label/heading selection, whole-file range | Passed |
+| WATCH-SOURCE-AC3 | Escaped script-like text, CRLF/Unicode offsets, source refresh after save | Passed |
+
+Manual in-app inspection at port 5174 verified the pane and visible source highlighting; preview remains running with `--source`. Clipboard and precise sequence ranges are verified in Chromium. No Rust/producer changes, dependencies or editing UI.

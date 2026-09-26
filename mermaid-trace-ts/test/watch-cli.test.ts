@@ -18,6 +18,7 @@ test('WATCH-AC1: CLI help and argument diagnostics work outside the checkout', (
   const help = run('--help');
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /watch.*file.*--port/i);
+  assert.match(help.stdout, /--source/);
   for (const args of [[], ['watch'], ['watch', 'no.txt'], ['watch', 'no.md'], ['watch', 'no.md', '--port', '-1'], ['watch', 'no.md', '--unknown']]) {
     const result = run(...args);
     assert.equal(result.status, 1);
@@ -133,11 +134,82 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, c
   }
 });
 
+test('WATCH-SOURCE-AC1/2/3: optional native source selection, scrolling, reverse mapping and saves', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-source-'));
+  const filename = join(directory, 'source.md');
+  const source = '# Source 🐟\r\n\r\n' + '\r\n'.repeat(100) + '```mermaid\r\n' + sequence.replaceAll('\n', '\r\n') + '```\r\n\r\n`<script>never()</script>`\r\n';
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    page.setDefaultTimeout(10_000);
+    await page.goto(preview.url);
+    await page.waitForSelector('body[data-ready=true]');
+    assert.ok((await page.locator('h1').boundingBox())!.y < 100, 'rendered document starts at the top beside the source pane');
+    const frame = page.frameLocator('#source-frame');
+    const original = frame.locator('#source');
+    assert.equal(await original.textContent(), source, 'preserve CRLF and Unicode offsets');
+    assert.equal(await frame.locator('script, mark, textarea').count(), 0);
+    await page.locator('[data-mt-role=edge-label]').first().click();
+    await original.evaluate(element => {
+      if (element.ownerDocument.getSelection()?.toString() !== 'Hello') throw new Error('Expected selected source label');
+    });
+    assert.ok(await original.evaluate(element => element.scrollTop > 0), 'scroll selected source into view');
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-mt-role')), 'edge-label');
+    const start = source.indexOf('Hello');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), formatLocation({ id: filename, source }, { start, end: start + 5 }));
+    await original.focus();
+    await page.keyboard.press('ControlOrMeta+c');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Hello');
+    await original.evaluate(element => {
+      const doc = element.ownerDocument;
+      const text = element.firstChild!;
+      const start = text.textContent!.indexOf('Hi');
+      const range = doc.createRange(); range.setStart(text, start); range.setEnd(text, start + 2);
+      doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+    });
+    await page.locator('[data-mt-role=edge-label][data-mt-selected=true]').filter({ hasText: 'Hi' }).waitFor();
+    assert.equal(await page.locator('[data-mt-role=edge-label][data-mt-selected=true]').count(), 1);
+    await original.evaluate(element => {
+      const doc = element.ownerDocument;
+      const text = element.firstChild!;
+      const start = text.textContent!.indexOf('# Source');
+      const range = doc.createRange(); range.setStart(text, start); range.setEnd(text, start + 11);
+      doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+    });
+    await page.waitForSelector('h1[data-md-selected]');
+    assert.equal(await page.locator('svg [data-mt-selected=true]').count(), 0);
+    await page.locator('h1').click();
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), '# Source 🐟');
+    await writeFile(filename, source.replace('Hello', 'Updated'));
+    await page.locator('[data-mt-role=edge-label]').filter({ hasText: 'Updated' }).waitFor();
+    await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await original.textContent(), source.replace('Hello', 'Updated'));
+    await preview.close(); preview = undefined;
+    const mmd = join(directory, 'diagram.mmd');
+    await writeFile(mmd, sequence);
+    preview = await watchPreview(mmd, { port: 0, sourceView: true });
+    await page.goto(preview.url);
+    await page.waitForSelector('body[data-ready=true]');
+    await page.locator('svg').focus(); await page.keyboard.press('Enter');
+    assert.deepEqual(await original.evaluate(element => {
+      const range = element.ownerDocument.getSelection()!.getRangeAt(0);
+      return { start: range.startOffset, end: range.endOffset, text: range.cloneContents().textContent };
+    }), { start: 0, end: sequence.length, text: sequence });
+  } finally {
+    await browser.close(); await preview?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('WATCH-AC1/2: actual CLI renders from another cwd and closes on SIGTERM', { timeout: 30_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-cli-'));
   const filename = join(directory, 'input.md');
   await writeFile(filename, '# CLI preview');
-  const child = spawn(process.execPath, [cli, 'watch', filename, '--port', '0'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [cli, 'watch', filename, '--port', '0', '--source'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   let diagnostic = '';
   child.stdout.on('data', data => { output += String(data); });
@@ -149,7 +221,8 @@ test('WATCH-AC1/2: actual CLI renders from another cwd and closes on SIGTERM', {
     const url = output.match(/http:\/\/127\.0\.0\.1:\d+\//)![0];
     const html = await (await fetch(url)).text();
     assert.match(html, /CLI preview/);
-    assert.doesNotMatch(html, /source-frame|selection-status|textarea/);
+    assert.match(html, /source-frame/);
+    assert.doesNotMatch(html, /selection-status|textarea/);
     await writeFile(filename, '# Plain Markdown save');
     for (let i = 0; i < 100; i++) {
       if ((await (await fetch(url)).text()).includes('Plain Markdown save')) break;

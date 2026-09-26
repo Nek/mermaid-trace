@@ -60,7 +60,7 @@ The [fork story](specs/mermaid-fork/spec.md) supplies explicit grammar provenanc
 
 The demo source view is read-only text in a same-origin frame containing only escaped source text and styles. Its document has an independent native selection, allowing source and rendered Markdown ranges to remain visible without moving preview focus. No overlay or editor dependency is used.
 
-The [watch CLI](specs/watch-cli/spec.md) serves a minimal rendered document using Vite's middleware and watcher with a Node HTTP server. The CLI owns shutdown of the native renderer, watcher and server. It consumes standard Mermaid fences through the existing adapters and keeps the browser free of producer/parser code. Invalid edits retain the last good document. The source-view demo remains a separate debugging consumer.
+The [watch CLI](specs/watch-cli/spec.md) serves a minimal rendered document using Vite's middleware and watcher with a Node HTTP server. The CLI owns shutdown of the native renderer, watcher and server. It consumes standard Mermaid fences through the existing adapters and keeps the browser free of producer/parser code. Invalid edits retain the last good document. The default page stays minimal; `--source` optionally adds the same read-only native source pane used by the demo, with bidirectional selection.
 
 The production preview uses the Trace-owned Rust renderer for every family. Sequence provenance travels from native grammar actions through semantic construction and explicit SVG identities. Other families receive empty maps and an explicit diagram-only diagnostic. The legacy Mermaid producer is reference test tooling.
 

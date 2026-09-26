@@ -1,3 +1,4 @@
+import { attachSourceView } from './source-view.js';
 import { activateSvg } from './svg-activation.js';
 import type { Activation } from './svg-activation.js';
 import { fromMarkdown, toMarkdown, formatLocation } from './markdown-source.js';
@@ -11,8 +12,13 @@ const data = JSON.parse(document.querySelector('#trace-data')!.textContent!) as 
   targets: readonly DocumentTarget[]; texts: readonly DocumentText[];
 };
 const article = document.querySelector('article')!;
+const frame = document.querySelector<HTMLIFrameElement>('#source-frame');
+const sourceView = frame ? await attachSourceView(frame, data.document.source) : undefined;
+let selectedRange: Span | undefined;
 const instances: { block: MarkdownBlock; activation: Activation }[] = [];
 const select = (span: Span, copy: boolean, target = '', origin?: Activation) => {
+  selectedRange = span;
+  sourceView?.select(span);
   if (target !== 'text') document.getSelection()?.removeAllRanges();
   for (const { block, activation } of instances) if (activation !== origin) activation.highlight(fromMarkdown(block, span, data.document));
   for (const element of article.querySelectorAll('[data-md-target]')) {
@@ -51,4 +57,17 @@ const textGesture = (event: Event) => {
 };
 article.addEventListener('pointerup', textGesture);
 article.addEventListener('keyup', textGesture);
+if (sourceView) {
+  const reverse = () => {
+    const span = sourceView.selection();
+    if (!span || (selectedRange?.start === span.start && selectedRange.end === span.end)) return;
+    const inDiagram = data.blocks.some(block => block.span.start <= span.start && block.span.end >= span.end);
+    const target = inDiagram ? undefined : data.targets.filter(target => target.span.start <= span.start && target.span.end >= span.end)
+      .sort((a, b) => (a.span.end - a.span.start) - (b.span.end - b.span.start))[0];
+    select(span, false, target?.id);
+  };
+  sourceView.document.addEventListener('selectionchange', reverse);
+  sourceView.element.addEventListener('keyup', reverse);
+  sourceView.document.addEventListener('pointerup', reverse);
+}
 document.body.dataset.ready = 'true';
