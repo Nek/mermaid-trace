@@ -33,7 +33,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
   };
   let disposed = false;
   const checkActive = () => { if (disposed) throw new Error('SVG activation is disposed'); };
-  const highlight = (ranges: readonly Span[]) => {
+  const highlight = (ranges: readonly Span[], selectedIds?: ReadonlySet<string>) => {
     checkActive();
     for (const range of ranges) {
       if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0
@@ -42,7 +42,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const overlaps = (span: Span, range: Span) => range.start === range.end
       ? span.start <= range.start && range.start < span.end
       : span.start < range.end && span.end > range.start;
-    const pieces = mapping.pieces.filter(piece => ranges.some(range => overlaps(piece.span, range)))
+    const pieces = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)))
       .sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
     const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
     set(svg, 'data-mt-selected', whole ? 'true' : null);
@@ -59,7 +59,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     return pieces;
   };
   const emit = (selection: Selection) => {
-    highlight([selection.span]);
+    highlight([selection.span], new Set(selection.pieces.map(piece => piece.id)));
     options.onSelect(selection);
   };
   const targetFor = (event: Event) => {
@@ -97,14 +97,17 @@ export function activateSvg(svg: SVGSVGElement, options: {
     set(element, 'role', 'button');
     set(element, 'aria-label', `Select ${element.getAttribute('data-mt-role')} ${piece.semanticId}`);
     set(element, 'aria-pressed', 'false');
-    if (element.localName === 'path' && element.getAttribute('data-mt-role') === 'edge') {
-      const target = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
-      target.setAttribute('d', element.getAttribute('d')!);
-      if (element.hasAttribute('transform')) target.setAttribute('transform', element.getAttribute('transform')!);
+    const geometry = element.getAttribute('data-mt-role') === 'edge' && ['path', 'line'].includes(element.localName) ? [element]
+      : element.getAttribute('data-mt-role') === 'control' ? [...element.querySelectorAll('line.loopLine')] : [];
+    for (const shape of geometry) {
+      const target = shape.cloneNode(false) as SVGElement;
+      for (const name of [...target.attributes].map(attribute => attribute.name)) {
+        if (!['d', 'x1', 'y1', 'x2', 'y2', 'transform'].includes(name)) target.removeAttribute(name);
+      }
       target.setAttribute('aria-hidden', 'true');
       target.setAttribute('focusable', 'false');
       target.style.cssText = 'fill:none;stroke:transparent;stroke-width:12px;stroke-linecap:round;pointer-events:stroke;vector-effect:non-scaling-stroke;cursor:pointer';
-      element.before(target);
+      shape.before(target);
       hitTargets.set(target, element);
     }
   }
@@ -122,7 +125,8 @@ export function activateSvg(svg: SVGSVGElement, options: {
       checkActive();
       const piece = byId.get(pieceId);
       if (!piece) throw new Error(`Unknown piece: ${pieceId}`);
-      const element = elements.find(element => element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))!;
+      const element = elements.find(element => element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))
+        ?? elements.find(element => refs(element).includes(piece.id))!;
       (element as SVGElement).focus({ preventScroll: true });
       emit({ trigger: 'activation', role: piece.kind, pieces: [piece], span: piece.span });
     },

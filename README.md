@@ -2,9 +2,9 @@
 
 Connect Mermaid source, its AST, and diagram elements so a visual selection can identify the exact source that produced it.
 
-**Status:** experimental flowchart producer, independent SVG activation library, a clickable Markdown demo, and a file preview CLI. Merman backend migration is underway on `feat/merman-backend`; no Trace package or crate is published yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
+**Status:** native Rust/Merman sequence mapping, independent SVG activation, and a live Markdown/Mermaid CLI. Work is underway on `feat/merman-backend`; no Trace package or crate is published yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
 
-**Required release scope:** source ↔ AST ↔ visual mapping for all built-in Mermaid diagram types, including experimental types and renderer variants. Rendering alone or whole-diagram fallback does not count as element support. The prototype currently implements only the documented flowchart subset; [the coverage checklist](docs/specs/diagram-coverage/spec.md) tracks the unfinished requirement.
+**Required release scope:** source ↔ AST ↔ visual mapping for all built-in Mermaid diagram types, including experimental types and renderer variants. Rendering alone or whole-diagram fallback does not count as element support. The native preview maps sequence participants, messages/labels, notes, activations and control blocks. Other families currently have whole-diagram selection only; [the coverage checklist](docs/specs/diagram-coverage/spec.md) tracks the unfinished requirement.
 
 ## Products and boundaries
 
@@ -13,17 +13,17 @@ Connect Mermaid source, its AST, and diagram elements so a visual selection can 
 - **Interactivity library:** accepts an existing annotated inline SVG and adds selection, highlighting, and host callbacks. It does not parse or render Mermaid to activate that SVG.
 - **Viewer/widget:** a small consumer combining an SVG, source view, and the interactivity library. Hosts can supply their own editor instead.
 
-These are logical boundaries in one project, not a requirement for four packages. Rust will provide native core/rendering capabilities using the same artifact contract; the JavaScript interactivity library must accept compatible SVG from either implementation.
+These are logical boundaries in one project, not a requirement for four packages. Rust supplies native core/rendering capabilities using the same artifact contract; the JavaScript interactivity library must accept compatible SVG from either implementation.
 
 Markdown integration is part of initial delivery: markdown-it fence provenance and a unified mdast/hast document view, with VS Code preview hooks investigated early. Other targets include JavaScript applications and native Rust hosts. Multiuser editing is a later possibility, not part of the initial release.
 
 ## Repository layout
 
-- `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests and package manifest. Its native producer consumes the pinned Merman addon.
-- `mermaid-trace-rs/`: reserved for Trace-owned Rust integration; no local crate yet. We do not vendor Merman here.
+- `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests and package manifest. Its producer communicates with the Rust executable over JSON lines.
+- `mermaid-trace-rs/`: Rust library/executable, Cargo lockfile and a pinned Merman source patch. The upstream checkout is generated into ignored `vendor/merman/`.
 - `docs/`: shared requirements, contracts, roadmap and examples.
 
-Root pnpm commands delegate to the TypeScript package. The workspace lockfile lives at the root. Future Rust code will own its Cargo manifest and lockfile inside `mermaid-trace-rs/`; shared fixtures/artifact contracts govern both. Upstream renderer changes use a separate Merman checkout.
+Root commands build Rust and TypeScript. Each language owns its manifest; pnpm and Cargo lockfiles pin their dependencies. Shared docs and artifact contracts govern both. See [native setup](docs/native-renderer.md).
 
 ## Documentation
 
@@ -34,7 +34,8 @@ Root pnpm commands delegate to the TypeScript package. The workspace lockfile li
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
 | [Document selection](docs/specs/document-selection/spec.md) | Rendered Markdown blocks, headings, text drags and whole-diagram selection |
-| [Merman migration](docs/specs/merman-backend/spec.md) | Native backend, retained legacy mapping, and required provenance export |
+| [Merman migration](docs/specs/merman-backend/spec.md) | Native backend migration history |
+| [Native sequence mapping](docs/specs/sequence-mapping/spec.md) | Exact sequence selection and future dynamic Rust/WASM rendering |
 | [Diagram coverage](docs/specs/diagram-coverage/spec.md) | Required all-family coverage and release acceptance |
 | [Watch CLI](docs/specs/watch-cli/spec.md) | Live Markdown/Mermaid preview without source or debug UI |
 | [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
@@ -50,19 +51,19 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 
 ## Development
 
-Use Node.js 24.x, as declared in `package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
+Use Rust 1.95+ and Node.js 24.x, as declared in `package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
 
-For retained mapped flowcharts and upstream-reference tests, first build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
+For historical flowchart reference tests, first build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
 
 ```sh
 corepack pnpm install --frozen-lockfile
-corepack pnpm exec playwright install chromium
+corepack pnpm --dir mermaid-trace-ts exec playwright install chromium
 corepack pnpm test
 ```
 
 Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard user-level caches. No runtime version manager is required; `mise.toml` is an ignored local preference.
 
-`typecheck` runs `tsc --noEmit`; `build` compiles the libraries, demo, rendering harness and tests into `mermaid-trace-ts/dist/`; `test` builds and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
+`typecheck` runs `tsc --noEmit`; `build` builds the native executable and compiles TypeScript into `mermaid-trace-ts/dist/`; `test` runs native integration tests and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 
@@ -72,7 +73,7 @@ corepack pnpm snapshots:update
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
-The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). The markdown-it adapter prepares fences with exact original-document provenance, then consumes pre-rendered SVG artifacts. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
+The production producer uses Merman’s native parser, preprocessing map and SVG identities. Rust embeds inert source/AST metadata in experimental `mermaid-trace/1` SVG. TypeScript activates saved artifacts and translates locations back to the original Markdown. Chromium and the earlier Mermaid fork remain reference test tooling.
 
 ## Watch a document
 
@@ -90,7 +91,9 @@ The page contains only rendered Markdown/diagrams and selection highlighting. Cl
 
 Use standard fenced `mermaid` blocks, as supported by Mermaid CLI and Markdown renderers. The existing markdown-it provenance adapter and CommonMark mdast/hast view preserve original file locations; relative images resolve beside the document. `.md`, `.markdown`, `.mmd`, and `.mermaid` inputs are supported. External Mermaid include syntax and GFM extensions are not introduced.
 
-**Sequence diagrams render and support whole-diagram selection. Participant/message/label source mapping is not exposed by the selected Merman binding.** The CLI reports that limitation in the terminal. Precise flowchart selection remains available; no sequence element positions are guessed. Sequence and other non-flowchart rendering now use the pinned Merman native Node addon. The transitional mapped flowchart path still needs the built Mermaid fork and installed Playwright Chromium; the browser itself loads neither renderer nor a Markdown parser. Merman source-to-element export is the next required implementation; successful native rendering does not satisfy mapped coverage.
+Sequence participants, message connectors and labels, notes, activations, boxes and nested controls select exact source ranges. Clicking copies the location immediately. Background activation selects the full fenced block. The CLI runs one native Rust process under Node and reuses its renderer across saves; it uses neither WASM nor Chromium. Other diagram families remain explicitly diagram-only until their native provenance is implemented. All-family mapping remains a release requirement.
+
+Future browser rendering will compile the same Rust core to WASM, optionally in a Worker. Static SVG and separate activation remain available independently; see [BROWSER-1](docs/specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
 
 The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 

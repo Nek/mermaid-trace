@@ -1,0 +1,2 @@
+# Unified diff context lines include a space on blank source lines.
+mermaid-trace-rs/patches/*.patch -whitespace

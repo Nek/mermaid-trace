@@ -54,3 +54,7 @@ The supported Mermaid version's built-in registry defines the required families,
 | C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | MD-1/ACT-1/DOC-1 pass markdown-it provenance, sanitized mdast/hast document rendering and browser consumption; general plugins and host replacement integration pending |
 
 Evidence and exact scope: [mapping proof](../flowchart-mapping/spec.md), [Markdown provenance](../markdown-provenance/spec.md), [activation/demo](../svg-activation/spec.md). Passing experimental slices do not freeze artifact v1 or complete cross-host conformance.
+
+## Experimental native SVG format 1
+
+[SEQ-1](../sequence-mapping/spec.md) implements `mermaid-trace/1`: exact source and source pieces remain in encoded root `data-mt-map`; pieces retain per-result semantic IDs, explicit native `domId` keys, UTF-16 `span` and optional contained `labelSpan`. Kinds include `node`, `edge`, `note`, `activation` and `control`; edges include native endpoints. Visual bindings are verified against renderer-owned `data-mt-key`, allowing mirrored actors and separate label groups. The format 0 reader remains for historical fixtures; no legacy renderer is used by the production preview. Both versions remain experimental, not stable public contracts.

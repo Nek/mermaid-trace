@@ -10,7 +10,7 @@ Produce static annotated SVG first, then provide optional interaction that works
 
 ## Constraints and non-goals
 
-- One TypeScript host/activation implementation, with Clojure-inspired data transformations and thi.ng preferred as described in [DESIGN.md](../../DESIGN.md). Merman supplies the Rust rendering core through a native Node binding. Trace-owned Rust integration belongs in `mermaid-trace-rs/`; TypeScript lives in `mermaid-trace-ts/`.
+- One TypeScript host/activation implementation, with Clojure-inspired data transformations and thi.ng preferred as described in [DESIGN.md](../../DESIGN.md). Merman supplies the Rust rendering core through the Trace-owned native Rust library/process. Trace-owned Rust integration belongs in `mermaid-trace-rs/`; TypeScript lives in `mermaid-trace-ts/`.
 - Core/rendering accept source text; the host owns document paths, Markdown extraction provenance, and source-file access.
 - All built-in Mermaid diagram types are mandatory release scope, not a later extension. The flowchart subset is an implementation slice only. Rendering or whole-diagram fallback does not establish element mapping support. Unsupported syntax must be reported; it must not produce confident but incorrect mappings.
 - No collaboration, CRDTs, visual source rewriting, AST mutation API, round-trip formatter, complete IDE, or production VS Code extension in the initial release.
@@ -111,3 +111,5 @@ As a Mermaid author, I want the same source-mapping interactions for every built
 | S5-AC1–AC3 | Cross-language fixtures, Rust artifact activation, reproducible benchmarks | Not implemented / not run |
 
 Individual criteria and executable checks live in each selected story's spec. Experimental slices are complete as recorded there; broader release conformance remains open.
+
+Future browser goal: [BROWSER-1](../sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer) requires dynamic rendering from the same Rust core via WASM, with no server after assets load. It preserves the static SVG/separate activation contract.

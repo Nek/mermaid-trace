@@ -11,7 +11,7 @@ flowchart LR
 
 ## Sequence diagram
 
-This diagram renders normally. Selection currently identifies its whole fenced block; participant and message locations need source-map support in the Mermaid fork.
+Select participants, connectors or labels to copy their source locations. Clicking the background selects the whole diagram.
 
 ```mermaid
 sequenceDiagram

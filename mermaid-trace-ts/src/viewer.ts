@@ -12,9 +12,9 @@ const data = JSON.parse(document.querySelector('#trace-data')!.textContent!) as 
 };
 const article = document.querySelector('article')!;
 const instances: { block: MarkdownBlock; activation: Activation }[] = [];
-const select = (span: Span, copy: boolean, target = '') => {
+const select = (span: Span, copy: boolean, target = '', origin?: Activation) => {
   if (target !== 'text') document.getSelection()?.removeAllRanges();
-  for (const { block, activation } of instances) activation.highlight(fromMarkdown(block, span, data.document));
+  for (const { block, activation } of instances) if (activation !== origin) activation.highlight(fromMarkdown(block, span, data.document));
   for (const element of article.querySelectorAll('[data-md-target]')) {
     element.toggleAttribute('data-md-selected', element.getAttribute('data-md-target') === target);
   }
@@ -24,7 +24,7 @@ for (const block of data.blocks) {
   const svg = article.querySelector<SVGSVGElement>(`[data-mt-block="${block.id}"] svg`)!;
   const activation = activateSvg(svg, { source: block.source, onSelect(selection) {
     select(selection.role === 'diagram' ? block.span : toMarkdown(block, selection.span, data.document).envelope,
-      selection.trigger === 'activation');
+      selection.trigger === 'activation', '', activation);
   } });
   instances.push({ block, activation });
 }

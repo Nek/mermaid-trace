@@ -1,0 +1,11 @@
+[package]
+name = "mermaid-trace-rs"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+merman = { path = "vendor/merman/crates/merman", default-features = false, features = ["svg"] }
+serde_json = "1.0"
+roxmltree = "0.21"

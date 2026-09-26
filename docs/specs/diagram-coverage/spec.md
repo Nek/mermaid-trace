@@ -16,8 +16,8 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 
 | Registry entry | Element mapping status |
 |---|---|
-| `flowchart-v2` | Partial: documented flowchart subset, experimental format 0 |
-| `sequence` | Missing: current viewer renders with whole-diagram metadata only |
+| `flowchart-v2` | Native mapping pending; historical flowchart subset retained in reference tests |
+| `sequence` | Native participants/messages/labels/notes/activations/controls implemented; complete syntax/occurrence conformance pending |
 | `flowchart-elk` | Not verified through mapped viewer; required |
 | `classDiagram` | Missing |
 | `stateDiagram` | Missing |
@@ -65,6 +65,6 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 
 ## Verification
 
-Registry inventory checked against the current local detector modules. Existing tests verify the flowchart slice and sequence rendering/whole-diagram selection only. They do not establish S6/C8 conformance. Native sequence implementation and every remaining family are outstanding; no all-diagram acceptance suite has passed.
+Registry inventory checked against the current local detector modules. Existing tests verify historical flowcharts and native sequence source ranges, saved SVG selection, and live Markdown clipboard/watch behavior. They do not establish S6/C8 conformance. Complete sequence conformance and every remaining family are outstanding; no all-diagram acceptance suite has passed.
 
-Merman migration: keep this Mermaid-version inventory as the required scope. Its advertised type counts do not replace it. The pinned native package lacks source-map export; existing flowchart mappings remain legacy until native parity.
+Merman migration: keep this Mermaid-version inventory as the required scope. Its advertised type counts do not replace it. Production uses the Trace-owned native Rust integration. The earlier Node addon and legacy production route have been removed.

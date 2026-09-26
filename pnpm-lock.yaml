@@ -10,9 +10,6 @@ importers:
 
   mermaid-trace-ts:
     dependencies:
-      '@mermanjs/node':
-        specifier: 0.8.0-alpha.6
-        version: 0.8.0-alpha.6
       hast-util-sanitize:
         specifier: 5.0.2
         version: 5.0.2
@@ -89,42 +86,6 @@ packages:
   '@mermaid-js/parser@2.0.0':
     resolution: {integrity: sha512-K8BeapFUfrfxbRAUQAG5oBOCwo1+bNWzaVnPxTCutkfrTBn6T/j91FIhqxWJ32SUeQ9T3iy1zcmPZ5ROZEvDrg==}
     engines: {node: '>=22.12.0'}
-
-  '@mermanjs/node-darwin-arm64@0.8.0-alpha.6':
-    resolution: {integrity: sha512-oKyebbgQy9fa5szA/Kli80/In65FJCESHKFvZGK2BkPCPNDgwYwLuRZX414abV2UZKMr2pmC/Y1pMOUqxn8D+w==}
-    engines: {node: '>=22.0.0'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@mermanjs/node-darwin-x64@0.8.0-alpha.6':
-    resolution: {integrity: sha512-GFIDiOtyVo6bRCO9Z8QKhf9xurFgXLA9N2DDjn+cl3GrCZMM3kMHqBg10R1r3Q1s/QCTaEvxMIV5oXa5/jWh9w==}
-    engines: {node: '>=22.0.0'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@mermanjs/node-linux-x64-gnu@0.8.0-alpha.6':
-    resolution: {integrity: sha512-gbAl9tHQfgXQPb2iWUv8wj1DEVniBy126V2hS3ZvBIzRYXvX05E49EsfLVk6JllMNNuDM0GNiYLuvRwIKWs52g==}
-    engines: {node: '>=22.0.0'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@mermanjs/node-linux-x64-musl@0.8.0-alpha.6':
-    resolution: {integrity: sha512-eDnY8WE2W5PUAK69gLIIsyiwMeUWIHiYGUtaRMXw0t8U/8Y2uOUsBez4mTkYp45U/Y7V3y4j2J5na1I/cAUCVw==}
-    engines: {node: '>=22.0.0'}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@mermanjs/node-win32-x64-msvc@0.8.0-alpha.6':
-    resolution: {integrity: sha512-ADe9gb1I3R6jvLUxxmnKYBsgrSJHXjSrwtSJqYOIva8wMGenhWhORcZbWIWanC1d532x3KmOLtggPNh7tJMx5g==}
-    engines: {node: '>=22.0.0'}
-    cpu: [x64]
-    os: [win32]
-
-  '@mermanjs/node@0.8.0-alpha.6':
-    resolution: {integrity: sha512-ZSyzPRYwKC80WHnSgqWT/j33z6qsCj0whziVGp6B/j6RI47wqq9osbZfHgZRNCHHOWpfczIB4jMXInm2GQNSBw==}
-    engines: {node: '>=22.0.0'}
 
   '@oxc-project/types@0.151.0':
     resolution: {integrity: sha512-J1yXrIlNDZVzE3ada310xeAw7nH8yCAyLPuUIsjKatFPmfn5bS1oW+cM+QsGOtVWd5nhSpbwZWx/rue+r5Z+PA==}
@@ -1145,29 +1106,6 @@ snapshots:
   '@mermaid-js/parser@2.0.0':
     dependencies:
       '@chevrotain/types': 11.1.2
-
-  '@mermanjs/node-darwin-arm64@0.8.0-alpha.6':
-    optional: true
-
-  '@mermanjs/node-darwin-x64@0.8.0-alpha.6':
-    optional: true
-
-  '@mermanjs/node-linux-x64-gnu@0.8.0-alpha.6':
-    optional: true
-
-  '@mermanjs/node-linux-x64-musl@0.8.0-alpha.6':
-    optional: true
-
-  '@mermanjs/node-win32-x64-msvc@0.8.0-alpha.6':
-    optional: true
-
-  '@mermanjs/node@0.8.0-alpha.6':
-    optionalDependencies:
-      '@mermanjs/node-darwin-arm64': 0.8.0-alpha.6
-      '@mermanjs/node-darwin-x64': 0.8.0-alpha.6
-      '@mermanjs/node-linux-x64-gnu': 0.8.0-alpha.6
-      '@mermanjs/node-linux-x64-musl': 0.8.0-alpha.6
-      '@mermanjs/node-win32-x64-msvc': 0.8.0-alpha.6
 
   '@oxc-project/types@0.151.0': {}
 

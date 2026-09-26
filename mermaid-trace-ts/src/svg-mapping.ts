@@ -12,7 +12,7 @@ function parse(svg: string): SVGSVGElement {
 }
 
 function validate(mapping: SourceMapping) {
-  check(mapping && mapping.format === 'mermaid-trace/0', 'unsupported format');
+  check(mapping && (mapping.format === 'mermaid-trace/0' || mapping.format === 'mermaid-trace/1'), 'unsupported format');
   check(typeof mapping.source === 'string' && mapping.source.length <= 50_000, 'source');
   check(Array.isArray(mapping.pieces) && mapping.pieces.length <= 10_000, 'pieces');
   const ids = new Set<string>();
@@ -21,7 +21,7 @@ function validate(mapping: SourceMapping) {
   for (const piece of mapping.pieces) {
     check(piece && typeof piece.id === 'string' && /^p\d+$/.test(piece.id) && !ids.has(piece.id), 'piece ID');
     ids.add(piece.id);
-    check(piece.kind === 'node' || piece.kind === 'edge', 'piece kind');
+    check((mapping.format === 'mermaid-trace/0' ? ['node', 'edge'] : ['node', 'edge', 'note', 'activation', 'control']).includes(piece.kind), 'piece kind');
     check(typeof piece.semanticId === 'string' && typeof piece.domId === 'string' && piece.domId.length, 'semantic/visual identity');
     span(piece.span);
     if (piece.labelSpan !== undefined) {
@@ -49,7 +49,9 @@ export function readSvgMapping(svg: string, source?: string): SourceMapping {
     check(role === primary.kind || role === `${primary.kind}-label`, 'element role');
     check(refs.every(ref => pieces.get(ref)!.kind === primary.kind && pieces.get(ref)!.semanticId === primary.semanticId
       && pieces.get(ref)!.domId === primary.domId), 'mixed element identities');
-    if (primary.kind === 'node') {
+    if (mapping.format === 'mermaid-trace/1') {
+      check(element.closest('[data-mt-key]')?.getAttribute('data-mt-key') === primary.domId, 'native element identity');
+    } else if (primary.kind === 'node') {
       const node = role === 'node' ? element : element.closest('.node');
       check(node?.id === `${root.id}-${primary.domId}`, 'node element identity');
     } else {
@@ -65,6 +67,7 @@ export function readSvgMapping(svg: string, source?: string): SourceMapping {
 
 export function annotateSvg(svg: string, mapping: SourceMapping): string {
   validate(mapping);
+  check(mapping.format === 'mermaid-trace/0', 'native producers annotate format 1');
   const root = parse(svg);
   check(!root.querySelector('[data-mt-refs]') && !root.hasAttribute('data-mt-map'), 'already annotated');
   const attributes = new Map<Element, string>();

@@ -11,7 +11,7 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
-const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nflowchart LR\nA[Draft] -->|review| B[Publish]\nA --> B\n```\n\n```mermaid\n' + sequence + '```\n';
+const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
 test('WATCH-AC1: CLI help and argument diagnostics work outside the checkout', () => {
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: tmpdir(), encoding: 'utf8' });
@@ -25,7 +25,7 @@ test('WATCH-AC1: CLI help and argument diagnostics work outside the checkout', (
   }
 });
 
-test('WATCH-AC2/3/4/5: live minimal Markdown preview, mapping, sequence, assets, saves and recovery', { timeout: 120_000 }, async () => {
+test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, clipboard, assets, saves and recovery', { timeout: 120_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-watch-'));
   const filename = join(directory, 'document.md');
   const errors: string[] = [];
@@ -72,15 +72,15 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, mapping, sequence, assets,
     await page.keyboard.press('ControlOrMeta+c');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'these words', 'normal Copy must keep native text behavior');
     const edge = page.locator('[data-mt-role="edge"]').nth(1);
-    const point = await edge.evaluate((element: SVGPathElement) => {
+    const point = await edge.evaluate((element: SVGGeometryElement) => {
       const position = element.getPointAtLength(element.getTotalLength() / 2);
       const screen = new DOMPoint(position.x, position.y).matrixTransform(element.getScreenCTM()!);
       return { x: screen.x, y: screen.y };
     });
     await page.mouse.click(point.x, point.y + 3);
-    const connectorStart = markdown.indexOf('-->', markdown.indexOf('A --> B'));
+    const connectorStart = markdown.indexOf('B-->>A: ');
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
-      formatLocation({ id: filename, source: markdown }, { start: connectorStart, end: connectorStart + 3 }));
+      formatLocation({ id: filename, source: markdown }, { start: connectorStart, end: connectorStart + 8 }));
     assert.equal(await edge.getAttribute('data-mt-selected'), 'true');
     const label = page.locator('[data-mt-role="edge-label"]').first();
     await label.click();

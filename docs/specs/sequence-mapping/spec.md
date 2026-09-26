@@ -23,4 +23,12 @@ Inspect and pin a separate Merman source checkout. Reuse its native grammar and 
 
 ## Verification
 
-Native exact-span, saved-artifact, real browser selection/clipboard and preview regression checks: pending. Browser WASM runtime acceptance: future, not run. All-family mapping remains the release gate; SEQ-1 is its next implementation slice.
+Native exact spans and UTF-16 conversion: 3 Rust integration tests pass, covering repeated labels, self/empty messages, aliases, notes, activations, boxes, rect and nested/branched controls, comments, frontmatter, wrapping prefixes, Unicode and CRLF. The upstream native provenance regression also passes. A fresh checkout reproduces the patched native files byte-for-byte. Saved SVG activation and live Markdown clipboard/watch/recovery checks pass in pinned Chromium; 21 TypeScript tests pass, including unchanged upstream references. Browser WASM runtime acceptance: future, not run. All-family mapping remains the release gate; SEQ-1 is its next implementation slice.
+
+## Implementation contracts and remaining coverage
+
+Merman revision `72c024776a4bf2dfb9a769b67910736229355906` is pinned with a reproducible source patch; see [native setup](../../native-renderer.md). Native grammar locations become parser-owned occurrences keyed by actor/message/box identities. The existing preprocessing edit map preserves original byte coordinates; Trace converts them to zero-based UTF-16 half-open ranges. No text matching between SVG and source is used. Renderer-owned identity wrappers bind main pieces and labels, including mirrored participant visuals. `mermaid-trace/1` extends the experimental artifact to node, edge, note, activation and control kinds; the reader still accepts historical format 0 artifacts.
+
+One persistent native Rust process exchanges JSON lines with the Node host, reusing the renderer. The Rust library has no Node/DOM/process dependency. Other native families report missing element maps; production never falls back to Chromium. Generated sequence number/marker decorations have no invented source pieces.
+
+Complete sequence conformance is still a release gate: configuration-derived participant aliases, all lifecycle/menu variants, repeated declaration/reference occurrence queries, math labels and wider browser behavior need dedicated cases. These limitations do not weaken the all-family release requirement. Manual in-app browser verification: clicking `Submit draft` copies `watch-preview.md:21:22-21:34`; Tab then Enter on its connector copies `watch-preview.md:21:3-21:34`. The live preview at port 5174 now runs the native Rust process. Dynamic browser/WASM delivery remains future work.

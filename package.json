@@ -9,10 +9,12 @@
   },
   "scripts": {
     "typecheck": "corepack pnpm --dir mermaid-trace-ts run typecheck",
-    "build": "corepack pnpm --dir mermaid-trace-ts run build",
-    "test": "corepack pnpm --dir mermaid-trace-ts run test",
+    "build": "corepack pnpm run native:build && corepack pnpm --dir mermaid-trace-ts run build",
+    "test": "corepack pnpm run native:test && corepack pnpm --dir mermaid-trace-ts run test",
     "snapshots:update": "corepack pnpm --dir mermaid-trace-ts run snapshots:update",
     "demo": "corepack pnpm --dir mermaid-trace-ts run demo",
-    "preview": "corepack pnpm --dir mermaid-trace-ts run build && node mermaid-trace-ts/dist/src/cli.js"
+    "preview": "corepack pnpm run build && node mermaid-trace-ts/dist/src/cli.js",
+    "native:build": "bash mermaid-trace-rs/bootstrap.sh && cargo build --manifest-path mermaid-trace-rs/Cargo.toml --locked",
+    "native:test": "bash mermaid-trace-rs/bootstrap.sh && cargo test --manifest-path mermaid-trace-rs/Cargo.toml --locked && cargo build --manifest-path mermaid-trace-rs/Cargo.toml --locked"
   }
 }
