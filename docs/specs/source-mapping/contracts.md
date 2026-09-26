@@ -36,6 +36,10 @@ Adapters retain original document/block identity and revision alongside the exac
 
 Non-Mermaid content retains its renderer's behavior. Synchronous fence hooks consume prepared artifacts; asynchronous production uses a separate preparation or host update stage. Inserted SVG IDs and internal references are consistently scoped per instance. Sanitization preserves only the agreed inert schema; activation validates the result. Test real markdown-it and unified pipelines, nested/repeated blocks, CRLF, Unicode, replacement, and sanitization. See [integration research](../../markdown-integration.md).
 
+## C8 — All diagram coverage (S6-AC1–AC5)
+
+The supported Mermaid version's built-in registry defines the required families, including experimental entries, syntax variants and alternate renderers. Maintain a coverage inventory and real fixtures for each. A family is supported only when parser-derived semantic element/label spans, visual identities, reverse lookup, saved static SVG and browser/Markdown selection pass its conformance checks. Rendering success or a whole-diagram map does not count. Generated decoration has explicit provenance or an unmapped classification. Per-family work may be delivered incrementally, but none of these families may be deferred outside the first usable release merely because its mapping is harder.
+
 ## Contract verification status
 
 | Contract | Planned check | Status |
@@ -46,6 +50,7 @@ Non-Mermaid content retains its renderer's behavior. Synchronous fence hooks con
 | C4 | Renderer-free consumer bundle and browser lifecycle checks | ACT-1 passes saved-SVG gestures, isolation and disposal in pinned Chromium; package distribution pending |
 | C5 | Host adapter, stale source, and trust-boundary cases | Stale source/document and unchanged-DOM rejection pass; external-host sanitization acceptance pending |
 | C6 | Shared TypeScript/Rust artifact conformance | Not run |
+| C8 | Registry inventory and per-family semantic/artifact/browser conformance | Inventory recorded; full coverage not implemented |
 | C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | MD-1/ACT-1/DOC-1 pass markdown-it provenance, sanitized mdast/hast document rendering and browser consumption; general plugins and host replacement integration pending |
 
 Evidence and exact scope: [mapping proof](../flowchart-mapping/spec.md), [Markdown provenance](../markdown-provenance/spec.md), [activation/demo](../svg-activation/spec.md). Passing experimental slices do not freeze artifact v1 or complete cross-host conformance.

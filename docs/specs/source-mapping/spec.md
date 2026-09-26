@@ -1,18 +1,18 @@
 # Feature: source-mapped Mermaid diagrams
 
-Status: behavioral baseline; the [MAP-1 proof](../flowchart-mapping/spec.md), [MD-1 adapter](../markdown-provenance/spec.md) and [ACT-1 demo](../svg-activation/spec.md) implement experimental flowchart/Markdown slices. Broader product stories need a concrete diagram/backend/format decision and a per-story plan before implementation. Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
+Status: behavioral baseline; the [MAP-1 proof](../flowchart-mapping/spec.md), [MD-1 adapter](../markdown-provenance/spec.md) and [ACT-1 demo](../svg-activation/spec.md) implement experimental flowchart/Markdown slices. All built-in Mermaid diagram types are required for the first usable release. The current slices are feasibility evidence, not completed product coverage. Per-type implementation stories need a plan before coding; see [diagram coverage](../diagram-coverage/spec.md). Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
 
 ## Problem, users, and goals
 
 Diagram readers and editor users need to identify the source behind a visual element. Library authors need a reusable source ↔ AST ↔ visual mapping without coupling their application to a particular viewer or file-reading workflow.
 
-Produce static annotated SVG first, then provide optional interaction that works on that artifact. Markdown adapters are part of initial delivery; the first browser demonstration uses real Markdown input. See the [integration investigation](../../markdown-integration.md). Support labels, nodes, cards, links, and equivalent pieces as their diagram types become supported. Preserve provenance rather than guessing locations from repeated display text.
+Produce static annotated SVG first, then provide optional interaction that works on that artifact. Markdown adapters are part of initial delivery; the first browser demonstration uses real Markdown input. See the [integration investigation](../../markdown-integration.md). Support labels, nodes, cards, links, and equivalent source-backed pieces across every built-in Mermaid diagram type, including syntax and renderer variants in the selected Mermaid version. Preserve provenance rather than guessing locations from repeated display text.
 
 ## Constraints and non-goals
 
 - One TypeScript implementation, with Clojure-inspired data transformations and thi.ng preferred as described in [DESIGN.md](../../DESIGN.md). Rust is a later native implementation, not another frontend.
 - Core/rendering accept source text; the host owns document paths, Markdown extraction provenance, and source-file access.
-- Initial coverage is one explicitly chosen diagram type and documented subset. Unsupported syntax must be reported; it must not produce confident but incorrect mappings.
+- All built-in Mermaid diagram types are mandatory release scope, not a later extension. The flowchart subset is an implementation slice only. Rendering or whole-diagram fallback does not establish element mapping support. Unsupported syntax must be reported; it must not produce confident but incorrect mappings.
 - No collaboration, CRDTs, visual source rewriting, AST mutation API, round-trip formatter, complete IDE, or production VS Code extension in the initial release.
 - No custom Mermaid parser/layout engine unless feasibility proves reuse unsuitable. SVG serialization libraries alone do not establish Mermaid support.
 
@@ -67,18 +67,29 @@ As a Rust host author, I want native mapping and SVG generation so I can embed t
 - **S5-AC2:** Given a Rust-produced artifact, when opened by the same JS activation library, then S2 behavior works without a Rust-specific frontend.
 - **S5-AC3:** Given performance claims, when published, then reproducible workload, environment, time, and memory measurements accompany them; faster performance is not assumed.
 
+### S6 — Complete Mermaid diagram coverage
+
+As a Mermaid author, I want the same source-mapping interactions for every built-in diagram type, so that using another Mermaid DSL does not remove the purpose of Mermaid Trace.
+
+- **S6-AC1:** Every detector/diagram family in the selected upstream registry has an explicit coverage entry and executable fixtures. Syntax aliases, alternate renderers, and experimental built-ins remain in scope. New registry entries cannot silently disappear from the coverage inventory.
+- **S6-AC2:** Every source-backed semantic visual element and label resolves to parser/AST provenance and exact original source spans. Source ranges resolve back to all corresponding visuals. Repeated visible text is not used to infer identity or location.
+- **S6-AC3:** Each diagram family passes static SVG, saved-artifact round-trip, click/keyboard, reverse highlighting, repeated-instance and Markdown provenance checks. A successful render with diagram-only metadata fails element-coverage acceptance.
+- **S6-AC4:** Generated decoration is distinguished from source-backed elements. It may resolve to a documented enclosing AST construct when that relationship exists; a genuinely generated piece has an explicit unmapped result. No fabricated exact position or automatic whole-diagram selection hides a missing source map.
+- **S6-AC5:** All family coverage gates pass before declaring the first usable release complete. Partial implementation may be committed and demonstrated as a prototype, with its gaps explicit.
+
 ## Clarification decisions
 
 - **D1 — Static artifact:** accepted from the user. SVG contains data; interaction belongs to a separately consumable JS library.
 - **D2 — Logical split:** core + producer + activation library + thin viewer. Recommended starting structure in one repository; package extraction follows demonstrated boundaries.
 - **D3 — Source packaging:** propose embedded inert SVG metadata as the standalone artifact's canonical payload. A preceding encoded comment remains an optional HTML-fragment export for the original use case; it cannot be the only source payload for a self-contained `.svg`. Exact encoding remains open.
 - **D4 — AST availability:** a saved SVG must carry enough serialized AST identity, kind, and provenance to resolve selections. It need not contain the entire parser AST. Core APIs expose actual AST pieces when available; activation returns explicit references/projections, never claims those are a full AST.
+- **D6 — All diagram types:** required by the user on 2026-09-26. Rendering alone and whole-diagram fallback are insufficient. The coverage inventory and release gate are defined in S6 and [C8](contracts.md#c8--all-diagram-coverage-s6-ac1ac5).
 - **D5 — Coordinates:** propose zero-based UTF-16 offsets with exclusive end, plus one-based lines/columns for display. This fits JS editor boundaries; Rust must convert explicitly. Final decision and Unicode examples required at M1.
 
 ## Open questions and readiness
 
-- Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Broader S1 coverage and format-v1 guarantees still need a selected implementation story.
-- Backend chosen for the current subset: the [Mermaid fork](../mermaid-fork/spec.md) preserves grammar provenance and visual identity; rendering uses Chromium. Broader diagram coverage and browser-free rendering remain open.
+- Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Full S1/S6 coverage is mandatory; per-family implementation plans and format-v1 guarantees remain unfinished.
+- Backend chosen for the current subset: the [Mermaid fork](../mermaid-fork/spec.md) preserves grammar provenance and visual identity; rendering uses Chromium. Broader diagram coverage is required and unimplemented; browser-free rendering remains an architectural question.
 - [NEEDS CLARIFICATION: Exact v1 attribute names, span units, metadata/source encoding, AST projection, source-version check, and size limits?] Resolve before S1/S2 format implementation; do not promise a stable wire format yet.
 - ACT-1 resolves the experimental selection policy: declarations first, otherwise first occurrence; labels select label spans; half-open overlap returns all matching projections. Occurrence alternatives are exposed. Stable v1 should retain or explicitly revise this policy.
 - ACT-1 is verified in pinned Chromium; wider browser support remains open. Click/Enter/Space selects source and suppresses hyperlink navigation. markdown-it is implemented first; unified/rehype follows before the integration milestone closes.
@@ -96,6 +107,7 @@ As a Rust host author, I want native mapping and SVG generation so I can embed t
 | S2-AC5–AC6 | Invalid metadata/stale source, safe link handling, keyboard acceptance | ACT-1 passes; wider accessibility/browser acceptance pending |
 | S3-AC1–AC6 | Both Markdown adapters, extraction provenance, sanitization/replacement, edits, and VS Code host demonstration | MD-1/ACT-1 pass markdown-it slice; unified, sanitization and VS Code integration pending |
 | S4-AC1–AC3 | Viewer selection, alternatives, and source-unavailable behavior | ACT-1 demo passes selections/alternatives; format 0 requires embedded source, missing-source artifacts unsupported |
+| S6-AC1–AC5 | Registry inventory plus native-parser and artifact/browser conformance for every family | Required; incomplete, see diagram coverage |
 | S5-AC1–AC3 | Cross-language fixtures, Rust artifact activation, reproducible benchmarks | Not implemented / not run |
 
 Individual criteria and executable checks live in each selected story's spec. Experimental slices are complete as recorded there; broader release conformance remains open.

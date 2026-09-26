@@ -1,6 +1,6 @@
 # WATCH-1 — file preview CLI
 
-Status: implemented and verified (2026-09-26). As a diagram/document author, I want a CLI to watch a Markdown or Mermaid file and refresh a browser preview after saves, with selection highlighting and no editor/debug UI.
+Status: preview infrastructure implemented and verified (2026-09-26); element coverage is incomplete. The user subsequently clarified that all diagram types require element mapping; [S6/C8](../diagram-coverage/spec.md) supersedes diagram-only selection as product acceptance. As a diagram/document author, I want a CLI to watch a Markdown or Mermaid file and refresh a browser preview after saves, with selection highlighting and no editor/debug UI.
 
 Scope: `mermaid-trace watch <file.md|file.mmd> [--port N]`, localhost-only preview, standard fenced `mermaid` Markdown integration, existing mapping and clipboard behavior. Decision: view either input type directly. The optional clarification received no answer; external `.mmd` embedding is outside this story. No export/publishing or new Markdown syntax.
 
@@ -10,7 +10,7 @@ Scope: `mermaid-trace watch <file.md|file.mmd> [--port N]`, localhost-only previ
 - **WATCH-AC2:** Saving or atomically replacing the input rerenders and reloads the open page, including Mermaid changes. Rebuilds are serialized and outdated results are not published. Invalid edits preserve the last good page, report errors in the terminal and recover on the next valid save. SIGINT/SIGTERM close watchers/server and renderer resources.
 - **WATCH-AC3:** Page contains only rendered document/diagram and highlighting. No source pane, toolbar, filename/status widgets, occurrence buttons, or error overlay. Block/heading and precise mapped flowchart node/connector/label focus/click update one selection; native rendered-text drags highlight text. Click/Enter/Space/drag completion still copies its original location. No clipboard writes on focus alone. Local Markdown assets retain normal renderer behavior.
 - **WATCH-AC4:** Standard Mermaid fenced code works through the existing stock Markdown adapters. Browser activation loads no Mermaid/parser. SVG is static before activation. IDs stay scoped. HTML input remains safe.
-- **WATCH-AC5:** Sequence diagrams render in Markdown and standalone Mermaid files. Check actual upstream/fork support: the current fork rejects `{sourceMap:true}` for sequence diagrams. Their first CLI support is explicitly diagram-only selection; no guessed participant/message locations. Record this limit in terminal/docs and verify rendering/background selection separately from precise flowchart mapping.
+- **WATCH-AC5:** Sequence diagrams render in Markdown and standalone Mermaid files. Check actual upstream/fork support: the current fork rejects `{sourceMap:true}` for sequence diagrams. The current prototype is explicitly diagram-only for these types, an incomplete state rather than supported element mapping; no guessed participant/message locations. Record this limit in terminal/docs and verify rendering/background selection separately from precise flowchart mapping.
 
 ## Plan / research
 
