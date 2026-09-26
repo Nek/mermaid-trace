@@ -30,6 +30,7 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
       const mapping = JSON.parse(decodeURIComponent(w.roots[0].getAttribute('data-mt-map')));
       const matched = w.handles[0].highlight([e.span]);
       return { role: e.role, text: mapping.source.slice(e.span.start, e.span.end), count: matched.length,
+        selectedRoles: [...w.roots[0].querySelectorAll('[data-mt-selected]')].map((e: any) => e.getAttribute('data-mt-role')),
         otherEvents: w.events[1].length, otherSelected: w.roots[1].querySelectorAll('[data-mt-selected]').length,
         hasMermaid: 'mermaid' in window };
     });
@@ -39,9 +40,35 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
     assert.equal(result.otherEvents, 0);
     assert.equal(result.otherSelected, 0);
     assert.equal(result.hasMermaid, false);
+    assert.deepEqual(result.selectedRoles, ['node-label']);
     await first.locator('[data-mt-role="edge-label"]').first().focus();
     await page.keyboard.press('Enter');
     await page.keyboard.press('Space');
+    assert.equal(await first.locator('[data-mt-role="edge"][data-mt-selected]').count(), 0);
+    assert.equal(await first.locator('[data-mt-role="edge-label"][data-mt-selected]').count(), 1);
+    for (const labeled of [false, true]) {
+      const point = await first.evaluate((root, labeled) => {
+        const mapping = JSON.parse(decodeURIComponent(root.getAttribute('data-mt-map')!));
+        const piece = mapping.pieces.find((p: any) => p.kind === 'edge' && Boolean(p.labelSpan) === labeled);
+        const path = [...root.querySelectorAll<SVGPathElement>('[data-mt-role="edge"]')].find(p => p.getAttribute('data-mt-refs') === piece.id)!;
+        const length = path.getTotalLength();
+        const p = path.getPointAtLength(length * .2);
+        const q = path.getPointAtLength(length * .2 + 1);
+        const screen = new DOMPoint(p.x, p.y).matrixTransform(path.getScreenCTM()!);
+        const next = new DOMPoint(q.x, q.y).matrixTransform(path.getScreenCTM()!);
+        const dx = next.x - screen.x, dy = next.y - screen.y;
+        return { x: screen.x - 4 * dy / Math.hypot(dx, dy), y: screen.y + 4 * dx / Math.hypot(dx, dy),
+          span: piece.span, text: mapping.source.slice(piece.span.start, piece.span.end) };
+      }, labeled);
+      const count = await page.evaluate(() => (window as any).events[0].length);
+      await page.mouse.click(point.x, point.y);
+      const event = await page.evaluate(() => (window as any).events[0].at(-1));
+      assert.equal(await page.evaluate(() => (window as any).events[0].length), count + 1, 'wide connector target receives real mouse click');
+      assert.equal(event.role, 'edge');
+      assert.deepEqual(event.span, point.span);
+      assert.equal(point.text, labeled ? '-->|same|' : '-->');
+      assert.equal(await first.locator('[data-mt-role="edge"][data-mt-selected]').count(), 1);
+    }
     const outcomes = await page.evaluate(() => {
       const w = window as any;
       const [root] = w.roots;
