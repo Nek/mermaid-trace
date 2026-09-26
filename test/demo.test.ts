@@ -23,6 +23,8 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     });
     await page.goto(url);
     await page.locator('body[data-ready="true"]').waitFor();
+    assert.equal(await page.locator('#selection-location').inputValue(), '');
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     assert.equal(await page.locator('svg').count(), 2);
     await page.locator('svg').nth(1).locator('[data-mt-role="node-label"] text').first().click();
     const selection = await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => ({
@@ -31,10 +33,16 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     }));
     assert.equal(selection.text, 'Draft');
     assert.equal(selection.start, selection.expected);
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:18:10-18:15');
+    await page.getByText('Location copied.', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:18:10-18:15');
     assert.match(await page.locator('#selection-status').innerText(), /node-label/);
     assert.equal(await page.locator('#occurrences button').count(), 2);
     await page.locator('#occurrences button').last().click();
     assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'A');
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:20:7-20:8');
+    await page.getByText('Location copied.', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:20:7-20:8');
     await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
       const start = input.value.indexOf('Review');
       input.focus(); input.setSelectionRange(start, start + 6);
@@ -42,6 +50,15 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     });
     assert.ok(await page.locator('svg').nth(0).locator('[data-mt-selected]').count() > 0);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected]').count(), 0);
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:7:29-7:35');
+    assert.equal(await page.locator('#copy-status').innerText(), '');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:20:7-20:8');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('Denied'); } } });
+    });
+    await page.locator('svg').nth(1).locator('[data-mt-role="node-label"] text').first().click();
+    await page.getByText('Could not copy. Select the location and copy it manually.', { exact: true }).waitFor();
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:18:10-18:15');
     // A page retained by browser history must keep its live diagram handlers.
     await page.evaluate(() => {
       window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));

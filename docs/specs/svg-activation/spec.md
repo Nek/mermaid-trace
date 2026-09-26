@@ -29,3 +29,14 @@ Scope: existing experimental flowchart artifacts, independent activation library
 Verification: activation and demo tests first failed against their unimplemented functions. Full `pnpm test`: 12 passing, including unchanged raw SVG baselines. Chromium only; no screen-reader acceptance test or other browser engine run. Vite is dev tooling, not part of the activation module. The browser dependency graph contains `demo`, `svg-activation`, `svg-mapping`, and `markdown-source`; type-only producer imports are erased.
 
 Run `corepack pnpm demo` to generate `dist/index.html` and serve locally. The generator reuses the deterministic browser producer with the trusted checked-in Markdown fixture; generated output is ignored build output. No arbitrary file uploads or live source edits. For external artifacts, sanitize before DOM insertion, preserve the inert mapping attributes, then activate. Dispose before replacement and activate the new element.
+
+## LOC-1 — copyable selection location (implemented)
+
+As a reader, I want clicking a diagram element to copy a readable filename and selection range into the clipboard. Scope: display locations in both selection directions and for occurrence alternatives; no editor-specific URL scheme.
+
+- **LOC-AC1:** Display `filename.md:startLine:startColumn-endLine:endColumn`, using one-based lines/UTF-16 columns and an exclusive end. Carets display `filename.md:line:column`. Use the actual original-document selection envelope; retain exact segment details for nested Markdown. LF, CRLF, CR, Unicode and end-of-input offsets are supported; invalid ranges reject.
+- **LOC-AC2:** Diagram selection (click, keyboard or occurrence choice) automatically copies exactly the displayed location through the native clipboard API and reports success. There is no copy button. Source-view selection updates the displayed location without writing the clipboard. Clipboard failure/unavailability is explicit, and the readonly location field remains manually selectable. Changing selection clears old copy feedback.
+
+Plan: add formatter checks and browser assertions first (including real clipboard read-back and simulated rejection), confirm failure, implement a pure formatter plus native field and automatic copying, then verify the affected tests and typecheck. Regenerate the running demo, update these results and README, and commit atomically. No new dependency.
+
+Verification: formatter and missing-UI tests failed first. Five affected Markdown/demo tests now pass, including real Chromium clipboard read-back on diagram/occurrence selection, source-selection non-copying, clipboard rejection, Unicode and newline ranges. TypeScript build passes. Clipboard access still depends on browser permission; failure leaves the visible location available for manual copying.

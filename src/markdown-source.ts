@@ -1,6 +1,15 @@
 import type { Span } from './flowchart-source.js';
 
 export type MarkdownDocument = { readonly id: string; readonly revision: string; readonly source: string };
+export function formatLocation(document: Pick<MarkdownDocument, 'id' | 'source'>, span: Span): string {
+  if (!Number.isInteger(span.start) || !Number.isInteger(span.end) || span.start < 0
+    || span.end < span.start || span.end > document.source.length) throw new Error('Invalid selection range');
+  const position = (offset: number) => {
+    const lines = document.source.slice(0, offset).split(/\r\n|\r|\n/);
+    return `${lines.length}:${lines.at(-1)!.length + 1}`;
+  };
+  return `${document.id}:${position(span.start)}${span.start === span.end ? '' : `-${position(span.end)}`}`;
+}
 export type Origin = { readonly logical: Span; readonly original: Span };
 export type MarkdownBlock = {
   readonly id: string;

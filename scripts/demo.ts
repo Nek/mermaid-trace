@@ -28,16 +28,20 @@ pre{overflow:auto;background:#f5f7f9;padding:12px;border-radius:6px}svg{display:
 .source{position:sticky;top:24px;align-self:start}.source label{display:block;font-weight:650;margin-bottom:10px}
 textarea{display:block;width:100%;height:58vh;resize:vertical;border:1px solid #c9d6e0;border-radius:6px;padding:14px;font:13px/1.65 ui-monospace,monospace;white-space:pre;color:#172c3e;background:#fbfcfd}
 #selection-status{min-height:3em;font-size:13px;margin-top:14px}#occurrences{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;font-size:13px;border:1px solid #b8cbd8;border-radius:6px;padding:5px 10px;background:white;color:#172c3e;cursor:pointer}
+.location{margin-top:16px}.location input{width:100%;padding:8px;border:1px solid #c9d6e0;border-radius:6px;font:13px ui-monospace,monospace}.location small,#copy-status{font-size:12px;color:#516776}
 [data-mt-refs]{cursor:pointer}[data-mt-selected=true]{filter:drop-shadow(0 0 3px #007c8a)}
 [data-mt-role=node][data-mt-selected=true] rect{stroke:#007c8a!important;stroke-width:3px!important}
 [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;stroke-width:3px!important}
 :focus-visible{outline:3px solid #2d65d3;outline-offset:3px}footer{padding:0 32px 24px;font-size:13px;color:#516776}
 @media(max-width:850px){main{grid-template-columns:1fr;padding:16px}.source{position:static}header{padding:20px}textarea{height:45vh}[data-mt-block]{overflow-x:auto}svg{min-width:520px}}
 </style></head><body>
-<header><h1>Mermaid Trace</h1><p>Click a diagram element to select its Markdown. Select source text to highlight the diagram.</p></header>
+<header><h1>Mermaid Trace</h1><p>Click a diagram element to select its Markdown and copy its location. Select source text to highlight the diagram.</p></header>
 <main><article aria-label="Rendered Markdown">${html}</article>
 <section class="source" aria-label="Source selection"><label for="source">Original Markdown · interactive.md</label>
 <textarea id="source" readonly spellcheck="false">${source}</textarea>
+<div class="location"><label for="selection-location">Selection location</label>
+<input id="selection-location" readonly placeholder="Select source or a diagram element" aria-describedby="location-help">
+<small id="location-help">One-based line:column. End is just after the selected text.</small><div id="copy-status" role="status"></div></div>
 <div id="selection-status" role="status">Select an element, or use Tab and Enter / Space. Source is read-only.</div>
 <div id="occurrences" aria-label="Source occurrences"></div></section></main>
 <footer>Static SVG + optional interaction · Experimental flowchart format · <noscript>JavaScript is disabled; diagrams remain readable.</noscript></footer>

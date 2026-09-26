@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { prepareMarkdown } from '../src/markdown-it.js';
-import { toMarkdown, fromMarkdown } from '../src/markdown-source.js';
+import { toMarkdown, fromMarkdown, formatLocation } from '../src/markdown-source.js';
+
+test('LOC-AC1: locations use original one-based lines and UTF-16 columns with exclusive ends', () => {
+  const document = { id: 'notes.md', source: '😀 title\r\nA\tB\rnext\n' };
+  assert.equal(formatLocation(document, { start: 0, end: 2 }), 'notes.md:1:1-1:3');
+  assert.equal(formatLocation(document, { start: 10, end: 15 }), 'notes.md:2:1-3:2');
+  assert.equal(formatLocation(document, { start: 10, end: 10 }), 'notes.md:2:1');
+  assert.equal(formatLocation(document, { start: document.source.length, end: document.source.length }), 'notes.md:4:1');
+  assert.equal(formatLocation({ id: 'empty.md', source: '' }, { start: 0, end: 0 }), 'empty.md:1:1');
+  for (const span of [{ start: -1, end: 1 }, { start: 2, end: 1 }, { start: 0, end: 50 }, { start: 0.5, end: 1 }]) {
+    assert.throws(() => formatLocation(document, span), /range/i);
+  }
+});
 
 test('MD-AC1/2: nested repeated fences preserve exact original segments and reverse selections', () => {
   const source = '# 😀\r\n\r\n> - ```mermaid\r\n>   flowchart LR\r\n>   A["same"] --> B\r\n>   ```\r\n\r\n```mermaid\r\nflowchart LR\r\nA["same"] --> B\r\n```';

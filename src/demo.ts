@@ -1,6 +1,6 @@
 import { activateSvg } from './svg-activation.js';
 import type { Activation, Selection } from './svg-activation.js';
-import { fromMarkdown, toMarkdown } from './markdown-source.js';
+import { fromMarkdown, toMarkdown, formatLocation } from './markdown-source.js';
 import type { MarkdownBlock, MarkdownDocument } from './markdown-source.js';
 import type { Span } from './flowchart-source.js';
 
@@ -10,6 +10,21 @@ const data = JSON.parse(document.querySelector('#demo-data')!.textContent!) as {
 const source = document.querySelector<HTMLTextAreaElement>('#source')!;
 const status = document.querySelector<HTMLElement>('#selection-status')!;
 const occurrences = document.querySelector<HTMLElement>('#occurrences')!;
+const location = document.querySelector<HTMLInputElement>('#selection-location')!;
+const copyStatus = document.querySelector<HTMLElement>('#copy-status')!;
+const showLocation = (span: Span) => {
+  location.value = formatLocation(data.document, span);
+  copyStatus.textContent = '';
+};
+const copyLocation = async () => {
+  const value = location.value;
+  try {
+    await navigator.clipboard.writeText(value);
+    if (location.value === value) copyStatus.textContent = 'Location copied.';
+  } catch {
+    if (location.value === value) copyStatus.textContent = 'Could not copy. Select the location and copy it manually.';
+  }
+};
 const instances: { block: MarkdownBlock; activation: Activation }[] = [];
 const reportError = (error: unknown) => { status.textContent = `Mapping unavailable: ${error instanceof Error ? error.message : String(error)}`; };
 let diagramRange: Span | undefined;
@@ -23,6 +38,8 @@ try {
         diagramRange = envelope;
         source.focus({ preventScroll: true });
         source.setSelectionRange(envelope.start, envelope.end);
+        showLocation(envelope);
+        void copyLocation();
         status.textContent = `${selection.role} · ${selection.pieces[0]!.semanticId} · ${block.id} · exact Markdown segments ${segments.map(s => `[${s.start}, ${s.end})`).join(', ')}${segments.length > 1 ? ' · editor selection includes intervening Markdown prefixes' : ''}`;
         for (const instance of instances) instance.activation.highlight(instance.block.id === block.id ? [selection.span] : []);
         occurrences.replaceChildren();
@@ -44,6 +61,7 @@ try {
     if (diagramRange?.start === source.selectionStart && diagramRange.end === source.selectionEnd) return;
     diagramRange = undefined;
     try {
+      showLocation({ start: source.selectionStart, end: source.selectionEnd });
       let count = 0;
       for (const { block, activation } of instances) {
         count += activation.highlight(fromMarkdown(block, { start: source.selectionStart, end: source.selectionEnd }, data.document)).length;
