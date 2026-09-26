@@ -57,3 +57,5 @@ The [reference SVG harness](specs/svg-baselines/spec.md) pins upstream Mermaid a
 The [first mapping proof](specs/flowchart-mapping/spec.md) captured source ranges from isolated instances of Mermaid 12's existing Jison parser and FlowDB. That runtime interception has been replaced by the fork's explicit API. A separate SVG metadata module reads saved artifacts without the renderer; its format remains experimental `mermaid-trace/0`.
 
 The [fork story](specs/mermaid-fork/spec.md) supplies explicit grammar provenance and an opt-in render result in a small upstream-oriented Mermaid fork. Mermaid remains the authoring DSL; Trace owns the portable SVG format and optional interaction.
+
+The demo source view is read-only text in a same-origin frame containing only escaped source text and styles. Its document has an independent native selection, allowing source and rendered Markdown ranges to remain visible without moving preview focus. No overlay or editor dependency is used.

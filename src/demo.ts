@@ -10,33 +10,40 @@ const data = JSON.parse(document.querySelector('#demo-data')!.textContent!) as {
   document: MarkdownDocument; blocks: readonly MarkdownBlock[];
   targets: readonly DocumentTarget[]; texts: readonly DocumentText[];
 };
-const source = document.querySelector<HTMLTextAreaElement>('#source')!;
-const sourceHighlight = document.querySelector<HTMLElement>('#source-highlight')!;
-const syncSourceHighlight = () => {
-  sourceHighlight.style.width = `${source.clientWidth}px`;
-  sourceHighlight.style.height = `${source.clientHeight}px`;
-  sourceHighlight.scrollTop = source.scrollTop;
-  sourceHighlight.scrollLeft = source.scrollLeft;
+const sourceFrame = document.querySelector<HTMLIFrameElement>('#source-frame')!;
+if (!sourceFrame.contentDocument?.querySelector('#source')) {
+  await new Promise<void>(resolve => sourceFrame.addEventListener('load', () => resolve(), { once: true }));
+}
+const sourceDocument = sourceFrame.contentDocument!;
+const source = sourceDocument.querySelector<HTMLElement>('#source')!;
+// Build one text node from the exact input; HTML parsing normalizes CRLF.
+const sourceText = sourceDocument.createTextNode(data.document.source);
+source.replaceChildren(sourceText);
+const sourceSelection = () => {
+  const selection = sourceDocument.getSelection();
+  if (!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (!range.intersectsNode(sourceText)) return;
+  return { start: range.startContainer === sourceText ? range.startOffset : 0,
+    end: range.endContainer === sourceText ? range.endOffset : sourceText.textContent!.length };
 };
-source.addEventListener('scroll', syncSourceHighlight);
-new ResizeObserver(syncSourceHighlight).observe(source);
-const highlightSource = (span: Span) => {
-  const mark = document.createElement('mark');
-  mark.textContent = source.value.slice(span.start, span.end);
-  sourceHighlight.replaceChildren(source.value.slice(0, span.start), mark, source.value.slice(span.end));
-  syncSourceHighlight();
-  if (document.activeElement === source) return;
-  const selected = mark.getClientRects()[0];
-  if (!selected) return;
+const selectSource = (span: Span) => {
+  const range = sourceDocument.createRange();
+  range.setStart(sourceText, span.start);
+  range.setEnd(sourceText, span.end);
+  const current = sourceSelection();
+  if (current?.start !== span.start || current.end !== span.end) {
+    const selection = sourceDocument.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  if (document.activeElement === sourceFrame) return;
+  const first = range.getClientRects()[0];
+  if (!first) return;
   const viewport = source.getBoundingClientRect();
-  const padding = parseFloat(getComputedStyle(source).paddingTop) + source.clientTop;
-  if (selected.top < viewport.top + padding || selected.bottom > viewport.top + source.clientHeight - padding) {
-    source.scrollTop += selected.top - viewport.top - padding;
-  }
-  if (selected.left < viewport.left + padding || selected.right > viewport.left + source.clientWidth - padding) {
-    source.scrollLeft += selected.left - viewport.left - padding;
-  }
-  syncSourceHighlight();
+  const padding = parseFloat(sourceFrame.contentWindow!.getComputedStyle(source).paddingTop);
+  if (first.top < viewport.top + padding || first.bottom > viewport.bottom - padding) source.scrollTop += first.top - viewport.top - padding;
+  if (first.left < viewport.left + padding || first.right > viewport.right - padding) source.scrollLeft += first.left - viewport.left - padding;
 };
 
 const status = document.querySelector<HTMLElement>('#selection-status')!;
@@ -66,8 +73,7 @@ const selectDocument = (span: Span, copy: boolean, targetId?: string) => {
   const native = document.getSelection();
   if (targetId !== '' && native?.anchorNode && article.contains(native.anchorNode)) native.removeAllRanges();
   selectedRange = span;
-  source.setSelectionRange(span.start, span.end);
-  highlightSource(span);
+  selectSource(span);
   showLocation(span);
   occurrences.replaceChildren();
   for (const { block, activation } of instances) activation.highlight(fromMarkdown(block, span, data.document));
@@ -140,15 +146,15 @@ try {
   article.addEventListener('pointerup', textGesture);
   article.addEventListener('keyup', textGesture);
   const reverse = () => {
-    // Ignore the queued textarea event caused by our own preview selection.
-    if (selectedRange?.start === source.selectionStart && selectedRange.end === source.selectionEnd) return;
+    const span = sourceSelection();
+    if (!span || (selectedRange?.start === span.start && selectedRange.end === span.end)) return;
     try {
-      selectDocument({ start: source.selectionStart, end: source.selectionEnd }, false);
+      selectDocument(span, false);
       status.textContent = 'Source selection · matching Markdown and diagram elements highlighted.';
     } catch (error) { reportError(error); }
   };
-  source.addEventListener('select', reverse);
+  sourceDocument.addEventListener('selectionchange', reverse);
   source.addEventListener('keyup', reverse);
-  source.addEventListener('pointerup', reverse);
+  sourceDocument.addEventListener('pointerup', reverse);
   document.body.dataset.ready = 'true';
 } catch (error) { reportError(error); }

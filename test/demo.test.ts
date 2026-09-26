@@ -14,6 +14,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    page.setDefaultTimeout(10000);
     const errors: string[] = [];
     const requests: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -24,18 +25,20 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     await page.goto(url);
     await page.locator('body[data-ready="true"]').waitFor();
     assert.equal(await page.locator('#selection-location').inputValue(), '');
+    assert.equal(await page.locator('#source-frame').count(), 1, 'Original Markdown has an independent native text selection');
+    const source = page.frameLocator('#source-frame').locator('#source');
+    const selectedSource = () => source.evaluate(element => element.ownerDocument.getSelection()!.toString());
+    assert.equal(await page.locator('#source-highlight, textarea').count(), 0, 'no source overlay or textarea');
+    assert.equal(await source.evaluate(element => element.childNodes.length === 1 && element.firstChild!.nodeType === Node.TEXT_NODE), true, 'source is one exact text node');
+    assert.equal(await page.frameLocator('#source-frame').locator('script, mark').count(), 0);
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     assert.equal(await page.locator('svg').count(), 2);
     await page.locator('svg').nth(1).locator('[data-mt-role="node-label"] text').first().click();
-    const selection = await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => ({
-      text: input.value.slice(input.selectionStart, input.selectionEnd), start: input.selectionStart,
-      expected: input.value.lastIndexOf('Draft'),
-    }));
+    const selection = await source.evaluate(element => {
+      const selection = element.ownerDocument.getSelection()!;
+      return { text: selection.toString(), start: selection.getRangeAt(0).startOffset, expected: element.textContent!.lastIndexOf('Draft') };
+    });
     assert.equal(selection.text, 'Draft');
-    assert.equal(await page.locator('#source-highlight mark').count(), 1, 'source selection remains visibly marked without focusing the textarea');
-    assert.equal(await page.locator('#source-highlight mark').textContent(), 'Draft');
-    assert.equal(await page.locator('#source-highlight').evaluate(element => getComputedStyle(element).visibility), 'visible');
-    assert.equal(await page.locator('#source-highlight').getAttribute('aria-hidden'), 'true');
 
     assert.equal(await page.locator('[data-md-selected]').count(), 0, 'a diagram child does not also select its enclosing Markdown container');
     assert.equal(selection.start, selection.expected);
@@ -46,13 +49,13 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     assert.match(await page.locator('#selection-status').innerText(), /node-label/);
     assert.equal(await page.locator('#occurrences button').count(), 2);
     await page.locator('#occurrences button').last().click();
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'A');
+    assert.equal(await selectedSource(), 'A');
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:20:7-20:8');
     await page.getByText('Location copied.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:20:7-20:8');
     await page.locator('svg').first().locator('[data-mt-role="edge-label"] text').first().click();
     await page.getByText('Location copied.', { exact: true }).waitFor();
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'review');
+    assert.equal(await selectedSource(), 'review');
     assert.equal(await page.locator('svg').first().locator('[data-mt-role="edge"][data-mt-selected]').count(), 0);
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:7:18-7:24');
     for (const [index, text, location] of [[0, '-->|review|', 'interactive.md:7:14-7:25'], [1, '-->', 'interactive.md:8:5-8:8']] as const) {
@@ -62,22 +65,22 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), previousClipboard, 'focus alone does not copy');
       await page.keyboard.press('Enter');
       await page.getByText('Location copied.', { exact: true }).waitFor();
-      assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), text);
+      assert.equal(await selectedSource(), text);
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), location);
     }
     await page.keyboard.press('Tab');
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:9:5-9:8');
     assert.equal(await page.locator('svg').first().locator('[data-mt-role="edge"]').nth(2).evaluate(element => element === document.activeElement && element.hasAttribute('data-mt-selected')), true);
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:8:5-8:8');
-    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
-      const start = input.value.indexOf('Review');
-      input.focus(); input.setSelectionRange(start, start + 6);
-      input.dispatchEvent(new Event('select'));
+    await source.evaluate(element => {
+      const start = element.textContent!.indexOf('Review');
+      element.focus(); element.ownerDocument.getSelection()!.setBaseAndExtent(element.firstChild!, start, element.firstChild!, start + 6);
+      element.dispatchEvent(new Event('pointerup'));
     });
     assert.ok(await page.locator('svg').nth(0).locator('[data-mt-selected]').count() > 0);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected]').count(), 0);
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:7:29-7:35');
-    assert.equal(await page.locator('#source-highlight').evaluate(element => getComputedStyle(element).visibility), 'hidden', 'focused source uses its native highlight');
+    assert.equal(await selectedSource(), 'Review', 'source uses its real native selection');
 
     assert.equal(await page.locator('#copy-status').innerText(), '');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:8:5-8:8');
@@ -99,7 +102,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     ] as const) {
       const heading = page.locator(selector).first();
       await heading.click();
-      assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), expected);
+      assert.equal(await selectedSource(), expected);
       assert.equal(await heading.evaluate(element => element === document.activeElement && element.hasAttribute('data-md-selected')), true);
       assert.equal(await page.locator('[data-mt-selected]').count(), 0, 'heading selection must clear diagram highlights');
       assert.equal(await page.locator('[data-md-selected]').count(), 1);
@@ -107,7 +110,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), location);
     }
     await page.locator('article p').first().focus();
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'The same diagram appears twice. Each one points to its own fence in this document.');
+    assert.equal(await selectedSource(), 'The same diagram appears twice. Each one points to its own fence in this document.');
     // A real drag across a rendered word maps only those characters, not its paragraph.
     const bold = page.locator('article strong');
     await bold.scrollIntoViewIfNeeded();
@@ -121,30 +124,47 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     await page.mouse.down();
     await page.mouse.move(word.x + word.width - .5, word.y + word.height / 2, { steps: 8 });
     await page.mouse.up();
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'bold');
+    assert.equal(await selectedSource(), 'bold');
+    assert.equal(await page.evaluate(() => document.getSelection()!.toString()), 'bold', 'rendered text keeps its independent native range');
     await page.getByText('Location copied.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await page.locator('#selection-location').inputValue());
     assert.equal(await page.locator('[data-md-selected]').count(), 0, 'a text drag retains its native highlight without selecting the whole paragraph');
     await page.locator('article h2').last().focus();
     await page.keyboard.up('Tab');
     assert.equal(await page.evaluate(() => document.getSelection()!.isCollapsed), true, 'structural focus clears a previous native text selection');
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), '## Inline text selection');
-    assert.equal(await page.locator('#source-highlight mark').textContent(), '## Inline text selection');
-    assert.equal(await page.locator('#source-highlight mark').evaluate(element => {
-      const box = element.getClientRects()[0]!;
-      const source = document.querySelector('textarea')!.getBoundingClientRect();
-      return box.top >= source.top && box.bottom <= source.bottom;
-    }), true, 'selection start is revealed without transferring focus');
-    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
-      input.scrollTop = 60; input.scrollLeft = 40;
-      input.dispatchEvent(new Event('scroll'));
+    assert.equal(await selectedSource(), '## Inline text selection');
+    assert.equal(await source.evaluate(element => {
+      const range = element.ownerDocument.getSelection()!.getRangeAt(0);
+      const box = range.getClientRects()[0]!;
+      const viewport = element.getBoundingClientRect();
+      return box.top >= viewport.top && box.bottom <= viewport.bottom;
+    }), true, 'native source range is revealed without transferring focus');
+    await source.evaluate(element => { element.scrollTop = 60; element.scrollLeft = 40; });
+    assert.equal(await selectedSource(), '## Inline text selection', 'scrolling preserves the native selection');
+    await page.locator('.source-editor').evaluate((element: HTMLElement) => { element.style.height = '300px'; });
+    assert.equal(await selectedSource(), '## Inline text selection', 'resizing preserves the native selection');
+
+    // Drag real source text: native selection drives reverse mapping without copying a location.
+    const clipboardBeforeSourceDrag = await page.evaluate(() => navigator.clipboard.readText());
+    await source.evaluate(element => { element.ownerDocument.getSelection()!.removeAllRanges(); element.focus({ preventScroll: true }); element.scrollTop = 0; element.scrollLeft = 0; });
+    const frameBox = await page.locator('#source-frame').boundingBox();
+    assert.ok(frameBox);
+    const sourceWord = await source.evaluate(element => {
+      const range = element.ownerDocument.createRange();
+      range.setStart(element.firstChild!, 4); range.setEnd(element.firstChild!, 9);
+      const box = range.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
     });
-    assert.equal(await page.locator('#source-highlight').evaluate(element => {
-      const input = document.querySelector('textarea')!;
-      return element.scrollTop === input.scrollTop && element.scrollLeft === input.scrollLeft;
-    }), true, 'source highlight follows both scroll axes');
-    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => { input.style.height = '300px'; });
-    await page.waitForFunction(() => document.querySelector('#source-highlight')!.clientHeight === document.querySelector('textarea')!.clientHeight);
+    await page.mouse.move(frameBox.x + sourceWord.x + .5, frameBox.y + sourceWord.y + sourceWord.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(frameBox.x + sourceWord.x + sourceWord.width - .5, frameBox.y + sourceWord.y + sourceWord.height / 2, { steps: 8 });
+    await page.mouse.up();
+    assert.equal(await selectedSource(), 'small');
+    assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:1:5-1:10');
+    assert.equal(await page.locator('article [data-md-selected]').textContent(), 'A small publishing workflow');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), clipboardBeforeSourceDrag);
+    await page.keyboard.press('ControlOrMeta+c');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'small', 'normal Copy uses the actual source text selection');
 
     // A native range spanning formatting maps the original delimiters and entity spelling.
     await page.locator('article strong').evaluate(element => {
@@ -155,7 +175,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
       paragraph.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     });
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'ld text**, *emphasis*, `inline code`, an escaped \\*star\\*, or an entity: &amp;');
+    assert.equal(await selectedSource(), 'ld text**, *emphasis*, `inline code`, an escaped \\*star\\*, or an entity: &amp;');
     // Multiple blocks enclose the entire intervening diagram, including its fences.
     await page.locator('article').evaluate(article => {
       const first = article.querySelector('p [data-md-text]')!.firstChild!;
@@ -164,15 +184,16 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
       article.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     });
-    const across = await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd));
+    const across = await selectedSource();
     assert.ok(across.startsWith('same diagram'));
     assert.ok(across.includes('```mermaid'));
     assert.ok(across.endsWith('## Inside'));
     assert.equal(await page.locator('svg').first().getAttribute('data-mt-selected'), 'true');
     // Reverse selection in plain source also chooses its rendered Markdown block.
-    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
-      const start = input.value.indexOf('Ordinary code');
-      input.focus(); input.setSelectionRange(start, start + 8); input.dispatchEvent(new Event('select'));
+    await source.evaluate(element => {
+      const start = element.textContent!.indexOf('Ordinary code');
+      element.focus(); element.ownerDocument.getSelection()!.setBaseAndExtent(element.firstChild!, start, element.firstChild!, start + 8);
+      element.dispatchEvent(new Event('pointerup'));
     });
     assert.equal(await page.locator('article [data-md-selected]').innerText(), 'Ordinary code remains ordinary code:');
     await page.evaluate(() => {
@@ -187,7 +208,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
     });
     await page.locator('svg').nth(1).locator('[data-mt-role="node-label"] text').first().click();
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'Draft');
+    assert.equal(await selectedSource(), 'Draft');
     assert.equal(await page.evaluate(() => 'mermaid' in window), false);
     assert.ok(!requests.some(request => /mermaid\.min|markdown-it|mdast|hast|flowchart-source/.test(request)));
     assert.ok(requests.every(request => request.startsWith(url + '/')));
@@ -198,7 +219,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     await staticPage.goto(url);
     assert.equal(await staticPage.locator('svg').count(), 2);
     assert.equal(await staticPage.locator('svg script, svg [onload], svg animate').count(), 0);
-    assert.ok((await staticPage.locator('textarea').inputValue()).includes('```mermaid'));
+    assert.ok((await staticPage.frameLocator('#source-frame').locator('#source').textContent())!.includes('```mermaid'));
     for (const svg of await staticPage.locator('svg').all()) {
       const box = await svg.boundingBox();
       assert.ok(box && box.width > 100 && box.height > 30);
