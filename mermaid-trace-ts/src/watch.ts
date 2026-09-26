@@ -61,6 +61,7 @@ export async function watchPreview(input: string, options: { sourceView?: boolea
   const report = options.onError ?? console.error;
   const server = await createServer({
     configFile: false, root: dirname(watchedFile), appType: 'custom', logLevel: 'warn',
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true, preTransformRequests: false, hmr: { server: http, overlay: false }, watch: { awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 } } },
     plugins: [{ name: 'mermaid-trace-preview', configureServer(server) {
       server.middlewares.use(async (request, response, next) => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, writeFile, rename, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, rename, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -45,6 +45,7 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, c
     page.on('request', request => requests.push(request.url()));
     await page.goto(preview!.url);
     await page.waitForSelector('body[data-ready=true]');
+    assert.deepEqual((await readdir(directory)).sort(), ['asset.svg', 'document.md'], 'Preview must not create caches beside the input');
     assert.equal(await page.locator('svg').count(), 2);
     assert.equal(await page.locator('textarea,iframe,button,input,header,footer,[role=status],vite-error-overlay').count(), 0);
     assert.ok(await page.locator('img').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 10));

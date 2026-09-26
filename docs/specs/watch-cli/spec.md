@@ -65,3 +65,7 @@ Manual in-app inspection at port 5174 verified the pane and visible source highl
 ## Shutdown regression
 
 WATCH-AC2 also requires shutdown to terminate outstanding HTTP connections, including incomplete browser requests during reload. A source-pane regression intermittently hung while closing its preview. A bounded raw-client test reproduced the root cause: `http.close()` waited for an unfinished request. Stop accepting connections, then use Node's `closeAllConnections()` to release them before closing the renderer. Existing browser save/reload/shutdown assertions remain mandatory. The bounded regression failed before the fix and now passes; browser save/reload and source-pane shutdown checks also pass.
+
+## WATCH-CACHE-1: leave document directories unchanged
+
+After language tooling separation, previews must not create JS tooling beside the input. The existing live acceptance test asserts the document directory retains exactly its Markdown and asset files. It fails with an unexpected `.vite` directory. Plan: disable Vite dependency discovery using its existing `optimizeDeps.noDiscovery` option; the browser uses only Trace modules and Vite’s own client, with no bare dependencies to optimize. Keep asset resolution, watching and reload behavior unchanged. Verification: the existing regression failed with `.vite` present before the fix. `make typecheck test` then passed all 6 Rust and 24 TypeScript/browser tests, including assets, clipboard, saves/recovery and optional source selection.
