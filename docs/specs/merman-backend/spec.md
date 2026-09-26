@@ -36,8 +36,10 @@ Switch mapped flowcharts only after the native producer passes their existing se
 
 | Contract | Check | Status |
 |---|---|---|
-| MERMAN-AC1/2 | Native Node tests: exact source/semantic data, repeatability, IDs, invalid input and bounds | Planned |
+| MERMAN-AC1/2 | Native Node test: exact CRLF/Unicode source and repeated-message semantics, fresh instance IDs, interleaved repeatability, bounds, syntax/unsupported errors, recovery and disposal | Passed on macOS arm64 / Node 24 |
 | MERMAN-AC3 | Existing live Markdown/standalone sequence and save/recovery/shutdown browser checks | Planned |
 | MERMAN-AC4 | Typecheck, full existing suite, unchanged reference snapshots, renderer-free activation | Planned |
 
 Sources: [native Node package](https://github.com/Latias94/merman/tree/main/platforms/node), [Merman coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md). Package contents and public runtime operations were inspected locally; source-map export is not currently available through the selected binding.
+
+TDD: the native producer test failed with `Merman producer not implemented` before implementation and passes against the real native addon. No DOM or browser is loaded. TypeScript build passes; source-span export remains unavailable. The preceding mapping/legacy-producer refactor passed all 18 existing checks with unchanged raw baselines. Sandbox browser startup/file-watcher failures required running the existing integration suite outside the sandbox.

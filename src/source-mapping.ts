@@ -14,4 +14,3 @@ export type SourceMapping = {
   readonly source: string;
   readonly pieces: readonly Piece[];
 };
-
