@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { renderReferences } from '../src/render-diagrams.js';
-import type { Fixture } from '../src/render-diagrams.js';
-export { renderReferences, forkBundle } from '../src/render-diagrams.js';
+import { renderReferences } from '../src/producer/mermaid-browser.js';
+import type { Fixture } from '../src/producer/mermaid-browser.js';
+export { renderReferences, forkBundle } from '../src/producer/mermaid-browser.js';
 
 export async function readFixtures(): Promise<readonly Fixture[]> {
   const directory = 'test/fixtures/flowchart';

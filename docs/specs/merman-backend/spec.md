@@ -21,7 +21,7 @@ Live package inspection supersedes the earlier cached research: alpha.6 is now p
 
 ## Selected story plan
 
-1. Move shared source-map types into a DOM-free module and isolate the existing Chromium producer. Preserve behavior and raw reference snapshots.
+1. Move shared source-map types into `src/source-mapping.ts` and isolate the existing Chromium producer in `src/producer/mermaid-browser.ts`; move shared source-map types into a DOM-free module and isolate the existing Chromium producer. Preserve behavior and raw reference snapshots.
 2. TDD a small native Merman adapter: exact source + semantic JSON + static SVG + explicit unavailable mapping. Reuse its engine and native deterministic IDs; constrain source to the existing artifact ceiling. No custom Mermaid parser.
 3. Route non-flowchart preview production through Merman. Keep legacy flowchart mapping explicit; inject only whole-source metadata when occurrence provenance is unavailable. Reuse existing activation and Markdown adapters.
 4. Verify real Node rendering, instance IDs, repeated inputs, syntax failures, resource/lifecycle handling and existing browser/CLI tests. Record results and commit coherent changes immediately.

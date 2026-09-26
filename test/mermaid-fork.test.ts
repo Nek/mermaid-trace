@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { chromium } from 'playwright';
-import type { SourceMapping } from '../src/flowchart-source.js';
+import type { SourceMapping } from '../src/source-mapping.js';
 import { forkBundle } from '../scripts/svg-baselines.js';
 
 test('FORK-AC2/3: public render returns opt-in mappings without state leaks or SVG changes', async () => {

@@ -4,7 +4,7 @@ import { fromMarkdown, toMarkdown, formatLocation } from './markdown-source.js';
 import type { MarkdownBlock, MarkdownDocument } from './markdown-source.js';
 import { renderedTextSelection } from './document-selection.js';
 import type { DocumentTarget, DocumentText } from './markdown-view.js';
-import type { Span } from './flowchart-source.js';
+import type { Span } from './source-mapping.js';
 
 const data = JSON.parse(document.querySelector('#demo-data')!.textContent!) as {
   document: MarkdownDocument; blocks: readonly MarkdownBlock[];

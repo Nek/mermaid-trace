@@ -1,4 +1,4 @@
-import type { Span } from './flowchart-source.js';
+import type { Span } from './source-mapping.js';
 import type { MarkdownBlock, MarkdownDocument } from './markdown-source.js';
 import MarkdownIt from 'markdown-it';
 import { fromMarkdown } from 'mdast-util-from-markdown';

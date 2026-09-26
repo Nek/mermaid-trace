@@ -7,7 +7,7 @@ import { createServer } from 'vite';
 import MarkdownIt from 'markdown-it';
 import { prepareMarkdown } from './markdown-it.js';
 import { renderMarkdownView } from './markdown-view.js';
-import { renderReferences } from './render-diagrams.js';
+import { renderReferences } from './producer/mermaid-browser.js';
 import type { MarkdownBlock } from './markdown-source.js';
 
 const escape = new MarkdownIt().utils.escapeHtml;

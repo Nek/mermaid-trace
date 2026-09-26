@@ -1,4 +1,4 @@
-import type { Piece, SourceMapping, Span } from './flowchart-source.js';
+import type { Piece, SourceMapping, Span } from './source-mapping.js';
 import { readSvgMapping } from './svg-mapping.js';
 
 export type Selection = { readonly role: string; readonly pieces: readonly Piece[]; readonly span: Span; readonly trigger: 'focus' | 'activation' };

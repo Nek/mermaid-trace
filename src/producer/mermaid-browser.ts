@@ -31,7 +31,7 @@ const contextOptions = {
 
 export type Fixture = { readonly id: string; readonly source: string };
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = fileURLToPath(new URL('../../../', import.meta.url));
 export const forkBundle = process.env.MERMAID_TRACE_BUNDLE ? resolve(process.env.MERMAID_TRACE_BUNDLE) : resolve(root, '../mermaid/packages/mermaid/dist/mermaid.min.js');
 
 export async function renderReferences(fixtures: readonly Fixture[], mapped: boolean | 'viewer' = false, bundle = mapped
@@ -64,7 +64,7 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
         await page.addScriptTag({ path: resolve(bundle) });
         if (mapped) {
           for (const [file, exports] of [['flowchart-source', 'renderFlowchart'], ['svg-mapping', 'annotateSvg']] as const) {
-            await page.addScriptTag({ type: 'module', content: await readFile(new URL(`./${file}.js`, import.meta.url), 'utf8') + `\nwindow.${exports} = ${exports};` });
+            await page.addScriptTag({ type: 'module', content: await readFile(new URL(`../${file}.js`, import.meta.url), 'utf8') + `\nwindow.${exports} = ${exports};` });
           }
         }
         const rendered = await page.evaluate(async ({ id, source, config, mapped }) => {
@@ -73,13 +73,13 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped: boo
           await document.fonts.ready;
           const mermaid = (window as unknown as { mermaid: {
             initialize(config: unknown): void;
-            render: import('./flowchart-source.js').MermaidRenderHost['render'];
+            render: import('../flowchart-source.js').MermaidRenderHost['render'];
             detectType(source: string): string;
           } }).mermaid;
           mermaid.initialize(config);
           const api = window as unknown as {
-            renderFlowchart: typeof import('./flowchart-source.js').renderFlowchart;
-            annotateSvg: typeof import('./svg-mapping.js').annotateSvg;
+            renderFlowchart: typeof import('../flowchart-source.js').renderFlowchart;
+            annotateSvg: typeof import('../svg-mapping.js').annotateSvg;
           };
           if (mapped) {
             Object.defineProperty(mermaid, 'mermaidAPI', { get() { throw new Error('Private Mermaid API must not be accessed'); } });

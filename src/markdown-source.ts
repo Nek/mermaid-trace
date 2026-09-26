@@ -1,4 +1,4 @@
-import type { Span } from './flowchart-source.js';
+import type { Span } from './source-mapping.js';
 
 export type MarkdownDocument = { readonly id: string; readonly revision: string; readonly source: string };
 export function formatLocation(document: Pick<MarkdownDocument, 'id' | 'source'>, span: Span): string {

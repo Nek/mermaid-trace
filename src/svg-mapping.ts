@@ -1,4 +1,4 @@
-import type { Piece, SourceMapping, Span } from './flowchart-source.js';
+import type { Piece, SourceMapping, Span } from './source-mapping.js';
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid SVG mapping: ${message}`);

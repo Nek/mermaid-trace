@@ -1,4 +1,4 @@
-import type { Span } from './flowchart-source.js';
+import type { Span } from './source-mapping.js';
 import type { MarkdownBlock } from './markdown-source.js';
 import type { DocumentText } from './markdown-view.js';
 
