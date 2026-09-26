@@ -49,6 +49,6 @@ corepack pnpm install --frozen-lockfile
 
 Mermaid's install `prepare` script builds the bundles and declarations. For subsequent edits, run `corepack pnpm build` in the fork. Each repository declares its own pnpm version; ensure `pnpm` on PATH honors `packageManager` (Corepack shims do this), since upstream scripts invoke `pnpm` internally. Do not change either lockfile to make the versions match.
 
-Return to Trace and run `corepack pnpm test`. An alternate checkout can be selected with `MERMAID_TRACE_BUNDLE=/absolute/path/to/mermaid.min.js`. This path belongs to the test harness only; the browser producer accepts a Mermaid instance supplied by its caller. No published fork package is required for local development.
+Return to the Trace root and run `make test`. An alternate checkout can be selected with `MERMAID_TRACE_BUNDLE=/absolute/path/to/mermaid.min.js`. This path belongs to the test harness only; the browser producer accepts a Mermaid instance supplied by its caller. No published fork package is required for local development.
 
 An upstream discussion and PR remain later steps; they should disclose AI assistance and focus on the small source-map API. The viewer remains in Trace. The temporary portable patch was removed after publishing the fork; the pinned commit above is the reproducible source.

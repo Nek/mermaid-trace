@@ -62,7 +62,7 @@ The demo source view is read-only text in a same-origin frame containing only es
 
 The [watch CLI](specs/watch-cli/spec.md) serves a minimal rendered document using Vite's middleware and watcher with a Node HTTP server. The CLI owns shutdown of the native renderer, watcher and server. It consumes standard Mermaid fences through the existing adapters and keeps the browser free of producer/parser code. Invalid edits retain the last good document. The default page stays minimal; `--source` optionally adds the same read-only native source pane used by the demo, with bidirectional selection.
 
-The production preview uses the Trace-owned Rust renderer for every family. Sequence provenance travels from native grammar actions through semantic construction and explicit SVG identities. Other families receive empty maps and an explicit diagram-only diagnostic. The legacy Mermaid producer is reference test tooling.
+The production preview uses the Trace-owned Rust renderer for every family. Flowchart and sequence provenance travel from native grammar actions through semantic construction and explicit SVG identities. Remaining families receive empty maps and an explicit diagram-only diagnostic. The legacy Mermaid producer is reference test tooling.
 
 ## Required diagram coverage
 
@@ -76,7 +76,7 @@ User decision, 2026-09-26: adopt Merman on `feat/merman-backend` in the existing
 
 Pin Merman source plus the provenance patch and Cargo dependencies. Reuse one native Rust renderer across saves and close its process on shutdown. Use its safe SVG pipeline. The earlier native Node package did not expose source occurrences; the Trace-owned Rust integration now does for flowcharts and sequence diagrams. Preserve existing flowchart behavior and report unavailable element mapping for remaining families; production does not route to the legacy producer. Provenance for remaining families is required upstream work, not something to reconstruct by matching labels or array positions. All-family release scope is unchanged.
 
-Repository layout: `mermaid-trace-ts/` owns TypeScript source, package/build files and tests. `mermaid-trace-rs/` owns the native library/executable and pinned upstream patch. Shared docs stay at the root. Keep the project name Mermaid Trace because Mermaid remains the input DSL. The native Merman dependency and any upstream fork remain distinct from our Rust integration.
+Repository layout: `mermaid-trace-ts/` owns TypeScript source, package/build files and tests. `mermaid-trace-rs/` owns the native library/executable and pinned upstream patch. Shared docs stay in `docs/`. All pnpm files and JavaScript dependencies live inside `mermaid-trace-ts/`; the root Makefile coordinates the existing language-specific commands. There is no root npm package or pnpm workspace. Keep the project name Mermaid Trace because Mermaid remains the input DSL. The native Merman dependency and any upstream fork remain distinct from our Rust integration.
 
 2026-09-26 clarification: production focuses solely on Merman; legacy runtime compatibility is not required, but its working user behaviors must survive in Rust. [SEQ-1](specs/sequence-mapping/spec.md) implements native sequence provenance. [BROWSER-1](specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer) requires future dynamic browser rendering from the same Rust core via WASM, with optional Worker execution and revision-safe updates. Static SVG and separate activation remain mandatory.
 

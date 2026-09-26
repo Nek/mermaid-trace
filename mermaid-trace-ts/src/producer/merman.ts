@@ -17,7 +17,7 @@ export async function createMermanProducer() {
   // A failed spawn also rejects the exit waiter; observe it even before close().
   void exited.catch(() => {});
   try { await once(child, 'spawn'); }
-  catch (error) { throw new Error(`Native renderer unavailable; run pnpm native:build. ${String(error)}`); }
+  catch (error) { throw new Error(`Native renderer unavailable; run make native-build from the repository root. ${String(error)}`); }
   const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   let queue: Promise<unknown> = Promise.resolve();
   let closed = false;

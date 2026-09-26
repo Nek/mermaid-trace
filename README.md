@@ -19,11 +19,11 @@ Markdown integration is part of initial delivery: markdown-it fence provenance a
 
 ## Repository layout
 
-- `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests and package manifest. Its producer communicates with the Rust executable over JSON lines.
+- `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests, package manifest, pnpm lockfile and dependencies. Its producer communicates with the Rust executable over JSON lines.
 - `mermaid-trace-rs/`: Rust library/executable, Cargo lockfile and a pinned Merman source patch. The upstream checkout is generated into ignored `vendor/merman/`.
 - `docs/`: shared requirements, contracts, roadmap and examples.
 
-Root commands build Rust and TypeScript. Each language owns its manifest; pnpm and Cargo lockfiles pin their dependencies. Shared docs and artifact contracts govern both. See [native setup](docs/native-renderer.md).
+The root Makefile builds and tests Rust and TypeScript. Each language owns its manifest; pnpm and Cargo lockfiles pin their dependencies. Shared docs and artifact contracts govern both. See [native setup](docs/native-renderer.md).
 
 ## Documentation
 
@@ -51,24 +51,26 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 
 ## Development
 
-Use Rust 1.95+ and Node.js 24.x, as declared in `package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
+Use Rust 1.95+ and Node.js 24.x, as declared in `mermaid-trace-ts/package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
 
 For historical flowchart reference tests, first build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
 
 ```sh
+cd mermaid-trace-ts
 corepack pnpm install --frozen-lockfile
-corepack pnpm --dir mermaid-trace-ts exec playwright install chromium
-corepack pnpm test
+corepack pnpm exec playwright install chromium
+cd ..
+make test
 ```
 
-Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard user-level caches. No runtime version manager is required; `mise.toml` is an ignored local preference.
+Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard user-level caches. No runtime version manager is required; `mermaid-trace-ts/mise.toml` is an ignored local preference.
 
-`typecheck` runs `tsc --noEmit`; `build` builds the native executable and compiles TypeScript into `mermaid-trace-ts/dist/`; `test` runs native integration tests and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
+`make typecheck` runs `tsc --noEmit`; `make build` builds the native executable and compiles TypeScript into `mermaid-trace-ts/dist/`; `make test` runs native integration tests and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 
 ```sh
-corepack pnpm snapshots:update
+make snapshots-update
 ```
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
@@ -80,11 +82,11 @@ The production producer uses Merman’s native parser, preprocessing map and SVG
 After the development setup above:
 
 ```sh
-corepack pnpm preview watch docs/examples/watch-preview.md
+make preview ARGS='watch docs/examples/watch-preview.md'
 # Optional source pane with synchronized native text selection:
-corepack pnpm preview watch docs/examples/watch-preview.md --source
+make preview ARGS='watch docs/examples/watch-preview.md --source'
 # Or a standalone Mermaid file:
-corepack pnpm preview watch /path/to/diagram.mmd --port 0
+make preview ARGS='watch /path/to/diagram.mmd --port 0'
 ```
 
 Open the printed localhost URL. Saves and atomic replacements rerender and reload the page. Invalid Mermaid edits leave the last good preview visible and report the error in the terminal; a valid save recovers. Ctrl+C stops the server and watcher. The default port is 5173; use `--port N` if occupied, or `--port 0` to choose an available port.
@@ -97,12 +99,12 @@ Flowchart nodes/references, connectors and labels, plus sequence participants, m
 
 Future browser rendering will compile the same Rust core to WASM, optionally in a Worker. Static SVG and separate activation remain available independently; see [BROWSER-1](docs/specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
 
-The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
+The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `make preview ARGS='watch /path/to/file.md'` builds and runs it; after `make build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 
 ## Try the Markdown demo
 
 ```sh
-corepack pnpm demo
+make demo
 ```
 
 Open the local URL printed by Vite. The command renders [the example Markdown](docs/examples/interactive.md) once and generates a page containing static SVGs. The browser loads only the interaction/coordinate modules; it does not load Mermaid or markdown-it. Click a node, edge or label (or focus it and press Enter/Space) to select its original Markdown. Click diagram background to select its whole fenced block. Click prose/code/list blocks to select their source; click a heading to select only that heading, including its Markdown syntax. Drag rendered text to select characters across formatting or blocks. Occurrence buttons expose repeated references; selecting text highlights matching visuals. The source view is readonly. Its selected range stays visibly highlighted while focus remains in the preview, and the selection start is scrolled into view. The source pane uses a real native text selection in a frame containing only source text and styles, so source and rendered-text selections can coexist. There is no overlay or synchronized text mirror. Diagrams remain visible with JavaScript disabled.

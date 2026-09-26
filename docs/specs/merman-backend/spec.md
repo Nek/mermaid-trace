@@ -51,3 +51,5 @@ MERMAN-1 implementation: `mermaid-trace-ts/src/producer/merman.ts` is the reusab
 ## Superseding decision
 
 2026-09-26: the user removed the legacy production compatibility requirement. [SEQ-1](../sequence-mapping/spec.md) supersedes the transitional routing in MERMAN-AC3. Legacy snapshots remain reference evidence. Future browser rendering through Rust/WASM is required by [BROWSER-1](../sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
+
+2026-09-26 layout correction: [LAYOUT-1](../toolchain/spec.md#layout-1-separate-language-tooling) removes the root pnpm workspace. All JS manifests, the lockfile and dependencies belong to `mermaid-trace-ts/`; root Make targets coordinate Rust and TS. Earlier workspace verification above is historical.

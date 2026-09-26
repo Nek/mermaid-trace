@@ -28,7 +28,7 @@ Scope: existing experimental flowchart artifacts, independent activation library
 
 Verification: activation and demo tests first failed against their unimplemented functions. Full `pnpm test`: 12 passing, including unchanged raw SVG baselines. Chromium only; no screen-reader acceptance test or other browser engine run. Vite is dev tooling, not part of the activation module. The browser dependency graph contains `demo`, `svg-activation`, `svg-mapping`, and `markdown-source`; type-only producer imports are erased.
 
-Run `corepack pnpm demo` to generate `dist/index.html` and serve locally. The generator reuses the deterministic browser producer with the trusted checked-in Markdown fixture; generated output is ignored build output. No arbitrary file uploads or live source edits. For external artifacts, sanitize before DOM insertion, preserve the inert mapping attributes, then activate. Dispose before replacement and activate the new element.
+Run `make demo` from the repository root to generate `dist/index.html` and serve locally. The generator reuses the deterministic browser producer with the trusted checked-in Markdown fixture; generated output is ignored build output. No arbitrary file uploads or live source edits. For external artifacts, sanitize before DOM insertion, preserve the inert mapping attributes, then activate. Dispose before replacement and activate the new element.
 
 ## LOC-1 — copyable selection location (implemented)
 

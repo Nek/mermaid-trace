@@ -5,9 +5,9 @@
 Use Rust 1.95+ (tested with 1.98.0), Git, Node 24 and pnpm 11.28.0:
 
 ```sh
-corepack pnpm native:build
-corepack pnpm native:test
-corepack pnpm preview watch docs/examples/watch-preview.md
+make native-build
+make native-test
+make preview ARGS='watch docs/examples/watch-preview.md'
 ```
 
 The bootstrap script clones [Merman](https://github.com/Latias94/merman) into ignored `mermaid-trace-rs/vendor/merman/`, pins revision `72c024776a4bf2dfb9a769b67910736229355906`, and applies the checked-in `native-provenance.patch` for flowchart and sequence provenance. It recognizes an already applied patch and refuses an incompatible existing checkout. Cargo dependencies are locked. It never resets or deletes a checkout. Merman retains its MIT/Apache-2.0 attribution; the patch is local experimental integration, not an accepted upstream contribution.
