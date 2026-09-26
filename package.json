@@ -11,14 +11,16 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "corepack pnpm run build && node --test dist/test/*.test.js",
-    "snapshots:update": "corepack pnpm run build && node dist/scripts/svg-baselines.js --update"
+    "snapshots:update": "corepack pnpm run build && node dist/scripts/svg-baselines.js --update",
+    "demo": "corepack pnpm run build && node dist/scripts/demo.js && vite dist --host 127.0.0.1"
   },
   "devDependencies": {
     "@fontsource/noto-sans": "5.3.0",
     "@types/node": "24.13.6",
     "mermaid": "12.0.0",
     "playwright": "1.63.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "8.3.1"
   },
   "dependencies": {
     "markdown-it": "15.0.2"

@@ -1,6 +1,6 @@
 # INIT-1: TypeScript foundation
 
-Status: dependency setup complete; the [reference SVG harness](../svg-baselines/spec.md) now provides real rendering tests. Source mapping has not started.
+Status: dependency setup complete; the [reference SVG harness](../svg-baselines/spec.md), mapping stories and [activation demo](../svg-activation/spec.md) provide real behavior tests.
 
 As a contributor, I want pinned tools and a locked dependency install so I can begin the first mapping story.
 
@@ -9,7 +9,7 @@ As a contributor, I want pinned tools and a locked dependency install so I can b
 - Node 24.x declared in `package.json` engines; contributors choose how to install it. `mise.toml` is an ignored local preference. pnpm 11.28.0 is selected by `packageManager`; TypeScript 7.0.2 and Node types 24.13.6 are locked dependencies.
 - One private ESM package with strict TypeScript, declarations, and source maps. No product entry point yet.
 - Use standard user-level caches. No project cache folder, global tool replacement, remote, or publishing.
-- Add Node test-runner tests for actual behavior with the first implementation. Add browser tooling and libraries when a product story needs them.
+- Node's test runner covers actual behavior. Playwright verifies rendering and browser interaction; Vite 8.3.1 serves the demo; markdown-it 15.0.2 supplies the Markdown adapter and its own types. Versions are locked in the manifest/lockfile.
 
 ## Acceptance and verification
 
@@ -17,7 +17,7 @@ As a contributor, I want pinned tools and a locked dependency install so I can b
 |---|---|---|
 | INIT-AC1 | Frozen dependency installation leaves the lockfile unchanged | Verified, including offline install, 2026-09-25 |
 | INIT-AC2, INIT-AC3, INIT-C1 | Synthetic compiler/import test requirements | Retired: these tested the toolchain rather than project behavior; test and emitted artifacts removed |
-| INIT-AC4 | Setup instructions match available commands and distinguish setup from product verification | Updated: typecheck/build/test now cover the reference SVG harness; no synthetic toolchain test |
+| INIT-AC4 | Setup instructions match available commands and distinguish setup from product verification | Updated: typecheck/build/test cover mapping, Markdown and browser behavior; `demo` serves the generated page; no synthetic toolchain test |
 
 The former dummy test's passing results are not product evidence. The current tests render real diagram inputs and compare SVG; do not add placeholders to manufacture a passing build.
 

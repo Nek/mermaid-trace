@@ -40,10 +40,12 @@ Non-Mermaid content retains its renderer's behavior. Synchronous fence hooks con
 
 | Contract | Planned check | Status |
 |---|---|---|
-| C1 | Static/offline browser rendering and artifact inspection | Not run |
-| C2 | Exact-span and bidirectional relation fixtures | Not run |
-| C3 | Encoding round-trip and malformed/versioned metadata cases | Not run |
-| C4 | Renderer-free consumer bundle and browser lifecycle checks | Not run |
-| C5 | Host adapter, stale source, and trust-boundary cases | Not run |
+| C1 | Static/offline browser rendering and artifact inspection | Experimental demo passes scripts-disabled display; comprehensive export-security acceptance pending |
+| C2 | Exact-span and bidirectional relation fixtures | MAP-1, MD-1 and ACT-1 pass for supported flowcharts and format 0 projections |
+| C3 | Encoding round-trip and malformed/versioned metadata cases | Format 0 reader checks pass; stable v1 and sanitizer compatibility pending |
+| C4 | Renderer-free consumer bundle and browser lifecycle checks | ACT-1 passes saved-SVG gestures, isolation and disposal in pinned Chromium; package distribution pending |
+| C5 | Host adapter, stale source, and trust-boundary cases | Stale source/document and unchanged-DOM rejection pass; external-host sanitization acceptance pending |
 | C6 | Shared TypeScript/Rust artifact conformance | Not run |
-| C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | Not run |
+| C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | MD-1/ACT-1 pass markdown-it provenance and browser consumption; unified, sanitizer and host replacement integration pending |
+
+Evidence and exact scope: [mapping proof](../flowchart-mapping/spec.md), [Markdown provenance](../markdown-provenance/spec.md), [activation/demo](../svg-activation/spec.md). Passing experimental slices do not freeze artifact v1 or complete cross-host conformance.

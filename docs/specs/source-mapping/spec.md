@@ -1,6 +1,6 @@
 # Feature: source-mapped Mermaid diagrams
 
-Status: behavioral baseline; the [MAP-1 proof](../flowchart-mapping/spec.md) implements a limited flowchart slice. Product stories need a concrete diagram/backend/format decision and a per-story plan before implementation. Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
+Status: behavioral baseline; the [MAP-1 proof](../flowchart-mapping/spec.md), [MD-1 adapter](../markdown-provenance/spec.md) and [ACT-1 demo](../svg-activation/spec.md) implement experimental flowchart/Markdown slices. Broader product stories need a concrete diagram/backend/format decision and a per-story plan before implementation. Contracts live in [contracts.md](contracts.md); milestones live in [ROADMAP.md](../../ROADMAP.md).
 
 ## Problem, users, and goals
 
@@ -78,24 +78,24 @@ As a Rust host author, I want native mapping and SVG generation so I can embed t
 ## Open questions and readiness
 
 - Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Broader S1 coverage and format-v1 guarantees still need a selected implementation story.
-- [NEEDS CLARIFICATION: Which parser/renderer preserves reliable source spans and visual identity?] Resolve through M1 investigation, including browser versus Node execution needs.
+- Backend chosen for the current subset: the [Mermaid fork](../mermaid-fork/spec.md) preserves grammar provenance and visual identity; rendering uses Chromium. Broader diagram coverage and browser-free rendering remain open.
 - [NEEDS CLARIFICATION: Exact v1 attribute names, span units, metadata/source encoding, AST projection, source-version check, and size limits?] Resolve before S1/S2 format implementation; do not promise a stable wire format yet.
-- [NEEDS CLARIFICATION: Primary span and source-overlap selection policy?] Recommend declaration first where known, otherwise source order; expose all alternatives. Resolve before S2.
-- [NEEDS CLARIFICATION: Initial browser support policy and hyperlink gesture?] Resolve with the relevant story. Markdown-it is the proposed first adapter; unified/rehype follows before the integration milestone closes.
+- ACT-1 resolves the experimental selection policy: declarations first, otherwise first occurrence; labels select label spans; half-open overlap returns all matching projections. Occurrence alternatives are exposed. Stable v1 should retain or explicitly revise this policy.
+- ACT-1 is verified in pinned Chromium; wider browser support remains open. Click/Enter/Space selects source and suppresses hyperlink navigation. markdown-it is implemented first; unified/rehype follows before the integration milestone closes.
 - Public package names, distribution layout, and project license remain undecided. Do not publish under an assumed license.
 
 ## Verification matrix
 
 | Criteria | Planned checks | Status |
 |---|---|---|
-| S1-AC1 | Browser with scripts disabled; artifact inspection and offline/resource check | Not implemented / not run |
-| S1-AC2–AC4 | Source-span fixtures, Unicode/CRLF boundaries, repeated occurrences, serialized artifact round-trip | Not implemented / not run |
-| S1-AC5 | Invalid/unsupported inputs and generated decoration diagnostics | Not implemented / not run |
-| S2-AC1–AC2 | Real browser click/keyboard and reverse-selection checks | Not implemented / not run |
-| S2-AC3–AC4 | Duplicate IDs across instances, dispose/reactivate lifecycle | Not implemented / not run |
-| S2-AC5–AC6 | Invalid metadata/stale source, safe link handling, keyboard acceptance | Not implemented / not run |
-| S3-AC1–AC6 | Both Markdown adapters, extraction provenance, sanitization/replacement, edits, and VS Code host demonstration | Not implemented / not run |
-| S4-AC1–AC3 | Viewer selection, alternatives, and source-unavailable behavior | Not implemented / not run |
+| S1-AC1 | Browser with scripts disabled; artifact inspection and offline/resource check | Demo fixture passes; comprehensive export-security acceptance pending |
+| S1-AC2–AC4 | Source-span fixtures, Unicode/CRLF boundaries, repeated occurrences, serialized artifact round-trip | MAP-1 passes supported subset |
+| S1-AC5 | Invalid/unsupported inputs and generated decoration diagnostics | MAP-1 negative inputs pass; richer decoration diagnostics pending |
+| S2-AC1–AC2 | Real browser click/keyboard and reverse-selection checks | ACT-1 passes format 0 in Chromium |
+| S2-AC3–AC4 | Duplicate IDs across instances, dispose/reactivate lifecycle | ACT-1 passes |
+| S2-AC5–AC6 | Invalid metadata/stale source, safe link handling, keyboard acceptance | ACT-1 passes; wider accessibility/browser acceptance pending |
+| S3-AC1–AC6 | Both Markdown adapters, extraction provenance, sanitization/replacement, edits, and VS Code host demonstration | MD-1/ACT-1 pass markdown-it slice; unified, sanitization and VS Code integration pending |
+| S4-AC1–AC3 | Viewer selection, alternatives, and source-unavailable behavior | ACT-1 demo passes selections/alternatives; format 0 requires embedded source, missing-source artifacts unsupported |
 | S5-AC1–AC3 | Cross-language fixtures, Rust artifact activation, reproducible benchmarks | Not implemented / not run |
 
-Split matrix rows to individual criteria and executable checks in each selected story's plan. No product implementation story is currently marked complete.
+Individual criteria and executable checks live in each selected story's spec. Experimental slices are complete as recorded there; broader release conformance remains open.

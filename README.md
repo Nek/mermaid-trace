@@ -2,7 +2,7 @@
 
 Connect Mermaid source, its AST, and diagram elements so a visual selection can identify the exact source that produced it.
 
-**Status:** experimental flowchart source-mapping proof with static SVG metadata and an independent reader. No viewer, published package, or Rust crate yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
+**Status:** experimental flowchart producer, independent SVG activation library, and clickable Markdown demo. No published package or Rust crate yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
 
 ## Products and boundaries
 
@@ -23,6 +23,7 @@ Markdown integration is part of initial delivery: markdown-it first, unified/rem
 | [Artifact and integration contracts](docs/specs/source-mapping/contracts.md) | Static SVG, mapping integrity, and activation boundaries |
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
+| [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
 | [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
 | [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
 | [SVG baselines](docs/specs/svg-baselines/spec.md) | Upstream fixtures, deterministic rendering, and verification |
@@ -47,7 +48,7 @@ corepack pnpm test
 
 Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard user-level caches. No runtime version manager is required; `mise.toml` is an ignored local preference.
 
-`typecheck` runs `tsc --noEmit`; `build` compiles the reference-rendering harness and tests into `dist/`; `test` builds and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input and invalid mappings. Tests never update expected output.
+`typecheck` runs `tsc --noEmit`; `build` compiles the libraries, demo, rendering harness and tests into `dist/`; `test` builds and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 
@@ -57,6 +58,18 @@ corepack pnpm snapshots:update
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
-The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). The markdown-it adapter prepares fences with exact original-document provenance, then consumes pre-rendered SVG artifacts. Activation remains unimplemented. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
+The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). The markdown-it adapter prepares fences with exact original-document provenance, then consumes pre-rendered SVG artifacts. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
+
+## Try the Markdown demo
+
+```sh
+corepack pnpm demo
+```
+
+Open the local URL printed by Vite. The command renders [the example Markdown](docs/examples/interactive.md) once and generates a page containing static SVGs. The browser loads only the interaction/coordinate modules; it does not load Mermaid or markdown-it. Click a node, edge or label (or focus it and press Enter/Space) to select its original Markdown. Occurrence buttons expose repeated references; selecting text highlights matching visuals. The source view is readonly. Diagrams remain visible with JavaScript disabled.
+
+`activateSvg(svg, { source, onSelect })` accepts a safe inline SVG and returns its decoded `mapping`, `highlight(ranges)`, `select(pieceId)` and `dispose()`. Source spans are zero-based UTF-16, end-exclusive. Labels select their label text; node groups prefer a declaration, then the first occurrence. `data-mt-selected` provides a styling hook. The demo supplies visible focus and selection styles. Dispose before replacing or changing an SVG; duplicate attachment rejects. Source-selection gestures suppress hyperlink navigation.
+
+Hosts own sanitization before insertion, document identity/revision and editor selection. Activation validates mappings but is not a sanitizer. `prepareMarkdown(document, namespace)` returns blocks and a synchronous renderer consuming trusted prepared SVGs. `toMarkdown` returns exact segments plus an enclosing editor range; `fromMarkdown` performs reverse lookup. Expanded indentation tabs that cannot be mapped exactly fail explicitly. No arbitrary SVG upload UI, source editing, unified adapter or VS Code extension is included yet.
 
 Follow [SDD.md](docs/SDD.md): select one ready story, define its contracts and plan, derive tests, implement, verify, and record results. Read [SDD-PLANNING.md](docs/SDD-PLANNING.md) for planning and [SDD-DELIVERY.md](docs/SDD-DELIVERY.md) before implementation. Planned checks are not passing tests.

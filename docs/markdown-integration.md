@@ -1,6 +1,6 @@
 # Markdown integration: first-class delivery
 
-Research date: 2026-09-25. This is an integration design and source review, not a claim that adapters already work. Markdown embedding is an initial product requirement: the first end-to-end acceptance page must come from a real Markdown renderer, not handwritten HTML alone.
+Research date: 2026-09-25. Markdown embedding is an initial product requirement: the first end-to-end acceptance page must come from a real Markdown renderer, not handwritten HTML alone. Implementation update (2026-09-26): [MD-1](specs/markdown-provenance/spec.md) verifies markdown-it extraction and exact offsets; [ACT-1](specs/svg-activation/spec.md) supplies the generated interactive page. The other integrations below remain researched designs.
 
 ## Shared flow
 
