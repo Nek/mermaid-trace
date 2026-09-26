@@ -33,8 +33,8 @@ Source inspection used the installed Mermaid 12.0.0 source map: `flow.jison`, `f
 
 ## Implementation and verification
 
-- Original adapter: isolated Jison reductions became source-occurrence projections. [The current adapter](../../../src/flowchart-source.ts) instead consumes the fork's explicit render result, with no private parser access.
-- [SVG writer/reader](../../../src/svg-mapping.ts): DOM identity checks plus insertion into original start tags preserve raw SVG bytes. The independent reader imports no renderer and verifies spans, IDs, element identity and optional external source.
+- Original adapter: isolated Jison reductions became source-occurrence projections. [The current adapter](../../../mermaid-trace-ts/src/flowchart-source.ts) instead consumes the fork's explicit render result, with no private parser access.
+- [SVG writer/reader](../../../mermaid-trace-ts/src/svg-mapping.ts): DOM identity checks plus insertion into original start tags preserve raw SVG bytes. The independent reader imports no renderer and verifies spans, IDs, element identity and optional external source.
 - TDD: tests first failed on the missing mapping path. A further negative test exposed acceptance of a mismatched node DOM identity; it failed before the validation fix and passes afterward.
 - All six integration tests pass: four mapping tests and two unchanged reference tests. All four original SVG baselines are unchanged. CRLF/comment/astral-Unicode offsets and duplicate node/edge labels have independently specified expected ranges. Saved SVG was read in a new page without Mermaid; invalid payload, out-of-bounds range, unknown reference, wrong DOM identity, stale source and unsupported syntax were rejected.
 - [Annotated example](../../examples/repeated-labels.svg) contains the exact Mermaid source and mapped pieces. It is generated from the existing repeated-label fixture; stripping only `data-mt-*` attributes recovers the original reference bytes.

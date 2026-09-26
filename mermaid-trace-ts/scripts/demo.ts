@@ -7,7 +7,7 @@ import { renderMarkdownView } from '../src/markdown-view.js';
 import { renderReferences } from './svg-baselines.js';
 
 export async function writeDemo(): Promise<void> {
-  const document = { id: 'interactive.md', revision: 'demo-1', source: await readFile('docs/examples/interactive.md', 'utf8') };
+  const document = { id: 'interactive.md', revision: 'demo-1', source: await readFile('../docs/examples/interactive.md', 'utf8') };
   const prepared = prepareMarkdown(document, 'demo');
   const { svgs } = await renderReferences(prepared.blocks, true);
   const { html, targets, texts } = renderMarkdownView(document, prepared.blocks, new Map(Object.entries(svgs)));

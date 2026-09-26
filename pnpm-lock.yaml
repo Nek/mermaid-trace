@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  mermaid-trace-ts:
     dependencies:
       '@mermanjs/node':
         specifier: 0.8.0-alpha.6

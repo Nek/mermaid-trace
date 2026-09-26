@@ -1,0 +1,39 @@
+{
+  "name": "mermaid-trace-ts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "corepack pnpm run build && node --test dist/test/*.test.js",
+    "snapshots:update": "corepack pnpm run build && node dist/scripts/svg-baselines.js --update",
+    "demo": "corepack pnpm run build && node dist/scripts/demo.js && vite dist --host 127.0.0.1",
+    "preview": "corepack pnpm run build && node dist/src/cli.js"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans": "5.3.0",
+    "@types/hast": "3.0.5",
+    "@types/mdast": "4.0.4",
+    "@types/node": "24.13.6",
+    "mermaid": "12.0.0",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.1"
+  },
+  "dependencies": {
+    "@mermanjs/node": "0.8.0-alpha.6",
+    "hast-util-sanitize": "5.0.2",
+    "hast-util-to-html": "9.0.5",
+    "markdown-it": "15.0.2",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-to-hast": "13.2.1"
+  },
+  "bin": {
+    "mermaid-trace": "./dist/src/cli.js"
+  }
+}

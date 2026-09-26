@@ -17,6 +17,14 @@ These are logical boundaries in one project, not a requirement for four packages
 
 Markdown integration is part of initial delivery: markdown-it fence provenance and a unified mdast/hast document view, with VS Code preview hooks investigated early. Other targets include JavaScript applications and native Rust hosts. Multiuser editing is a later possibility, not part of the initial release.
 
+## Repository layout
+
+- `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests and package manifest. Its native producer consumes the pinned Merman addon.
+- `mermaid-trace-rs/`: reserved for Trace-owned Rust integration; no local crate yet. We do not vendor Merman here.
+- `docs/`: shared requirements, contracts, roadmap and examples.
+
+Root pnpm commands delegate to the TypeScript package. The workspace lockfile lives at the root. Future Rust code will own its Cargo manifest and lockfile inside `mermaid-trace-rs/`; shared fixtures/artifact contracts govern both. Upstream renderer changes use a separate Merman checkout.
+
 ## Documentation
 
 | Document | Purpose |
@@ -54,7 +62,7 @@ corepack pnpm test
 
 Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard user-level caches. No runtime version manager is required; `mise.toml` is an ignored local preference.
 
-`typecheck` runs `tsc --noEmit`; `build` compiles the libraries, demo, rendering harness and tests into `dist/`; `test` builds and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
+`typecheck` runs `tsc --noEmit`; `build` compiles the libraries, demo, rendering harness and tests into `mermaid-trace-ts/dist/`; `test` builds and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 
@@ -84,7 +92,7 @@ Use standard fenced `mermaid` blocks, as supported by Mermaid CLI and Markdown r
 
 **Sequence diagrams render and support whole-diagram selection. Participant/message/label source mapping is not implemented in the current Mermaid fork.** The CLI reports that limitation in the terminal. Precise flowchart selection remains available; no sequence element positions are guessed. Rendering needs the built Mermaid fork and installed Playwright Chromium; the browser itself loads neither Mermaid nor a Markdown parser.
 
-The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
+The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 
 ## Try the Markdown demo
 

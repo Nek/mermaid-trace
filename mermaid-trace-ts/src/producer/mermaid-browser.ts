@@ -32,7 +32,7 @@ const contextOptions = {
 export type Fixture = { readonly id: string; readonly source: string };
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-export const forkBundle = process.env.MERMAID_TRACE_BUNDLE ? resolve(process.env.MERMAID_TRACE_BUNDLE) : resolve(root, '../mermaid/packages/mermaid/dist/mermaid.min.js');
+export const forkBundle = process.env.MERMAID_TRACE_BUNDLE ? resolve(process.env.MERMAID_TRACE_BUNDLE) : resolve(root, '../../mermaid/packages/mermaid/dist/mermaid.min.js');
 
 export async function renderReferences(fixtures: readonly Fixture[], mapped: boolean | 'viewer' = false, bundle = mapped
   ? forkBundle

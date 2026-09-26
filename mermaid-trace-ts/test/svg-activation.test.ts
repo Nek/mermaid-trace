@@ -4,7 +4,7 @@ import test from 'node:test';
 import { chromium } from 'playwright';
 
 test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation and lifecycle without renderer', async () => {
-  const svg = await readFile('docs/examples/repeated-labels.svg', 'utf8');
+  const svg = await readFile('../docs/examples/repeated-labels.svg', 'utf8');
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');

@@ -1,0 +1,2 @@
+# Reserved for Trace-owned Rust integration. Merman is currently a prebuilt dependency.
+/target/

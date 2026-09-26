@@ -1,6 +1,6 @@
 # Merman backend migration
 
-Decision, 2026-09-26: use Merman as the new producer backend on `feat/merman-backend` in this repository. TypeScript remains the host and activation language; Merman supplies the Rust rendering core through its native Node binding. Keep one repository because artifact, Markdown, viewer and CLI contracts remain shared. A future upstream Merman provenance patch belongs in a separate upstream checkout, not a second Trace product.
+Decision, 2026-09-26: use Merman as the new producer backend on `feat/merman-backend` in this repository. TypeScript remains the host and activation language; Merman supplies the Rust rendering core through its native Node binding. Use `mermaid-trace-ts/` and `mermaid-trace-rs/` as independent language package directories; shared docs remain at the root. Keep one repository because artifact, Markdown, viewer and CLI contracts remain shared. A future upstream Merman provenance patch belongs in a separate upstream checkout, not a second Trace product.
 
 ## Scope and contracts
 
@@ -21,7 +21,7 @@ Live package inspection supersedes the earlier cached research: alpha.6 is now p
 
 ## Selected story plan
 
-1. Move shared source-map types into `src/source-mapping.ts` and isolate the existing Chromium producer in `src/producer/mermaid-browser.ts`; move shared source-map types into a DOM-free module and isolate the existing Chromium producer. Preserve behavior and raw reference snapshots.
+1. Move shared source-map types into `mermaid-trace-ts/src/source-mapping.ts` and isolate the existing Chromium producer in `mermaid-trace-ts/src/producer/mermaid-browser.ts`. Preserve behavior and raw reference snapshots.
 2. TDD a small native Merman adapter: exact source + semantic JSON + static SVG + explicit unavailable mapping. Reuse its engine and native deterministic IDs; constrain source to the existing artifact ceiling. No custom Mermaid parser.
 3. Route non-flowchart preview production through Merman. Keep legacy flowchart mapping explicit; inject only whole-source metadata when occurrence provenance is unavailable. Reuse existing activation and Markdown adapters.
 4. Verify real Node rendering, instance IDs, repeated inputs, syntax failures, resource/lifecycle handling and existing browser/CLI tests. Record results and commit coherent changes immediately.
@@ -43,3 +43,5 @@ Switch mapped flowcharts only after the native producer passes their existing se
 Sources: [native Node package](https://github.com/Latias94/merman/tree/main/platforms/node), [Merman coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md). Package contents and public runtime operations were inspected locally; source-map export is not currently available through the selected binding.
 
 TDD: the native producer test failed with `Merman producer not implemented` before implementation and passes against the real native addon. No DOM or browser is loaded. TypeScript build passes; source-span export remains unavailable. The preceding mapping/legacy-producer refactor passed all 18 existing checks with unchanged raw baselines. Sandbox browser startup/file-watcher failures required running the existing integration suite outside the sandbox.
+
+Workspace restructuring: the root scripts delegate to `mermaid-trace-ts/`, while the preview command keeps root-relative input paths. The pnpm lock remains shared. `mermaid-trace-rs/` reserves the native package boundary without inventing an unused Cargo crate. Root `pnpm test` passed all 19 tests after the move; raw upstream SVGs remain unchanged. Frozen workspace install and TypeScript build passed.

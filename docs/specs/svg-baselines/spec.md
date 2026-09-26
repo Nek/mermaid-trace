@@ -29,7 +29,7 @@ Future mapping tests will compare annotated output after removing only our metad
 
 ## Fixture provenance
 
-The first three `.mmd` files in [the fixture directory](../../../test/fixtures/flowchart) contain diagram strings copied from [Mermaid flowchart parser tests at commit 98a0945](https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/diagrams/flowchart/parser/flow.spec.js), the commit tagged `mermaid@12.0.0`:
+The first three `.mmd` files in [the fixture directory](../../../mermaid-trace-ts/test/fixtures/flowchart) contain diagram strings copied from [Mermaid flowchart parser tests at commit 98a0945](https://github.com/mermaid-js/mermaid/blob/98a0945418c76238f15df2afaddbba4272656c3b/packages/mermaid/src/diagrams/flowchart/parser/flow.spec.js), the commit tagged `mermaid@12.0.0`:
 
 | Fixture | Upstream test / adaptation |
 |---|---|
@@ -38,7 +38,7 @@ The first three `.mmd` files in [the fixture directory](../../../test/fixtures/f
 | `decisions.mmd` | `should add accTitle and accDescr to flow chart`; original template string including indentation |
 | `repeated-labels.mmd` | Project-authored: repeated node/edge labels, nested groups, and Latin Unicode glyphs |
 
-The [MIT notice](../../../test/fixtures/flowchart/LICENSE) is retained with the copied inputs. Font binaries come from the locked Fontsource package and are loaded into the test page, not copied into the reference SVG.
+The [MIT notice](../../../mermaid-trace-ts/test/fixtures/flowchart/LICENSE) is retained with the copied inputs. Font binaries come from the locked Fontsource package and are loaded into the test page, not copied into the reference SVG.
 
 ## Verification and limits
 
@@ -47,6 +47,6 @@ The [MIT notice](../../../test/fixtures/flowchart/LICENSE) is retained with the 
 - Node test runner: two passing integration tests (raw SVG baseline/determinism and explicit Mermaid parse-error rejection). Fonts must finish loading; attempted external requests are blocked and fail successful render passes.
 - A deliberate change to an expected SVG caused the comparison to fail and remained untouched by the test; the original was restored afterward.
 - Generated SVG parsed as XML and was visually reviewed in Chromium with the packaged font: 13 nodes and 10 edges across the corpus. Typecheck/build and frozen dependency installation were verified.
-- Canonical environment: macOS ARM64, Chromium `153.0.8010.12`, with exact versions/configuration/font hash in [environment.json](../../../test/baselines/environment.json). No cross-platform equivalence claim. The font is the Latin 400 subset; additional scripts/weights need explicit fixtures and font coverage.
+- Canonical environment: macOS ARM64, Chromium `153.0.8010.12`, with exact versions/configuration/font hash in [environment.json](../../../mermaid-trace-ts/test/baselines/environment.json). No cross-platform equivalence claim. The font is the Latin 400 subset; additional scripts/weights need explicit fixtures and font coverage.
 - Fresh pages isolate Mermaid state for each diagram. The harness does not claim upstream Mermaid is deterministic under arbitrary page state, font fallback, configuration, or diagram types.
 - Read [Mermaid configuration](https://mermaid.js.org/config/schema-docs/config.html) and [Playwright browser installation](https://playwright.dev/docs/browsers) when reviewing renderer upgrades. Baseline updates are explicit and never part of normal tests.
