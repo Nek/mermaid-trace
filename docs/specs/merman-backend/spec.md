@@ -47,3 +47,7 @@ TDD: the native producer test failed with `Merman producer not implemented` befo
 Workspace restructuring: the root scripts delegate to `mermaid-trace-ts/`, while the preview command keeps root-relative input paths. The pnpm lock remains shared. `mermaid-trace-rs/` reserves the native package boundary without inventing an unused Cargo crate. Root `pnpm test` passed all 19 tests after the move; raw upstream SVGs remain unchanged. Frozen workspace install and TypeScript build passed.
 
 MERMAN-1 implementation: `mermaid-trace-ts/src/producer/merman.ts` is the reusable native producer; `producer/preview.ts` explicitly routes flowcharts to the isolated legacy producer and other types to Merman. The latter adds inert whole-source metadata only. The native preview test failed with `Native preview producer not implemented` before implementation. Current checks pass without updating any upstream SVG/environment baseline. Exact native visual provenance remains the next story and S6/C8 is still incomplete.
+
+## Superseding decision
+
+2026-09-26: the user removed the legacy production compatibility requirement. [SEQ-1](../sequence-mapping/spec.md) supersedes the transitional routing in MERMAN-AC3. Legacy snapshots remain reference evidence. Future browser rendering through Rust/WASM is required by [BROWSER-1](../sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
