@@ -3,7 +3,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")" && pwd)
 upstream="$root/vendor/merman"
 revision=72c024776a4bf2dfb9a769b67910736229355906
-patch="$root/patches/sequence-provenance.patch"
+patch="$root/patches/native-provenance.patch"
 if [ ! -d "$upstream/.git" ]; then
   mkdir -p "$root/vendor"
   git clone --no-checkout --depth 1 https://github.com/Latias94/merman.git "$upstream"

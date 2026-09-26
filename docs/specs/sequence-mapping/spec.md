@@ -1,6 +1,6 @@
 # Native sequence mapping and browser rendering
 
-Decision, 2026-09-26: focus production on Merman. Remove the legacy Mermaid producer from the preview; preserve upstream snapshots only as reference tests. Do not wait for legacy feature parity before implementing native sequence selection.
+Decision, 2026-09-26: focus production on Merman. Remove the legacy Mermaid producer from the preview; preserve upstream snapshots only as reference tests. Implement native sequence selection without removing existing flowchart behavior; producer removal requires parity as defined by [migration principles](../../DESIGN.md#behavior-preserving-migrations).
 
 ## SEQ-1: native source-to-visual provenance
 
@@ -29,6 +29,6 @@ Native exact spans and UTF-16 conversion: 3 Rust integration tests pass, coverin
 
 Merman revision `72c024776a4bf2dfb9a769b67910736229355906` is pinned with a reproducible source patch; see [native setup](../../native-renderer.md). Native grammar locations become parser-owned occurrences keyed by actor/message/box identities. The existing preprocessing edit map preserves original byte coordinates; Trace converts them to zero-based UTF-16 half-open ranges. No text matching between SVG and source is used. Renderer-owned identity wrappers bind main pieces and labels, including mirrored participant visuals. `mermaid-trace/1` extends the experimental artifact to node, edge, note, activation and control kinds; the reader still accepts historical format 0 artifacts.
 
-One persistent native Rust process exchanges JSON lines with the Node host, reusing the renderer. The Rust library has no Node/DOM/process dependency. Other native families report missing element maps; production never falls back to Chromium. Generated sequence number/marker decorations have no invented source pieces.
+One persistent native Rust process exchanges JSON lines with the Node host, reusing the renderer. The Rust library has no Node/DOM/process dependency. Flowcharts also retain native node/reference, connector and label mapping under [MAP-NATIVE-1](../flowchart-mapping/spec.md#map-native-1-restore-flowchart-behavior-in-rust). Remaining native families report missing element maps; production never falls back to Chromium. Generated sequence number/marker decorations have no invented source pieces.
 
 Complete sequence conformance is still a release gate: configuration-derived participant aliases, all lifecycle/menu variants, repeated declaration/reference occurrence queries, math labels and wider browser behavior need dedicated cases. These limitations do not weaken the all-family release requirement. Manual in-app browser verification: clicking `Submit draft` copies `watch-preview.md:21:22-21:34`; Tab then Enter on its connector copies `watch-preview.md:21:3-21:34`. The live preview at port 5174 now runs the native Rust process. Dynamic browser/WASM delivery remains future work.

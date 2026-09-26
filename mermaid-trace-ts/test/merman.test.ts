@@ -49,8 +49,8 @@ test('MERMAN-AC2/3: preview uses native sequence SVG and maps sequence pieces wi
     const mapping = JSON.parse(decodeURIComponent(svg.match(/ data-mt-map="([^"]*)"/)![1]!));
     assert.equal(mapping.source, sequence);
     assert.equal(mapping.pieces.filter((piece: { kind: string }) => piece.kind === 'edge').length, 2);
-    assert.deepEqual(result.diagramOnly, ['flowchart']);
-    assert.doesNotMatch(result.svgs.flowchart!, /data-mt-role="edge-label"/);
+    assert.deepEqual(result.diagramOnly, []);
+    assert.match(result.svgs.flowchart!, /data-mt-role="edge-label"/);
     assert.deepEqual(await preview.render([]), { svgs: {}, diagramOnly: [] });
     await assert.rejects(preview.render([{ id: 'same', source: sequence }, { id: 'same', source: sequence }]), /duplicate/i);
     await assert.rejects(preview.render([{ id: 'unsafe"', source: sequence }]), /ID/i);

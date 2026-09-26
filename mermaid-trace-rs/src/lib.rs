@@ -46,17 +46,17 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
     .map_err(|e| e.to_string())?;
     let mut pieces = Vec::new();
     let mut attributes: BTreeMap<usize, String> = BTreeMap::new();
+    let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for mut piece in occurrences {
-        let key = piece["domId"].as_str().ok_or("Missing native identity")?;
-        let bindings: Vec<_> = root
-            .descendants()
-            .filter(|n| {
-                n.attribute("data-mt-key") == Some(key)
-                    && (n.attribute("data-mt-label") != Some("true")
-                        || piece.get("labelSpan").is_some())
-            })
-            .collect();
-        if bindings.is_empty() || piece["kind"] == "decoration" {
+        let key = piece["domId"]
+            .as_str()
+            .ok_or("Missing native identity")?
+            .to_owned();
+        if piece["kind"] == "decoration"
+            || !root
+                .descendants()
+                .any(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+        {
             continue;
         }
         for field in ["span", "labelSpan"] {
@@ -68,14 +68,49 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                 }
             }
         }
-        let id = format!("p{}", pieces.len());
-        piece["id"] = json!(id);
-        let kind = piece["kind"].as_str().ok_or("Missing native kind")?;
-        for node in bindings {
+        piece["id"] = json!(format!("p{}", pieces.len()));
+        groups.entry(key).or_default().push(pieces.len());
+        pieces.push(piece);
+    }
+    for (key, mut indices) in groups {
+        // Preserve occurrence queries while using the explicit declaration for visual activation.
+        indices.sort_by_key(|&i| pieces[i].get("labelSpan").is_none());
+        let primary = &pieces[indices[0]];
+        if primary["kind"] == "node"
+            && indices
+                .iter()
+                .filter(|&&i| pieces[i].get("labelSpan").is_some())
+                .count()
+                > 1
+        {
+            return Err("Unsupported source map: multiple explicit labels for one node".into());
+        }
+        let kind = primary["kind"].as_str().ok_or("Missing native kind")?;
+        let refs = indices
+            .iter()
+            .map(|&i| pieces[i]["id"].as_str().expect("assigned piece ID"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let label_ref = primary["id"].as_str().expect("assigned piece ID");
+        for node in root
+            .descendants()
+            .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+        {
             let label = node.attribute("data-mt-label") == Some("true");
-            bind(svg, node, &piece, &id, kind, label, &mut attributes)?;
+            if label && primary.get("labelSpan").is_none() {
+                continue;
+            }
+            bind(
+                svg,
+                node,
+                primary,
+                if label { label_ref } else { &refs },
+                kind,
+                label,
+                &mut attributes,
+            )?;
             // A label is a child of a renderer-owned identity; never associate it by its text.
-            if !label && piece.get("labelSpan").is_some() {
+            if !label && (primary.get("labelSpan").is_some() || kind == "node") {
                 for text in node.descendants().filter(|n| n.has_tag_name("text")) {
                     if text
                         .ancestors()
@@ -83,12 +118,11 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                         .find(|n| n.has_attribute("data-mt-key"))
                         == Some(node)
                     {
-                        bind(svg, text, &piece, &id, kind, true, &mut attributes)?;
+                        bind(svg, text, primary, label_ref, kind, true, &mut attributes)?;
                     }
                 }
             }
         }
-        pieces.push(piece);
     }
     let map = json!({"format":"mermaid-trace/1", "source":source, "pieces":pieces});
     attributes.insert(

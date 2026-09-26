@@ -249,6 +249,60 @@ async function assertEventually(predicate: () => boolean) {
   assert.ok(predicate(), 'Expected watcher diagnostic');
 }
 
+test('MAP-NATIVE-AC2/3: production flowchart selections, source pane, clipboard, repeated references and saves', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-flow-'));
+  const filename = join(directory, 'flow.md');
+  const source = '# Flowchart\n\n> ```mermaid\n> flowchart LR\n>   A[Draft] -->|review| B[Publish]\n>   A --> B\n> ```\n';
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const original = page.frameLocator('#source-frame').locator('#source');
+    const selected = () => original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent);
+    const label = page.locator('[data-mt-role=edge-label]').first();
+    await label.click();
+    assert.equal(await selected(), 'review');
+    const labelStart = source.indexOf('review');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source }, { start: labelStart, end: labelStart + 6 }));
+    const node = page.locator('[data-mt-role=node][data-mt-key="node:A"]');
+    assert.equal((await node.getAttribute('data-mt-refs'))!.split(' ').length, 2);
+    await node.locator('rect').first().click({ position: { x: 5, y: 5 } });
+    assert.equal(await selected(), 'A[Draft]');
+    await page.locator('[data-mt-role=node-label][data-mt-key="node:A"], [data-mt-role=node][data-mt-key="node:A"] [data-mt-role=node-label]').first().click();
+    assert.equal(await selected(), 'Draft');
+    const edge = page.locator('[data-mt-role=edge]').nth(1);
+    const point = await edge.evaluate((element: SVGGeometryElement) => {
+      const position = element.getPointAtLength(element.getTotalLength() / 2);
+      const screen = new DOMPoint(position.x, position.y).matrixTransform(element.getScreenCTM()!);
+      return { x: screen.x, y: screen.y };
+    });
+    await page.mouse.click(point.x, point.y + 3);
+    assert.equal(await selected(), '-->');
+    const arrow = source.lastIndexOf('-->');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source }, { start: arrow, end: arrow + 3 }));
+    await original.evaluate(element => {
+      const doc = element.ownerDocument; const text = element.firstChild!;
+      const start = text.textContent!.lastIndexOf('A -->');
+      const range = doc.createRange(); range.setStart(text, start); range.setEnd(text, start + 1);
+      doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+    });
+    await page.waitForSelector('[data-mt-role=node][data-mt-key="node:A"][data-mt-selected=true]');
+    await page.locator('svg').focus(); await page.keyboard.press('Enter');
+    assert.equal(await selected(), source.slice(source.indexOf('> ```'), source.length));
+    await writeFile(filename, source.replace('Draft', 'Saved'));
+    await page.locator('[data-mt-role=node-label]').filter({ hasText: 'Saved' }).waitFor();
+    await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await original.textContent(), source.replace('Draft', 'Saved'));
+  } finally {
+    await browser.close(); await preview?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 
 test('WATCH-AC2: shutdown closes incomplete HTTP connections', { timeout: 10_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-close-'));

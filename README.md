@@ -2,9 +2,9 @@
 
 Connect Mermaid source, its AST, and diagram elements so a visual selection can identify the exact source that produced it.
 
-**Status:** native Rust/Merman sequence mapping, independent SVG activation, and a live Markdown/Mermaid CLI. Work is underway on `feat/merman-backend`; no Trace package or crate is published yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
+**Status:** native Rust/Merman flowchart and sequence mapping, independent SVG activation, and a live Markdown/Mermaid CLI. Work is underway on `feat/merman-backend`; no Trace package or crate is published yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
 
-**Required release scope:** source ↔ AST ↔ visual mapping for all built-in Mermaid diagram types, including experimental types and renderer variants. Rendering alone or whole-diagram fallback does not count as element support. The native preview maps sequence participants, messages/labels, notes, activations and control blocks. Other families currently have whole-diagram selection only; [the coverage checklist](docs/specs/diagram-coverage/spec.md) tracks the unfinished requirement.
+**Required release scope:** source ↔ AST ↔ visual mapping for all built-in Mermaid diagram types, including experimental types and renderer variants. Rendering alone or whole-diagram fallback does not count as element support. The native preview maps flowchart node occurrences, connectors and labels, plus sequence participants, messages/labels, notes, activations and control blocks. Other families currently have whole-diagram selection only; [the coverage checklist](docs/specs/diagram-coverage/spec.md) tracks the unfinished requirement.
 
 ## Products and boundaries
 
@@ -39,7 +39,7 @@ Root commands build Rust and TypeScript. Each language owns its manifest; pnpm a
 | [Diagram coverage](docs/specs/diagram-coverage/spec.md) | Required all-family coverage and release acceptance |
 | [Watch CLI](docs/specs/watch-cli/spec.md) | Live Markdown/Mermaid preview without source or debug UI |
 | [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
-| [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
+| [Native flowchart mapping](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
 | [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
 | [SVG baselines](docs/specs/svg-baselines/spec.md) | Upstream fixtures, deterministic rendering, and verification |
 | [Toolchain](docs/specs/toolchain/spec.md) | Pinned tools, setup contract, and verification |
@@ -93,7 +93,7 @@ By default, the page contains only rendered Markdown/diagrams and selection high
 
 Use standard fenced `mermaid` blocks, as supported by Mermaid CLI and Markdown renderers. The existing markdown-it provenance adapter and CommonMark mdast/hast view preserve original file locations; relative images resolve beside the document. `.md`, `.markdown`, `.mmd`, and `.mermaid` inputs are supported. External Mermaid include syntax and GFM extensions are not introduced.
 
-Sequence participants, message connectors and labels, notes, activations, boxes and nested controls select exact source ranges. Clicking copies the location immediately. Background activation selects the full fenced block. The CLI runs one native Rust process under Node and reuses its renderer across saves; it uses neither WASM nor Chromium. Other diagram families remain explicitly diagram-only until their native provenance is implemented. All-family mapping remains a release requirement.
+Flowchart nodes/references, connectors and labels, plus sequence participants, messages, notes, activations, boxes and nested controls select exact source ranges. Clicking copies the location immediately. Background activation selects the full fenced block. The CLI runs one native Rust process under Node and reuses its renderer across saves; it uses neither WASM nor Chromium. Other diagram families remain explicitly diagram-only until their native provenance is implemented. All-family mapping remains a release requirement.
 
 Future browser rendering will compile the same Rust core to WASM, optionally in a Worker. Static SVG and separate activation remain available independently; see [BROWSER-1](docs/specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
 

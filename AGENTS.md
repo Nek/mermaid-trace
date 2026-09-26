@@ -9,6 +9,12 @@
 
 All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs/`, including feature specs.
 
+## Behavior-preserving migrations
+
+- A backend or language migration must preserve every working user behavior. Record the existing behavior and keep its acceptance tests mandatory; implement equivalent behavior in the replacement before removing the working route. A request to focus on the new implementation does not authorize regressions.
+- Never weaken an acceptance test to make a migration pass (for example, changing a required mapping into an expected missing mapping). Change intended behavior only when the user explicitly agrees, and update the spec with that decision.
+- See [migration principles](docs/DESIGN.md#behavior-preserving-migrations).
+
 ## TDD and commits
 
 - Always use TDD for behavioral changes: write a test for the required project behavior, run it and confirm it fails for the expected reason, implement the smallest change that passes, then refactor with tests green. Fixes start with a failing regression test. Do not substitute tests of the compiler or dependencies for tests of project behavior.
