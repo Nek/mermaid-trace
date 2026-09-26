@@ -4,6 +4,8 @@ import { mkdtemp, writeFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createConnection } from 'node:net';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { watchPreview } from '../src/watch.js';
@@ -246,3 +248,25 @@ async function assertEventually(predicate: () => boolean) {
   }
   assert.ok(predicate(), 'Expected watcher diagnostic');
 }
+
+
+test('WATCH-AC2: shutdown closes incomplete HTTP connections', { timeout: 10_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-close-'));
+  const filename = join(directory, 'close.md'); await writeFile(filename, '# Close');
+  const preview = await watchPreview(filename, { port: 0 });
+  const socket = createConnection({ host: '127.0.0.1', port: Number(new URL(preview.url).port) });
+  socket.on('error', error => assert.equal((error as NodeJS.ErrnoException).code, 'ECONNRESET', 'server shutdown may reset the unfinished request'));
+  let closing: Promise<void> | undefined;
+  try {
+    await once(socket, 'connect');
+    socket.write('GET / HTTP/1.1\r\nHost: localhost\r\n');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    closing = preview.close();
+    const closed = await Promise.race([closing.then(() => true), new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), 1000); })]);
+    clearTimeout(timer);
+    assert.equal(closed, true, 'shutdown must not wait for a browser connection to finish');
+  } finally {
+    socket.destroy(); await (closing ?? preview.close());
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -61,3 +61,7 @@ Verification: CLI help/unknown-option tests and the source-pane regression faile
 | WATCH-SOURCE-AC3 | Escaped script-like text, CRLF/Unicode offsets, source refresh after save | Passed |
 
 Manual in-app inspection at port 5174 verified the pane and visible source highlighting; preview remains running with `--source`. Clipboard and precise sequence ranges are verified in Chromium. No Rust/producer changes, dependencies or editing UI.
+
+## Shutdown regression
+
+WATCH-AC2 also requires shutdown to terminate outstanding HTTP connections, including incomplete browser requests during reload. A source-pane regression intermittently hung while closing its preview. A bounded raw-client test reproduced the root cause: `http.close()` waited for an unfinished request. Stop accepting connections, then use Node's `closeAllConnections()` to release them before closing the renderer. Existing browser save/reload/shutdown assertions remain mandatory. The bounded regression failed before the fix and now passes; browser save/reload and source-pane shutdown checks also pass.

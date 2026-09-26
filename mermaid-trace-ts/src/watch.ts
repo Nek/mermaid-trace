@@ -111,7 +111,10 @@ export async function watchPreview(input: string, options: { sourceView?: boolea
   const close = async () => {
     closed = true;
     await server.close();
-    if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
+    if (http.listening) await new Promise<void>((resolve, reject) => {
+      http.close(error => error ? reject(error) : resolve());
+      http.closeAllConnections();
+    });
     try { await pending; } finally { await producer?.close(); }
   };
   try {
