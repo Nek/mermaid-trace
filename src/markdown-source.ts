@@ -14,6 +14,7 @@ export type Origin = { readonly logical: Span; readonly original: Span };
 export type MarkdownBlock = {
   readonly id: string;
   readonly source: string;
+  readonly span: Span;
   readonly document: MarkdownDocument;
   readonly origins: readonly Origin[];
 };

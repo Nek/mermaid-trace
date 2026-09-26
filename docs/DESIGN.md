@@ -12,7 +12,7 @@ The producer embeds inert source locations and AST references/projections. Gener
 
 Prefer source metadata inside SVG for standalone portability; retain an optional encoded preceding comment for HTML-fragment compatibility. Exact format and coordinates remain proposed until M1. The same artifact contract will let the TypeScript activation library consume Rust-produced SVG.
 
-Markdown integration is an early architectural constraint. Thin renderer adapters own fence extraction and original-document provenance; core spans refer to the exact logical Mermaid input. A start-line offset cannot represent all nested/normalized Markdown. Begin with markdown-it and verify VS Code preview hooks during feasibility; add unified/rehype before the integration milestone closes. See [integration research](markdown-integration.md).
+Markdown integration is an early architectural constraint. Thin renderer adapters own fence extraction and original-document provenance; core spans refer to the exact logical Mermaid input. A start-line offset cannot represent all nested/normalized Markdown. Begin with markdown-it and verify VS Code preview hooks during feasibility; add unified/rehype before the integration milestone closes. The [document-selection producer](specs/document-selection/spec.md) now uses mdast/hast for CommonMark block and inline positions while reusing the markdown-it fence-origin adapter. A document-wide range coordinates Markdown and diagram selection; the SVG artifact stays independent. See [integration research](markdown-integration.md).
 
 ## Working principles
 

@@ -46,6 +46,6 @@ Non-Mermaid content retains its renderer's behavior. Synchronous fence hooks con
 | C4 | Renderer-free consumer bundle and browser lifecycle checks | ACT-1 passes saved-SVG gestures, isolation and disposal in pinned Chromium; package distribution pending |
 | C5 | Host adapter, stale source, and trust-boundary cases | Stale source/document and unchanged-DOM rejection pass; external-host sanitization acceptance pending |
 | C6 | Shared TypeScript/Rust artifact conformance | Not run |
-| C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | MD-1/ACT-1 pass markdown-it provenance and browser consumption; unified, sanitizer and host replacement integration pending |
+| C7 | Real Markdown pipelines, exact extraction ranges, and insertion lifecycle | MD-1/ACT-1/DOC-1 pass markdown-it provenance, sanitized mdast/hast document rendering and browser consumption; general plugins and host replacement integration pending |
 
 Evidence and exact scope: [mapping proof](../flowchart-mapping/spec.md), [Markdown provenance](../markdown-provenance/spec.md), [activation/demo](../svg-activation/spec.md). Passing experimental slices do not freeze artifact v1 or complete cross-host conformance.

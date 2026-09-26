@@ -25,3 +25,8 @@ Ordinary code remains ordinary code:
 ```js
 const meaning = "source ↔ diagram";
 ```
+
+## Inline text selection
+
+Select **bold text**, *emphasis*, `inline code`, an escaped \*star\*, or an entity: &amp;.
+Drag across lines and formatting to select the corresponding original Markdown.

@@ -44,7 +44,9 @@ export function activateSvg(svg: SVGSVGElement, options: {
       : span.start < range.end && span.end > range.start;
     const pieces = mapping.pieces.filter(piece => ranges.some(range => overlaps(piece.span, range)))
       .sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
-    const selected = new Set(pieces.map(piece => piece.id));
+    const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
+    set(svg, 'data-mt-selected', whole ? 'true' : null);
+    const selected = new Set(whole ? [] : pieces.map(piece => piece.id));
     const labelOnly = new Set(pieces.filter(piece => piece.labelSpan && ranges.filter(range => overlaps(piece.span, range))
       .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end))
       .map(piece => piece.id));
@@ -62,8 +64,8 @@ export function activateSvg(svg: SVGSVGElement, options: {
   };
   const targetFor = (event: Event) => {
     const element = event.target instanceof Element
-      ? hitTargets.get(event.target) ?? event.target.closest('[data-mt-refs]') : null;
-    return element && element.closest('svg') === svg && elements.includes(element) ? element as SVGElement : null;
+      ? hitTargets.get(event.target) ?? event.target.closest('[data-mt-refs]') ?? svg : null;
+    return element && element.closest('svg') === svg && (element === svg || elements.includes(element)) ? element as SVGElement : null;
   };
   const pointerFocus = (event: MouseEvent) => {
     const element = targetFor(event);
@@ -79,10 +81,16 @@ export function activateSvg(svg: SVGSVGElement, options: {
       event.preventDefault();
       element.focus({ preventScroll: true });
     }
+    if (element === svg) {
+      emit({ trigger: event.type === 'focusin' ? 'focus' : 'activation', role: 'diagram', pieces: mapping.pieces, span: { start: 0, end: mapping.source.length } });
+      return;
+    }
     emit({ trigger: event.type === 'focusin' ? 'focus' : 'activation', role: element.getAttribute('data-mt-role')!, pieces: refs(element).map(id => byId.get(id)!),
       span: { start: Number(element.getAttribute('data-mt-start')), end: Number(element.getAttribute('data-mt-end')) } });
   };
   set(svg, 'role', 'group');
+  set(svg, 'tabindex', '0');
+  set(svg, 'aria-label', 'Select whole diagram');
   for (const element of elements) {
     const piece = byId.get(refs(element)[0]!)!;
     set(element, 'tabindex', '0');

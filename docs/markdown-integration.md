@@ -1,6 +1,6 @@
 # Markdown integration: first-class delivery
 
-Research date: 2026-09-25. Markdown embedding is an initial product requirement: the first end-to-end acceptance page must come from a real Markdown renderer, not handwritten HTML alone. Implementation update (2026-09-26): [MD-1](specs/markdown-provenance/spec.md) verifies markdown-it extraction and exact offsets; [ACT-1](specs/svg-activation/spec.md) supplies the generated interactive page. The other integrations below remain researched designs.
+Research date: 2026-09-25. Markdown embedding is an initial product requirement: the first end-to-end acceptance page must come from a real Markdown renderer, not handwritten HTML alone. Implementation update (2026-09-26): [MD-1](specs/markdown-provenance/spec.md) verifies markdown-it extraction and exact offsets; [ACT-1](specs/svg-activation/spec.md) supplies the generated interactive page. [DOC-1](specs/document-selection/spec.md) implements a CommonMark mdast/hast document view with safe HTML generation and rendered-text selection. It consumes the existing fence provenance and trusted SVGs; a general remark plugin, GFM extensions and VS Code integration remain future work.
 
 ## Shared flow
 

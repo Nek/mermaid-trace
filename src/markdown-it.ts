@@ -35,7 +35,8 @@ export function prepareMarkdown(document: MarkdownDocument, namespace: string): 
           original: { start: originalEnd, end: original.index + original[0].length } });
       }
     }
-    const block = { id: `${namespace}-${blocks.length}`, source: token.content, document: { ...document }, origins };
+    const block = { id: `${namespace}-${blocks.length}`, source: token.content, document: { ...document }, origins,
+      span: { start: lines[token.map[0]]!.index, end: lines[token.map[1]]?.index ?? document.source.length } };
     blocks.push(block);
     byToken.set(index, block);
   }

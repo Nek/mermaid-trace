@@ -2,10 +2,13 @@ import { activateSvg } from './svg-activation.js';
 import type { Activation, Selection } from './svg-activation.js';
 import { fromMarkdown, toMarkdown, formatLocation } from './markdown-source.js';
 import type { MarkdownBlock, MarkdownDocument } from './markdown-source.js';
+import { renderedTextSelection } from './document-selection.js';
+import type { DocumentTarget, DocumentText } from './markdown-view.js';
 import type { Span } from './flowchart-source.js';
 
 const data = JSON.parse(document.querySelector('#demo-data')!.textContent!) as {
   document: MarkdownDocument; blocks: readonly MarkdownBlock[];
+  targets: readonly DocumentTarget[]; texts: readonly DocumentText[];
 };
 const source = document.querySelector<HTMLTextAreaElement>('#source')!;
 const status = document.querySelector<HTMLElement>('#selection-status')!;
@@ -29,21 +32,38 @@ const copyLocation = async () => {
 };
 const instances: { block: MarkdownBlock; activation: Activation }[] = [];
 const reportError = (error: unknown) => { status.textContent = `Mapping unavailable: ${error instanceof Error ? error.message : String(error)}`; };
-let diagramRange: Span | undefined;
+const article = document.querySelector('article')!;
+let selectedRange: Span | undefined;
+const selectDocument = (span: Span, copy: boolean, targetId?: string) => {
+  const native = document.getSelection();
+  if (targetId !== '' && native?.anchorNode && article.contains(native.anchorNode)) native.removeAllRanges();
+  selectedRange = span;
+  source.setSelectionRange(span.start, span.end);
+  showLocation(span);
+  occurrences.replaceChildren();
+  for (const { block, activation } of instances) activation.highlight(fromMarkdown(block, span, data.document));
+  const inDiagram = data.blocks.some(block => block.span.start <= span.start && block.span.end >= span.end);
+  const target = targetId ?? (inDiagram ? undefined : data.targets.filter(target => target.span.start <= span.start && target.span.end >= span.end)
+    .sort((a, b) => (a.span.end - a.span.start) - (b.span.end - b.span.start))[0]?.id);
+  for (const element of article.querySelectorAll('[data-md-target]')) {
+    element.toggleAttribute('data-md-selected', element.getAttribute('data-md-target') === target);
+  }
+  if (copy) void copyLocation();
+};
 
 try {
   for (const block of data.blocks) {
     const svg = document.querySelector<SVGSVGElement>(`[data-mt-block="${block.id}"] svg`)!;
     const onSelect = (selection: Selection) => {
       try {
+        if (selection.role === 'diagram') {
+          selectDocument(block.span, selection.trigger === 'activation');
+          status.textContent = `Whole diagram · ${block.id} · including Markdown fences`;
+          return;
+        }
         const { segments, envelope } = toMarkdown(block, selection.span, data.document);
-        diagramRange = envelope;
-        source.setSelectionRange(envelope.start, envelope.end);
-        showLocation(envelope);
-        if (selection.trigger === 'activation') void copyLocation();
+        selectDocument(envelope, selection.trigger === 'activation');
         status.textContent = `${selection.role} · ${selection.pieces[0]!.semanticId} · ${block.id} · exact Markdown segments ${segments.map(s => `[${s.start}, ${s.end})`).join(', ')}${segments.length > 1 ? ' · editor selection includes intervening Markdown prefixes' : ''}`;
-        for (const instance of instances) instance.activation.highlight(instance.block.id === block.id ? [selection.span] : []);
-        occurrences.replaceChildren();
         const primary = selection.pieces[0]!;
         const alternatives = activation.mapping.pieces.filter(piece => piece.kind === primary.kind && piece.domId === primary.domId);
         for (const [index, piece] of alternatives.entries()) {
@@ -57,18 +77,45 @@ try {
     const activation = activateSvg(svg, { source: block.source, onSelect });
     instances.push({ block, activation });
   }
-  const reverse = () => {
-    // Ignore the queued textarea event caused by our own diagram selection.
-    if (diagramRange?.start === source.selectionStart && diagramRange.end === source.selectionEnd) return;
-    diagramRange = undefined;
+  const targetFor = (event: Event) => {
+    if (!(event.target instanceof Element) || event.target.closest('svg, a, button, input')) return;
+    const element = event.target.closest<HTMLElement>('[data-md-target]');
+    const target = data.targets.find(target => target.id === element?.getAttribute('data-md-target'));
+    return element && target ? { element, target } : undefined;
+  };
+  const blockGesture = (event: Event) => {
+    if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+    // Let the browser complete text drags before interpreting a click as a block selection.
+    if (event.type === 'click' && !document.getSelection()?.isCollapsed) return;
+    const result = targetFor(event);
+    if (!result) return;
+    if (event.type !== 'focusin') {
+      event.preventDefault();
+      result.element.focus({ preventScroll: true });
+    }
+    selectDocument(result.target.span, event.type !== 'focusin', result.target.id);
+    status.textContent = `${result.target.kind} · original Markdown`;
+  };
+  article.addEventListener('focusin', blockGesture);
+  article.addEventListener('click', blockGesture);
+  article.addEventListener('keydown', blockGesture);
+  const textGesture = (event: Event) => {
+    if (event.target instanceof Element && event.target.closest('svg')) return;
     try {
-      showLocation({ start: source.selectionStart, end: source.selectionEnd });
-      let count = 0;
-      for (const { block, activation } of instances) {
-        count += activation.highlight(fromMarkdown(block, { start: source.selectionStart, end: source.selectionEnd }, data.document)).length;
-      }
-      occurrences.replaceChildren();
-      status.textContent = `${count} source occurrence${count === 1 ? '' : 's'} highlighted.`;
+      const selection = renderedTextSelection(article, data.texts, data.blocks);
+      if (!selection) return;
+      selectDocument(selection.span, event.type === 'pointerup', '');
+      status.textContent = selection.exact ? 'Text selection · original Markdown' : 'Text selection · enclosing Markdown construct (transformed text)';
+    } catch (error) { reportError(error); }
+  };
+  article.addEventListener('pointerup', textGesture);
+  article.addEventListener('keyup', textGesture);
+  const reverse = () => {
+    // Ignore the queued textarea event caused by our own preview selection.
+    if (selectedRange?.start === source.selectionStart && selectedRange.end === source.selectionEnd) return;
+    try {
+      selectDocument({ start: source.selectionStart, end: source.selectionEnd }, false);
+      status.textContent = 'Source selection · matching Markdown and diagram elements highlighted.';
     } catch (error) { reportError(error); }
   };
   source.addEventListener('select', reverse);
