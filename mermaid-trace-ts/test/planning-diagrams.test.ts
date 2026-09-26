@@ -10,7 +10,7 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyPlanning(source: string, key: string, expected: string, label: string) {
+async function verifyPlanning(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string])[] = []) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-planning-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -34,13 +34,19 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
     }, activation);
     const first = page.locator('svg').first();
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
-    await shape.first().click({ position: { x: 3, y: 3 } });
+    const cardRect = shape.first().locator(':scope > rect');
+    await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: 3, y: 3 } });
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
     await first.locator(`[data-mt-key="${key}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`).first().click();
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+    for (const [controlKey, text] of controls) {
+      await first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`).first().click();
+      const control = await page.evaluate(() => (window as any).events.at(-1));
+      assert.equal(source.slice(control.span.start, control.span.end), text);
+    }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     await writeFile(filename, markdown);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
@@ -64,5 +70,9 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
 }
 
 test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard, source and saves', { timeout: 60_000 }, async () => {
-  await verifyPlanning(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀');
+  await verifyPlanning(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
+});
+
+test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
+  await verifyPlanning('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:Alice', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });

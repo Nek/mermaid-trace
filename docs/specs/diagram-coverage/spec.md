@@ -25,7 +25,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 | `c4` | Missing |
 | `gitGraph` | Missing |
 | `gantt` | Native task bars/milestones/labels, sections and title implemented; complete syntax/configuration conformance pending |
-| `journey` | Next: JOURNEY-1 planned after Gantt |
+| `journey` | Native tasks/labels, scores, actor references/legend, sections and title implemented; complete conformance pending |
 | `pie` | Missing |
 | `quadrantChart` | Missing |
 | `xychart` | Missing |

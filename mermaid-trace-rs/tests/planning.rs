@@ -59,3 +59,64 @@ fn gantt_plan_ac2_provenance_keeps_plain_native_svg_unchanged() {
         support::strip_trace(baseline["svg"].as_str().unwrap())
     );
 }
+
+const JOURNEY: &str = "journey\r\n%% 😀\r\n  title Trip 😀\r\n  section Morning\r\n  Same 😀 : 5 : Alice, Bob\r\n  Same 😀 : 2 : Alice\r\n  section Evening\r\n  Rest : 3 : Bob\r\n";
+
+#[test]
+fn journey_plan_ac1_2_tasks_scores_people_and_sections_keep_original_spans() {
+    let result = mermaid_trace_rs::render("planning-journey", JOURNEY).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let utf16: Vec<_> = JOURNEY.encode_utf16().collect();
+    let slice = |span: &Value| {
+        String::from_utf16(
+            &utf16
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+        )
+        .unwrap()
+    };
+    let tasks: Vec<_> = pieces.iter().filter(|p| p["kind"] == "node").collect();
+    assert_eq!(
+        tasks.iter().map(|p| slice(&p["span"])).collect::<Vec<_>>(),
+        [
+            "Same 😀 : 5 : Alice, Bob",
+            "Same 😀 : 2 : Alice",
+            "Rest : 3 : Bob"
+        ]
+    );
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|p| slice(&p["labelSpan"]))
+            .collect::<Vec<_>>(),
+        ["Same 😀", "Same 😀", "Rest"]
+    );
+    assert_ne!(tasks[0]["domId"], tasks[1]["domId"]);
+    assert!(
+        pieces
+            .iter()
+            .any(|p| p["domId"] == "journey:score:0" && slice(&p["span"]) == "5")
+    );
+    assert!(
+        pieces
+            .iter()
+            .any(|p| p["domId"] == "journey:actor:1:Alice" && slice(&p["span"]) == "Alice")
+    );
+    assert_eq!(
+        pieces
+            .iter()
+            .filter(|p| p["domId"] == "journey:actor:Alice")
+            .count(),
+        2
+    );
+    assert!(
+        pieces
+            .iter()
+            .any(|p| slice(&p["span"]) == "section Evening")
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "planning-journey", JOURNEY).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}

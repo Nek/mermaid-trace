@@ -11,10 +11,10 @@ index 7d5d02b6..5fb38f79 100644
          acc_descr: None,
          title: None,
 diff --git a/crates/merman-core/src/diagram/mod.rs b/crates/merman-core/src/diagram/mod.rs
-index fe6e3b0e..e34b9014 100644
+index fe6e3b0e..ba7228d0 100644
 --- a/crates/merman-core/src/diagram/mod.rs
 +++ b/crates/merman-core/src/diagram/mod.rs
-@@ -525,6 +525,19 @@ impl RenderSemanticParseOutput {
+@@ -525,6 +525,20 @@ impl RenderSemanticParseOutput {
          &self.model
      }
  
@@ -22,6 +22,7 @@ index fe6e3b0e..e34b9014 100644
 +        match &mut self.model {
 +            RenderSemanticModel::Sequence(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Gantt(model) => Some(&mut model.source_occurrences),
++            RenderSemanticModel::Journey(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Flowchart(_) => self
 +                .context
 +                .flowchart
@@ -373,6 +374,106 @@ index 242dc0f3..a15eda6d 100644
 +    }
      Ok(Ok(()))
  }
+diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
+index 68bde024..518d61f5 100644
+--- a/crates/merman-core/src/diagrams/journey.rs
++++ b/crates/merman-core/src/diagrams/journey.rs
+@@ -56,6 +56,8 @@ pub struct JourneyRenderTask {
+ 
+ #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+ pub struct JourneyDiagramRenderModel {
++    #[serde(skip)]
++    pub source_occurrences: Vec<Value>,
+     pub title: Option<String>,
+     #[serde(rename = "accTitle")]
+     pub acc_title: Option<String>,
+@@ -394,6 +396,13 @@ fn parse_journey_semantic_source(
+     control.checkpoint()?;
+     let mut db = JourneyDb::default();
+     db.clear();
++    let trace_source = meta
++        .effective_config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        == Some(true);
++    let mut source_occurrences = Vec::new();
+     let mut editor_facts = EditorSemanticFacts::new();
+     let mut lines = LineCursor::new(code);
+     let mut header_seen = false;
+@@ -443,6 +452,10 @@ fn parse_journey_semantic_source(
+             editor_facts.push_directive_prefix("title");
+             let value = spanned_keyword_value(line, line_start, "title");
+             if let Some(value) = value {
++                if trace_source {
++                    source_occurrences.retain(|p: &Value| p["domId"] != "journey:title");
++                    source_occurrences.push(json!({"kind":"control","semanticId":"title","domId":"journey:title","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(value.start,value.end)}));
++                }
+                 push_journey_payload_fact(
+                     &mut editor_facts,
+                     value,
+@@ -513,6 +526,9 @@ fn parse_journey_semantic_source(
+                 let section_text = value.text.split(':').next().unwrap_or("").trim();
+                 if !section_text.is_empty() {
+                     let section_start = value.start + value.text.find(section_text).unwrap_or(0);
++                    if trace_source {
++                        source_occurrences.push(json!({"kind":"control","semanticId":v,"domId":format!("journey:section:{v}"),"span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(section_start,section_start+section_text.len())}));
++                    }
+                     editor_facts.push_symbol(EditorSemanticSymbol::outline(
+                         section_text.to_string(),
+                         Some("journey section".to_string()),
+@@ -577,6 +593,10 @@ fn parse_journey_semantic_source(
+             continue;
+         }
+ 
++        let task_id = db.tasks.len();
++        if trace_source {
++            source_occurrences.push(json!({"kind":"node","semanticId":format!("task:{task_id}"),"domId":format!("journey:task:{task_id}"),"span":SourceSpan::new(task_start,line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(task_start,task_end)}));
++        }
+         let rest_source = &stripped[colon + ':'.len_utf8()..];
+         let rest = rest_source.trim_start();
+         let rest_start =
+@@ -591,6 +611,9 @@ fn parse_journey_semantic_source(
+         let score_text = rest[..score_end].trim();
+         if !score_text.is_empty() {
+             let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
++            if trace_source {
++                source_occurrences.push(json!({"kind":"control","semanticId":format!("score:{task_id}"),"domId":format!("journey:score:{task_id}"),"span":SourceSpan::new(score_start,score_start+score_text.len())}));
++            }
+             editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
+                 EditorExpectedSyntaxKind::Payload,
+                 SourceSpan::new(score_start, score_start + score_text.len()),
+@@ -612,6 +635,22 @@ fn parse_journey_semantic_source(
+                     + score_end
+                     + ':'.len_utf8()
+                     + people_source.find(people).unwrap_or(0);
++                if trace_source {
++                    let mut offset = people_start;
++                    for actor_source in people.split(',') {
++                        let actor = actor_source.trim();
++                        let start = offset + leading_whitespace_len(actor_source);
++                        if !actor.is_empty() {
++                            for key in [
++                                format!("journey:actor:{task_id}:{actor}"),
++                                format!("journey:actor:{actor}"),
++                            ] {
++                                source_occurrences.push(json!({"kind":"control","semanticId":actor,"domId":key,"span":SourceSpan::new(start,start+actor.len())}));
++                            }
++                        }
++                        offset += actor_source.len() + 1;
++                    }
++                }
+                 editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
+                     EditorExpectedSyntaxKind::Payload,
+                     SourceSpan::new(people_start, people_start + people.len()),
+@@ -642,6 +681,7 @@ fn parse_journey_semantic_source(
+     control.checkpoint()?;
+     let actors = db.actors_sorted();
+     let model = header_seen.then(|| JourneyDiagramRenderModel {
++        source_occurrences,
+         title: (!db.title.is_empty()).then_some(db.title),
+         acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
+         acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
 diff --git a/crates/merman-core/src/diagrams/sequence/ast.rs b/crates/merman-core/src/diagrams/sequence/ast.rs
 index e42b2af3..f84a2bb7 100644
 --- a/crates/merman-core/src/diagrams/sequence/ast.rs
@@ -7076,6 +7177,168 @@ index 5e83e058..84402f73 100644
          x = fmt(layout.title_x),
          y = fmt(layout.title_y),
          txt = escape_xml(title),
+diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
+index 61faa868..3338bc9e 100644
+--- a/crates/merman-render/src/svg/parity/journey/render.rs
++++ b/crates/merman-render/src/svg/parity/journey/render.rs
+@@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+         text_box: JourneyTextBox,
+         style: JourneyTextStyle<'_>,
+         text_fill: &str,
++        trace: &str,
+     ) {
+         let JourneyTextBox {
+             x,
+@@ -282,7 +283,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+         let cx = x + width / 2.0;
+         let cy = y + height / 2.0;
+ 
+-        out.push_str("<switch>");
++        let _ = write!(out, "<switch{trace}>");
+         let _ = write!(
+             out,
+             r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
+@@ -379,6 +380,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+         );
+     }
+ 
++    crate::svg::parity::write_source_metadata(&mut out, &model.source_occurrences);
+     let theme = PresentationTheme::new(effective_config).journey();
+     let css = journey_css(diagram_id, effective_config, &theme);
+     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+@@ -395,7 +397,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+     for item in &layout.actor_legend {
+         let _ = write!(
+             &mut out,
+-            r##"<circle cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"/>"##,
++            r##"<circle{trace} cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"/>"##,
++            trace = crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("journey:actor:{}", item.actor),
++                false
++            ),
+             cx = fmt(item.circle_cx),
+             cy = fmt(item.circle_cy),
+             pos = item.pos,
+@@ -405,7 +412,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+         for line in &item.label_lines {
+             let _ = write!(
+                 &mut out,
+-                r#"<text x="{x}" y="{y}" class="legend"><tspan x="{tx}">{text}</tspan></text>"#,
++                r#"<text{trace} x="{x}" y="{y}" class="legend"><tspan x="{tx}">{text}</tspan></text>"#,
++                trace = crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("journey:actor:{}", item.actor),
++                    false
++                ),
+                 x = fmt(line.x),
+                 y = fmt(line.y),
+                 tx = fmt(line.tspan_x),
+@@ -424,7 +436,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+             let section_class = format!("journey-section section-type-{}", section.num);
+             let _ = write!(
+                 &mut out,
+-                r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
++                r##"<g{trace}><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
++                trace = crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("journey:section:{}", section.section),
++                    false
++                ),
+                 x = fmt(section.x),
+                 y = fmt(section.y),
+                 fill = escape_attr(&section.fill),
+@@ -447,6 +464,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+                     task_font_family,
+                 },
+                 &theme.text_color,
++                &crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("journey:section:{}", section.section),
++                    true,
++                ),
+             );
+             out.push_str("</g>");
+         }
+@@ -455,7 +477,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+ 
+         let _ = write!(
+             &mut out,
+-            r##"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
++            r##"<g{trace}><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
++            trace = crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("journey:task:{}", task.index),
++                false
++            ),
+             id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
+             x1 = fmt(task.line_x1),
+             y1 = fmt(task.line_y1),
+@@ -466,12 +493,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+ 
+         let _ = write!(
+             &mut out,
+-            r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
++            r#"<circle{trace} cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
++            trace = crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("journey:score:{}", task.index),
++                false
++            ),
+             cx = fmt(task.face_cx),
+             cy = fmt_task_face_y(task.face_cy),
+             r = fmt(JOURNEY_FACE_RADIUS_PX),
+         );
+-        out.push_str("<g>");
++        let _ = write!(
++            out,
++            "<g{}>",
++            crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("journey:score:{}", task.index),
++                false
++            )
++        );
+         let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
+         let eye_r = 1.5;
+         let _ = write!(
+@@ -534,7 +574,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+         for c in &task.actor_circles {
+             let _ = write!(
+                 &mut out,
+-                r##"<circle cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"><title>{title}</title></circle>"##,
++                r##"<circle{trace} cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"><title>{title}</title></circle>"##,
++                trace = crate::svg::parity::source_attrs(
++                    &model.source_occurrences,
++                    &format!("journey:actor:{}:{}", task.index, c.actor),
++                    false
++                ),
+                 cx = fmt(c.cx),
+                 cy = fmt(c.cy),
+                 pos = c.pos,
+@@ -559,6 +604,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+                 task_font_family,
+             },
+             &theme.text_color,
++            &crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                &format!("journey:task:{}", task.index),
++                true,
++            ),
+         );
+ 
+         out.push_str("</g>");
+@@ -567,7 +617,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+     if let Some(title) = diagram_title {
+         let _ = write!(
+             &mut out,
+-            r#"<text x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
++            r#"<text{trace} x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
++            trace =
++                crate::svg::parity::source_attrs(&model.source_occurrences, "journey:title", false),
+             x = fmt(layout.title_x),
+             fs = escape_attr(title_font_size),
+             y = fmt(layout.title_y),
 diff --git a/crates/merman-render/src/svg/parity/sequence/activation.rs b/crates/merman-render/src/svg/parity/sequence/activation.rs
 index 5d83a6fe..a0f05763 100644
 --- a/crates/merman-render/src/svg/parity/sequence/activation.rs
