@@ -1,3 +1,75 @@
+diff --git a/crates/merman-ascii/tests/new_family_models/kanban.rs b/crates/merman-ascii/tests/new_family_models/kanban.rs
+index fc4325ea..5c37835f 100644
+--- a/crates/merman-ascii/tests/new_family_models/kanban.rs
++++ b/crates/merman-ascii/tests/new_family_models/kanban.rs
+@@ -3,6 +3,7 @@ use super::*;
+ #[test]
+ fn kanban_render_model_renders_groups_and_child_metadata() {
+     let model = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![
+             kanban_node("backlog", "Backlog", true, KanbanNodeMetadata::default()),
+             kanban_node(
+@@ -58,6 +59,7 @@ fn kanban_render_model_renders_groups_and_child_metadata() {
+ #[test]
+ fn kanban_structured_text_framing_distinguishes_ticket_from_priority() {
+     let embedded_priority = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![kanban_node(
+             "card",
+             "Card",
+@@ -69,6 +71,7 @@ fn kanban_structured_text_framing_distinguishes_ticket_from_priority() {
+         )],
+     };
+     let explicit_priority = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![kanban_node(
+             "card",
+             "Card",
+@@ -91,6 +94,7 @@ fn kanban_structured_text_framing_distinguishes_ticket_from_priority() {
+ #[test]
+ fn kanban_group_parent_ownership_is_disclosed_without_nested_geometry() {
+     let model = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![
+             kanban_node("root", "Root", true, KanbanNodeMetadata::default()),
+             kanban_node(
+@@ -120,6 +124,7 @@ fn kanban_group_parent_ownership_is_disclosed_without_nested_geometry() {
+ #[test]
+ fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
+     let model = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![
+             kanban_node("backlog", "Backlog", true, KanbanNodeMetadata::default()),
+             kanban_node(
+@@ -163,6 +168,7 @@ fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
+ #[test]
+ fn kanban_render_model_rejects_duplicate_or_empty_ids() {
+     let duplicate = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![
+             kanban_node("same", "A", true, KanbanNodeMetadata::default()),
+             kanban_node("same", "B", false, KanbanNodeMetadata::default()),
+@@ -182,6 +188,7 @@ fn kanban_render_model_rejects_duplicate_or_empty_ids() {
+     ));
+ 
+     let empty = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![kanban_node(
+             "",
+             "Empty",
+diff --git a/crates/merman-ascii/tests/operation_cancellation.rs b/crates/merman-ascii/tests/operation_cancellation.rs
+index 3705e569..c2186538 100644
+--- a/crates/merman-ascii/tests/operation_cancellation.rs
++++ b/crates/merman-ascii/tests/operation_cancellation.rs
+@@ -58,6 +58,7 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
+     journey.sections.push("Planning".to_string());
+ 
+     let kanban = KanbanDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         nodes: vec![
+             KanbanRenderNode::new("first", "First"),
+             KanbanRenderNode::new("second", "Second"),
 diff --git a/crates/merman-ascii/tests/sequence_model.rs b/crates/merman-ascii/tests/sequence_model.rs
 index 7d5d02b6..5fb38f79 100644
 --- a/crates/merman-ascii/tests/sequence_model.rs
@@ -11,10 +83,10 @@ index 7d5d02b6..5fb38f79 100644
          acc_descr: None,
          title: None,
 diff --git a/crates/merman-core/src/diagram/mod.rs b/crates/merman-core/src/diagram/mod.rs
-index fe6e3b0e..ba7228d0 100644
+index fe6e3b0e..dd11f347 100644
 --- a/crates/merman-core/src/diagram/mod.rs
 +++ b/crates/merman-core/src/diagram/mod.rs
-@@ -525,6 +525,20 @@ impl RenderSemanticParseOutput {
+@@ -525,6 +525,21 @@ impl RenderSemanticParseOutput {
          &self.model
      }
  
@@ -23,6 +95,7 @@ index fe6e3b0e..ba7228d0 100644
 +            RenderSemanticModel::Sequence(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Gantt(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Journey(model) => Some(&mut model.source_occurrences),
++            RenderSemanticModel::Kanban(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Flowchart(_) => self
 +                .context
 +                .flowchart
@@ -474,6 +547,103 @@ index 68bde024..518d61f5 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
+diff --git a/crates/merman-core/src/diagrams/kanban.rs b/crates/merman-core/src/diagrams/kanban.rs
+index 7a93d54b..3672e52f 100644
+--- a/crates/merman-core/src/diagrams/kanban.rs
++++ b/crates/merman-core/src/diagrams/kanban.rs
+@@ -55,6 +55,8 @@ struct KanbanNode {
+ pub struct KanbanDiagramRenderModel {
+     #[serde(default)]
+     pub nodes: Vec<KanbanRenderNode>,
++    #[serde(skip)]
++    pub source_occurrences: Vec<Value>,
+ }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+@@ -104,6 +106,7 @@ impl KanbanRenderNode {
+ 
+ #[derive(Debug, Default)]
+ struct KanbanDb {
++    source_occurrences: Vec<Value>,
+     nodes: Vec<KanbanNode>,
+     section_indices: Vec<usize>,
+     next_auto_id: i64,
+@@ -1331,6 +1334,39 @@ fn parse_kanban_statement(
+         Ok(parsed) => parsed,
+         Err(error) => return Ok(Err(error)),
+     };
++    let trace_source = meta
++        .effective_config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        .unwrap_or(false);
++    let statement_span = SourceSpan::new(
++        parsed.span.start,
++        shape_data
++            .as_ref()
++            .map_or(parsed.span.end, |data| data.span.end),
++    );
++    let label_span = parsed
++        .label
++        .as_ref()
++        .map_or(parsed.entity.span, |label| label.span);
++    let mut fields = Vec::new();
++    if trace_source {
++        if let Some(data) = &shape_data {
++            for field in &data.fields {
++                if let Some(value) = &field.value {
++                    if matches!(
++                        field.key.text.as_str(),
++                        "ticket" | "assigned" | "priority" | "label"
++                    ) && (field.key.text != "label" || field.is_string_value)
++                    {
++                        fields.retain(|(key, _)| key != &field.key.text);
++                        fields.push((field.key.text.clone(), value.span));
++                    }
++                }
++            }
++        }
++    }
+     let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
+     if let Some(shape_data) = &shape_data {
+         push_kanban_metadata_facts(facts, &shape_data.fields);
+@@ -1363,6 +1399,27 @@ fn parse_kanban_statement(
+     ) {
+         return Ok(Err(error));
+     }
++    if trace_source {
++        let node = db
++            .nodes
++            .last()
++            .expect("successful add_node retains the node");
++        let family = if node.parent_id.is_none() {
++            "column"
++        } else {
++            "card"
++        };
++        let label_span = fields
++            .iter()
++            .find(|(key, _)| key == "label")
++            .map_or(label_span, |(_, span)| *span);
++        db.source_occurrences.push(json!({"kind":if node.parent_id.is_none(){"control"}else{"node"},"semanticId":node.id,"domId":format!("kanban:{family}:{}",node.id),"parentId":node.parent_id,"span":statement_span,"labelSpan":label_span}));
++        for (key, span) in fields {
++            if key != "label" {
++                db.source_occurrences.push(json!({"kind":"control","semanticId":format!("{}:{key}",node.id),"domId":format!("kanban:field:{}:{key}",node.id),"span":span}));
++            }
++        }
++    }
+     let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
+     if is_section {
+         facts.push_symbol(EditorSemanticSymbol::outline(
+@@ -1465,6 +1522,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
+ fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
+     KanbanDiagramRenderModel {
+         nodes: db.data_nodes_for_render(&meta.effective_config),
++        source_occurrences: db.source_occurrences.clone(),
+     }
+ }
+ 
 diff --git a/crates/merman-core/src/diagrams/sequence/ast.rs b/crates/merman-core/src/diagrams/sequence/ast.rs
 index e42b2af3..f84a2bb7 100644
 --- a/crates/merman-core/src/diagrams/sequence/ast.rs
@@ -6859,6 +7029,95 @@ index 9d3f459c..ba84cf12 100644
          if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
              return None;
          }
+diff --git a/crates/merman-core/src/resources.rs b/crates/merman-core/src/resources.rs
+index 757532f5..9ba70e61 100644
+--- a/crates/merman-core/src/resources.rs
++++ b/crates/merman-core/src/resources.rs
+@@ -2203,6 +2203,7 @@ mod tests {
+     fn generic_model_budget_covers_new_family_models_without_family_knobs() {
+         let models = [
+             RenderSemanticModel::Kanban(KanbanDiagramRenderModel {
++                source_occurrences: Vec::new(),
+                 nodes: vec![crate::diagrams::kanban::KanbanRenderNode::new(
+                     "todo", "Todo",
+                 )],
+@@ -2247,6 +2248,7 @@ mod tests {
+     #[test]
+     fn kanban_complexity_accounts_for_parent_chain_depth_without_quadratic_scans() {
+         let root = KanbanDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             nodes: ["section", "lane", "card"]
+                 .into_iter()
+                 .enumerate()
+diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
+index 027dfe7d..adf538ae 100644
+--- a/crates/merman-render/src/kanban.rs
++++ b/crates/merman-render/src/kanban.rs
+@@ -61,12 +61,16 @@ pub(crate) use config::{KanbanConfigView, default_use_max_width};
+ 
+ #[derive(Debug)]
+ pub(crate) struct KanbanPreparedArtifact {
++    source_occurrences: Vec<serde_json::Value>,
+     layout: KanbanDiagramLayout,
+     sections: Vec<KanbanPreparedMarkdownLabel>,
+     items: Vec<KanbanPreparedItem>,
+ }
+ 
+ impl KanbanPreparedArtifact {
++    pub(crate) fn source_occurrences(&self) -> &[serde_json::Value] {
++        &self.source_occurrences
++    }
+     pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
+         &self.layout
+     }
+@@ -434,6 +438,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+         items,
+     };
+     Ok(KanbanPreparedArtifact {
++        source_occurrences: model.source_occurrences.clone(),
+         layout,
+         sections: prepared_sections,
+         items: prepared_items,
+@@ -485,6 +490,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
+         .collect();
+ 
+     KanbanPreparedArtifact {
++        source_occurrences: Vec::new(),
+         layout: layout.clone(),
+         sections,
+         items,
+@@ -550,6 +556,7 @@ mod tests {
+     #[test]
+     fn kanban_layout_uses_mermaid_padding() {
+         let model = KanbanDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             nodes: vec![
+                 section("todo", "Todo"),
+                 section("doing", "Doing"),
+@@ -574,6 +581,7 @@ mod tests {
+     #[test]
+     fn kanban_layout_measures_rendered_markdown_instead_of_source_markers() {
+         let markdown_model = KanbanDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             nodes: vec![
+                 section("todo", "Todo"),
+                 item("task-1", "*aaaa aaaa aaaaaaa*", "todo"),
+@@ -581,6 +589,7 @@ mod tests {
+             ],
+         };
+         let plain_model = KanbanDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             nodes: vec![
+                 section("todo", "Todo"),
+                 item("task-1", "aaaa aaaa aaaaaaa", "todo"),
+@@ -617,6 +626,7 @@ mod tests {
+     #[test]
+     fn kanban_layout_uses_mermaid_mindmap_viewport_config_precedence() {
+         let model = KanbanDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             nodes: vec![section("todo", "Todo")],
+         };
+         let measurer = DeterministicTextMeasurer {
 diff --git a/crates/merman-render/src/sequence/message_metrics.rs b/crates/merman-render/src/sequence/message_metrics.rs
 index a80d80c0..a3608f6d 100644
 --- a/crates/merman-render/src/sequence/message_metrics.rs
@@ -6871,6 +7130,35 @@ index a80d80c0..a3608f6d 100644
              acc_title: None,
              acc_descr: None,
              title: None,
+diff --git a/crates/merman-render/src/svg/fallback.rs b/crates/merman-render/src/svg/fallback.rs
+index b6a2c102..fba3aaba 100644
+--- a/crates/merman-render/src/svg/fallback.rs
++++ b/crates/merman-render/src/svg/fallback.rs
+@@ -217,6 +217,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+                     } else {
+                         ""
+                     };
++                    let mut trace_attrs = String::new();
++                    for name in ["data-mt-key", "data-mt-label"] {
++                        if let Some(value) = extract_exact_double_quoted_attr_with_checkpoints(
++                            tag, name, checkpoint,
++                        )? {
++                            let value = escape_xml_attr_with_checkpoints(value, checkpoint)?;
++                            let _ = write!(&mut trace_attrs, " {name}=\"{value}\"");
++                        }
++                    }
+                     let source_classes = source_class_attr_tokens(&g_stack, inner, checkpoint)?;
+                     let source_classes_attr = source_classes
+                         .as_deref()
+@@ -225,7 +234,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+                     push_generated_fmt(
+                         &mut overlays,
+                         format_args!(
+-                            r#"<g data-merman-foreignobject="fallback"{source} class="merman-foreignobject-fallback"{source_classes}>"#,
++                            r#"<g{trace_attrs} data-merman-foreignobject="fallback"{source} class="merman-foreignobject-fallback"{source_classes}>"#,
+                             source = source_attr,
+                             source_classes = source_classes_attr,
+                         ),
 diff --git a/crates/merman-render/src/svg/parity.rs b/crates/merman-render/src/svg/parity.rs
 index 1fb7fe45..470bb0c4 100644
 --- a/crates/merman-render/src/svg/parity.rs
@@ -7339,6 +7627,142 @@ index 61faa868..3338bc9e 100644
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
+diff --git a/crates/merman-render/src/svg/parity/kanban/render.rs b/crates/merman-render/src/svg/parity/kanban/render.rs
+index 60b4b0f6..1b600e22 100644
+--- a/crates/merman-render/src/svg/parity/kanban/render.rs
++++ b/crates/merman-render/src/svg/parity/kanban/render.rs
+@@ -114,6 +114,7 @@ struct KanbanLabelRenderContext {
+ }
+ 
+ struct KanbanLabelGroup<'a> {
++    trace: &'a str,
+     position: (f64, f64),
+     text: Option<&'a str>,
+     html: Option<&'a str>,
+@@ -128,6 +129,7 @@ fn write_kanban_label_group(
+     group: KanbanLabelGroup<'_>,
+ ) {
+     let KanbanLabelGroup {
++        trace,
+         position: (x, y),
+         text,
+         html,
+@@ -170,7 +172,7 @@ fn write_kanban_label_group(
+     };
+     let _ = write!(
+         out,
+-        r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
++        r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject{trace} width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
+         x = fmt(x),
+         y = fmt(y),
+         width = fmt(geometry.foreign_object_width),
+@@ -193,6 +195,7 @@ pub(crate) fn render_kanban_diagram_svg(
+     options: &SvgExecution<'_>,
+ ) -> Result<root_svg::RootedSvg> {
+     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
++    let occurrences = prepared.source_occurrences();
+     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
+     debug_assert_eq!(layout.items.len(), prepared_items.len());
+     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
+@@ -229,6 +232,7 @@ pub(crate) fn render_kanban_diagram_svg(
+             )?;
+     options.checkpoint_emit()?;
+ 
++    write_source_metadata(&mut out, occurrences);
+     let css = kanban_css(diagram_id, effective_config)?;
+     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+     options.checkpoint_emit()?;
+@@ -264,7 +268,9 @@ pub(crate) fn render_kanban_diagram_svg(
+ 
+         let _ = write!(
+             &mut out,
+-            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="{div_style}"><span class="nodeLabel">{label}</span></div></foreignObject></g></g>"##,
++            r##"<g{trace} class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject{label_trace} width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="{div_style}"><span class="nodeLabel">{label}</span></div></foreignObject></g></g>"##,
++            trace = source_attrs(occurrences, &format!("kanban:column:{}", s.id), false),
++            label_trace = source_attrs(occurrences, &format!("kanban:column:{}", s.id), true),
+             idx = s.index,
+             id = escape_attr(&section_dom_id),
+             look = data_look_attr,
+@@ -327,7 +333,8 @@ pub(crate) fn render_kanban_diagram_svg(
+ 
+         let _ = write!(
+             &mut out,
+-            r##"<g class="node undefined" id="{id}" transform="translate({x}, {y})">"##,
++            r##"<g{trace} class="node undefined" id="{id}" transform="translate({x}, {y})">"##,
++            trace = source_attrs(occurrences, &format!("kanban:card:{}", n.id), false),
+             id = escape_attr(&item_dom_id),
+             x = fmt(n.center_x),
+             y = fmt(n.center_y),
+@@ -353,6 +360,7 @@ pub(crate) fn render_kanban_diagram_svg(
+             &mut out,
+             &label_context,
+             KanbanLabelGroup {
++                trace: &source_attrs(occurrences, &format!("kanban:card:{}", n.id), true),
+                 position: (left_x, title_y),
+                 text: Some(n.label.as_str()),
+                 html: Some(prepared_item.title.html.as_str()),
+@@ -378,6 +386,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                     &mut out,
+                     &label_context,
+                     KanbanLabelGroup {
++                        trace: &source_attrs(
++                            occurrences,
++                            &format!("kanban:field:{}:ticket", n.id),
++                            false,
++                        ),
+                         position: (left_x, details_y),
+                         text: Some(t),
+                         html: None,
+@@ -392,6 +405,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                     &mut out,
+                     &label_context,
+                     KanbanLabelGroup {
++                        trace: &source_attrs(
++                            occurrences,
++                            &format!("kanban:field:{}:ticket", n.id),
++                            false,
++                        ),
+                         position: (left_x, details_y),
+                         text: Some(t),
+                         html: None,
+@@ -406,6 +424,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                 &mut out,
+                 &label_context,
+                 KanbanLabelGroup {
++                    trace: &source_attrs(
++                        occurrences,
++                        &format!("kanban:field:{}:ticket", n.id),
++                        false,
++                    ),
+                     position: (left_x, details_y),
+                     text: None,
+                     html: None,
+@@ -421,6 +444,11 @@ pub(crate) fn render_kanban_diagram_svg(
+             &mut out,
+             &label_context,
+             KanbanLabelGroup {
++                trace: &source_attrs(
++                    occurrences,
++                    &format!("kanban:field:{}:assigned", n.id),
++                    false,
++                ),
+                 position: (right_x, details_y),
+                 text: n.assigned.as_deref(),
+                 html: None,
+@@ -438,7 +466,12 @@ pub(crate) fn render_kanban_diagram_svg(
+                 .unwrap_or_default();
+             let _ = write!(
+                 &mut out,
+-                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4"{stroke_attr}/>"#,
++                r#"<line{trace} x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4"{stroke_attr}/>"#,
++                trace = source_attrs(
++                    occurrences,
++                    &format!("kanban:field:{}:priority", n.id),
++                    false
++                ),
+                 x1 = fmt(rect_x + 2.0),
+                 y1 = fmt(y1),
+                 x2 = fmt(rect_x + 2.0),
 diff --git a/crates/merman-render/src/svg/parity/sequence/activation.rs b/crates/merman-render/src/svg/parity/sequence/activation.rs
 index 5d83a6fe..a0f05763 100644
 --- a/crates/merman-render/src/svg/parity/sequence/activation.rs

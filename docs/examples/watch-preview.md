@@ -23,3 +23,45 @@ sequenceDiagram
   Author->>Publisher: Approved version
   Publisher-->>Author: Published
 ```
+
+## Gantt plan
+
+Select task bars, milestones, labels, the section or title.
+
+```mermaid
+gantt
+  title Release plan
+  dateFormat YYYY-MM-DD
+  todayMarker off
+  section Development
+  Implement :done, build, 2026-09-01, 4d
+  Review :crit, review, after build, 2d
+  Release :milestone, release, after review, 0d
+```
+
+## User journey
+
+Select tasks, labels, scores or actor circles and legend entries.
+
+```mermaid
+journey
+  title Publish a document
+  section Preparation
+  Draft : 5 : Author
+  Review : 3 : Author, Reviewer
+  section Delivery
+  Publish : 4 : Publisher
+```
+
+## Kanban board
+
+Select columns, cards, labels, ticket/assignee text or the priority stripe.
+
+```mermaid
+kanban
+  todo[To do]
+    draft[Draft]@{ ticket: 'DOC-1', assigned: 'Author', priority: 'High' }
+    review[Review]@{ assigned: 'Reviewer' }
+  done[Done]
+    publish[Publish]
+```

@@ -120,3 +120,61 @@ fn journey_plan_ac1_2_tasks_scores_people_and_sections_keep_original_spans() {
         support::strip_trace(baseline["svg"].as_str().unwrap())
     );
 }
+
+const KANBAN: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\nkanban\r\n%% 😀\r\n  todo[Todo]\r\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\r\n    b[Same 😀]\r\n  done[Done]\r\n    c[Ship]\r\n";
+
+#[test]
+fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {
+    let result = mermaid_trace_rs::render("planning-kanban", KANBAN).unwrap();
+    let document = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|n| n.attribute("data-mt-key") == Some("kanban:card:a")
+                && n.attribute("data-mt-role") == Some("node-label")
+                && n.descendants().any(|child| child.text() == Some("Same 😀"))),
+        "Kanban labels must survive the production SVG pipeline"
+    );
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let utf16: Vec<_> = KANBAN.encode_utf16().collect();
+    let slice = |span: &Value| {
+        String::from_utf16(
+            &utf16
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+        )
+        .unwrap()
+    };
+    let cards: Vec<_> = pieces.iter().filter(|p| p["kind"] == "node").collect();
+    assert_eq!(
+        cards
+            .iter()
+            .map(|p| slice(&p["labelSpan"]))
+            .collect::<Vec<_>>(),
+        ["Same 😀", "Same 😀", "Ship"]
+    );
+    assert_eq!(
+        slice(&cards[0]["span"]),
+        "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }"
+    );
+    assert_eq!(cards[0]["parentId"], "todo");
+    assert_ne!(cards[0]["domId"], cards[1]["domId"]);
+    for (field, value) in [
+        ("ticket", "T-1"),
+        ("assigned", "Alice"),
+        ("priority", "High"),
+    ] {
+        assert!(
+            pieces
+                .iter()
+                .any(|p| p["domId"] == format!("kanban:field:a:{field}")
+                    && slice(&p["span"]) == value)
+        );
+    }
+    assert!(pieces.iter().any(|p| slice(&p["span"]) == "todo[Todo]"));
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "planning-kanban", KANBAN).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}

@@ -35,7 +35,7 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
     const first = page.locator('svg').first();
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
-    await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: 3, y: 3 } });
+    await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
     await first.locator(`[data-mt-key="${key}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`).first().click();
@@ -43,7 +43,18 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
     assert.equal(source.slice(event.span.start, event.span.end), label);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
     for (const [controlKey, text] of controls) {
-      await first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`).first().click();
+      const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`).first();
+      const background = controlKey.startsWith('kanban:column:') ? target.locator(':scope > rect') : target.locator(':scope > rect[width]');
+      if (await target.evaluate(element => element.tagName === 'line')) {
+        const point = await target.evaluate(element => {
+          const line = element as SVGLineElement;
+          const point = new DOMPoint(line.x1.baseVal.value, (line.y1.baseVal.value + line.y2.baseVal.value) / 2).matrixTransform(line.getScreenCTM()!);
+          return { x: point.x, y: point.y };
+        });
+        await page.mouse.click(point.x, point.y);
+      } else {
+        await (await background.count() ? background.first() : target).click(await background.count() ? { position: { x: 10, y: 3 } } : {});
+      }
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text);
     }
@@ -75,4 +86,8 @@ test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard,
 
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyPlanning('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:Alice', 'Alice'], ['journey:actor:Alice', 'Alice']]);
+});
+
+test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
+  await verifyPlanning("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
 });

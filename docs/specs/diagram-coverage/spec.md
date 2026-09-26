@@ -32,7 +32,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 | `requirement` | Missing |
 | `timeline` | Missing |
 | `mindmap` | Missing |
-| `kanban` | Next: KANBAN-1 planned after journey |
+| `kanban` | Native columns/cards/labels, ticket/assigned values and priority indicators implemented; complete conformance pending |
 | `sankey` | Missing |
 | `packet` | Missing |
 | `radar` | Missing |
@@ -59,12 +59,12 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 ## Implementation direction
 
 1. Generalize the projection and SVG visual-binding contract beyond flowchart-only node/edge selectors, using real parser semantic kinds and renderer identities. Preserve the existing mapping core, static artifact and optional activation split.
-2. Next implement [Gantt → user journey → Kanban](../planning-diagrams/spec.md). Retain outstanding sequence conformance: participant declarations/references/aliases, message arrows and labels, self/repeated messages, notes, activation/lifeline visuals and nested control structures. Capture Merman parser locations and bind native semantic/render identities; never match repeated display text to source.
+2. [Gantt, user journey and Kanban](../planning-diagrams/spec.md) mapping slices are implemented; extend their conformance coverage. Retain outstanding sequence conformance: participant declarations/references/aliases, message arrows and labels, self/repeated messages, notes, activation/lifeline visuals and nested control structures. Capture Merman parser locations and bind native semantic/render identities; never match repeated display text to source.
 3. Add the remaining families through Merman native parser and renderer paths, adding missing Mermaid 12 families explicitly. Share original-coordinate transformation and artifact/activation infrastructure; type-specific syntax and semantic relationships stay explicit. Per-family stories must define exact constructs, generated pieces and test expectations before coding.
 4. Maintain executable upstream-derived fixtures plus independent expected source spans, and compare mapped/unmapped rendering to catch visual regressions. Gate the release on actual conformance for every registry entry, including variant renderers and preprocess transformations. Partial patches remain prototype work, not a completed all-diagram feature.
 
 ## Verification
 
-Registry inventory checked against the current local detector modules. Existing tests verify historical references, native flowchart and sequence source ranges, saved SVG selection, and live Markdown clipboard/watch behavior. They do not establish S6/C8 conformance. Complete flowchart/sequence conformance and every remaining family are outstanding; no all-diagram acceptance suite has passed.
+Registry inventory checked against the current local detector modules. Existing tests verify historical references, native flowchart, sequence and planning diagram source ranges, saved SVG selection, and live Markdown clipboard/watch behavior. They do not establish S6/C8 conformance. Complete flowchart/sequence conformance and every remaining family are outstanding; no all-diagram acceptance suite has passed.
 
 Merman migration: keep this Mermaid-version inventory as the required scope. Its advertised type counts do not replace it. Production uses the Trace-owned native Rust integration. The earlier Node addon and legacy production route have been removed.
