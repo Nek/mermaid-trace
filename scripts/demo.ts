@@ -27,7 +27,11 @@ article,.source{background:white;border:1px solid #d9e2e9;border-radius:12px;pad
 article h1{font-size:24px;margin-top:0}article h2{font-size:19px;margin-top:28px}blockquote{border-left:3px solid #b8cbd8;margin:0;padding-left:16px}
 pre{overflow:auto;background:#f5f7f9;padding:12px;border-radius:6px}svg{display:block;max-width:100%;height:auto;margin:20px auto}
 .source{position:sticky;top:24px;align-self:start}.source label{display:block;font-weight:650;margin-bottom:10px}
-textarea{display:block;width:100%;height:58vh;resize:vertical;border:1px solid #c9d6e0;border-radius:6px;padding:14px;font:13px/1.65 ui-monospace,monospace;white-space:pre;color:#172c3e;background:#fbfcfd}
+.source-editor{position:relative;background:#fbfcfd;border-radius:6px}
+textarea,#source-highlight{padding:14px;font:13px/1.65 ui-monospace,monospace;white-space:pre}
+#source-highlight{position:absolute;top:1px;left:1px;margin:0;overflow:hidden;border:0;border-radius:0;background:transparent;color:transparent;pointer-events:none}
+#source-highlight mark{background:#a9e0e5;color:transparent}.source-editor:focus-within #source-highlight{visibility:hidden}
+textarea{position:relative;display:block;width:100%;height:58vh;resize:vertical;border:1px solid #c9d6e0;border-radius:6px;color:#172c3e;background:transparent}
 #selection-status{min-height:3em;font-size:13px;margin-top:14px}#occurrences{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;font-size:13px;border:1px solid #b8cbd8;border-radius:6px;padding:5px 10px;background:white;color:#172c3e;cursor:pointer}
 .location{margin-top:16px}.location input{width:100%;padding:8px;border:1px solid #c9d6e0;border-radius:6px;font:13px ui-monospace,monospace}.location small,#copy-status{font-size:12px;color:#516776}
 [data-md-target],svg{cursor:pointer}[data-md-selected]{background:#e4f4f5;box-shadow:0 0 0 2px #007c8a}svg[data-mt-selected=true]{outline:2px solid #007c8a;outline-offset:4px;filter:none}[data-mt-refs]{cursor:pointer}[data-mt-selected=true]{filter:drop-shadow(0 0 3px #007c8a)}
@@ -39,7 +43,7 @@ textarea{display:block;width:100%;height:58vh;resize:vertical;border:1px solid #
 <header><h1>Mermaid Trace</h1><p>Click a block, heading, or diagram element — or drag rendered text — to select its Markdown and copy its location.</p></header>
 <main><article aria-label="Rendered Markdown">${html}</article>
 <section class="source" aria-label="Source selection"><label for="source">Original Markdown · interactive.md</label>
-<textarea id="source" readonly spellcheck="false">${source}</textarea>
+<div class="source-editor"><pre id="source-highlight" aria-hidden="true"></pre><textarea id="source" readonly spellcheck="false">${source}</textarea></div>
 <div class="location"><label for="selection-location">Selection location</label>
 <input id="selection-location" readonly placeholder="Select Markdown or a diagram element" aria-describedby="location-help">
 <small id="location-help">One-based line:column. End is just after the selected text.</small><div id="copy-status" role="status"></div></div>

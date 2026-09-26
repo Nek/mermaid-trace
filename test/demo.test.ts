@@ -32,6 +32,11 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
       expected: input.value.lastIndexOf('Draft'),
     }));
     assert.equal(selection.text, 'Draft');
+    assert.equal(await page.locator('#source-highlight mark').count(), 1, 'source selection remains visibly marked without focusing the textarea');
+    assert.equal(await page.locator('#source-highlight mark').textContent(), 'Draft');
+    assert.equal(await page.locator('#source-highlight').evaluate(element => getComputedStyle(element).visibility), 'visible');
+    assert.equal(await page.locator('#source-highlight').getAttribute('aria-hidden'), 'true');
+
     assert.equal(await page.locator('[data-md-selected]').count(), 0, 'a diagram child does not also select its enclosing Markdown container');
     assert.equal(selection.start, selection.expected);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-role="node-label"]').first().evaluate(element => element === document.activeElement), true, 'selection keeps focus in the diagram');
@@ -72,6 +77,8 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     assert.ok(await page.locator('svg').nth(0).locator('[data-mt-selected]').count() > 0);
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected]').count(), 0);
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:7:29-7:35');
+    assert.equal(await page.locator('#source-highlight').evaluate(element => getComputedStyle(element).visibility), 'hidden', 'focused source uses its native highlight');
+
     assert.equal(await page.locator('#copy-status').innerText(), '');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'interactive.md:8:5-8:8');
     // Focusing the SVG background selects the entire fenced Markdown block.
@@ -122,6 +129,23 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     await page.keyboard.up('Tab');
     assert.equal(await page.evaluate(() => document.getSelection()!.isCollapsed), true, 'structural focus clears a previous native text selection');
     assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), '## Inline text selection');
+    assert.equal(await page.locator('#source-highlight mark').textContent(), '## Inline text selection');
+    assert.equal(await page.locator('#source-highlight mark').evaluate(element => {
+      const box = element.getClientRects()[0]!;
+      const source = document.querySelector('textarea')!.getBoundingClientRect();
+      return box.top >= source.top && box.bottom <= source.bottom;
+    }), true, 'selection start is revealed without transferring focus');
+    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => {
+      input.scrollTop = 60; input.scrollLeft = 40;
+      input.dispatchEvent(new Event('scroll'));
+    });
+    assert.equal(await page.locator('#source-highlight').evaluate(element => {
+      const input = document.querySelector('textarea')!;
+      return element.scrollTop === input.scrollTop && element.scrollLeft === input.scrollLeft;
+    }), true, 'source highlight follows both scroll axes');
+    await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => { input.style.height = '300px'; });
+    await page.waitForFunction(() => document.querySelector('#source-highlight')!.clientHeight === document.querySelector('textarea')!.clientHeight);
+
     // A native range spanning formatting maps the original delimiters and entity spelling.
     await page.locator('article strong').evaluate(element => {
       const first = element.querySelector('[data-md-text]')!.firstChild!;

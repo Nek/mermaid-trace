@@ -33,3 +33,11 @@ The view currently handles CommonMark through mdast/hast and reuses markdown-it 
 User clarification: clicking a title selects only the title. Apply the same rule to every heading level and keyboard focus/activation. Remove section-range expansion at the producer so every selection consumer receives the correct heading span. First update producer and browser regression tests (title and subheading, copied location, no selected SVGs), confirm failure, then remove expansion and verify. Broad ranges remain available through text dragging.
 
 Verification: producer and browser regressions failed first with section/document spans. After removing expansion, the affected 3 tests pass, including exact title/subheading source and clipboard ranges, keyboard focus, and zero diagram highlights. The other 12 tests passed in the full run; TypeScript build passes. The demo was regenerated.
+
+## Persistent source highlight
+
+**DOC-AC5:** Preview selection must visibly highlight the corresponding text in Original Markdown while focus stays in the preview. Reveal the selection start without moving page focus. Keep the highlight aligned through textarea scrolling and resizing. When the textarea has focus, retain its native selection and hide the duplicate highlight. No source editing or editor dependency.
+
+Plan: first add a browser regression for a visible unfocused source highlight, selection text, focus retention, scroll/resize alignment and native source focus. Use one inert, accessibility-hidden text mirror behind the readonly textarea, with a marked source range and shared typography. Update it in the existing document selection path. Verify the browser test and inspect the rendered result, then commit.
+
+Verification: the browser regression first failed because no persistent source mark existed. It now passes for unfocused visibility, exact text, native-focus fallback, selection-start visibility, horizontal/vertical scrolling and resizing. All 15 tests and TypeScript build pass. The in-app browser was visually checked with a heading focused and its source text highlighted; no focus transfer was needed.

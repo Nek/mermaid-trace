@@ -11,6 +11,34 @@ const data = JSON.parse(document.querySelector('#demo-data')!.textContent!) as {
   targets: readonly DocumentTarget[]; texts: readonly DocumentText[];
 };
 const source = document.querySelector<HTMLTextAreaElement>('#source')!;
+const sourceHighlight = document.querySelector<HTMLElement>('#source-highlight')!;
+const syncSourceHighlight = () => {
+  sourceHighlight.style.width = `${source.clientWidth}px`;
+  sourceHighlight.style.height = `${source.clientHeight}px`;
+  sourceHighlight.scrollTop = source.scrollTop;
+  sourceHighlight.scrollLeft = source.scrollLeft;
+};
+source.addEventListener('scroll', syncSourceHighlight);
+new ResizeObserver(syncSourceHighlight).observe(source);
+const highlightSource = (span: Span) => {
+  const mark = document.createElement('mark');
+  mark.textContent = source.value.slice(span.start, span.end);
+  sourceHighlight.replaceChildren(source.value.slice(0, span.start), mark, source.value.slice(span.end));
+  syncSourceHighlight();
+  if (document.activeElement === source) return;
+  const selected = mark.getClientRects()[0];
+  if (!selected) return;
+  const viewport = source.getBoundingClientRect();
+  const padding = parseFloat(getComputedStyle(source).paddingTop) + source.clientTop;
+  if (selected.top < viewport.top + padding || selected.bottom > viewport.top + source.clientHeight - padding) {
+    source.scrollTop += selected.top - viewport.top - padding;
+  }
+  if (selected.left < viewport.left + padding || selected.right > viewport.left + source.clientWidth - padding) {
+    source.scrollLeft += selected.left - viewport.left - padding;
+  }
+  syncSourceHighlight();
+};
+
 const status = document.querySelector<HTMLElement>('#selection-status')!;
 const occurrences = document.querySelector<HTMLElement>('#occurrences')!;
 const location = document.querySelector<HTMLInputElement>('#selection-location')!;
@@ -39,6 +67,7 @@ const selectDocument = (span: Span, copy: boolean, targetId?: string) => {
   if (targetId !== '' && native?.anchorNode && article.contains(native.anchorNode)) native.removeAllRanges();
   selectedRange = span;
   source.setSelectionRange(span.start, span.end);
+  highlightSource(span);
   showLocation(span);
   occurrences.replaceChildren();
   for (const { block, activation } of instances) activation.highlight(fromMarkdown(block, span, data.document));
