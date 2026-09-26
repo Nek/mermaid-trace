@@ -2,7 +2,7 @@
 
 Connect Mermaid source, its AST, and diagram elements so a visual selection can identify the exact source that produced it.
 
-**Status:** experimental flowchart producer, independent SVG activation library, and clickable Markdown demo. No published package or Rust crate yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
+**Status:** experimental flowchart producer, independent SVG activation library, a clickable Markdown demo, and a file preview CLI. No published package or Rust crate yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
 
 ## Products and boundaries
 
@@ -24,6 +24,7 @@ Markdown integration is part of initial delivery: markdown-it fence provenance a
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
 | [Document selection](docs/specs/document-selection/spec.md) | Rendered Markdown blocks, headings, text drags and whole-diagram selection |
+| [Watch CLI](docs/specs/watch-cli/spec.md) | Live Markdown/Mermaid preview without source or debug UI |
 | [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
 | [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
 | [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
@@ -60,6 +61,26 @@ corepack pnpm snapshots:update
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
 The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). The markdown-it adapter prepares fences with exact original-document provenance, then consumes pre-rendered SVG artifacts. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
+
+## Watch a document
+
+After the development setup above:
+
+```sh
+corepack pnpm preview watch docs/examples/watch-preview.md
+# Or a standalone Mermaid file:
+corepack pnpm preview watch /path/to/diagram.mmd --port 0
+```
+
+Open the printed localhost URL. Saves and atomic replacements rerender and reload the page. Invalid Mermaid edits leave the last good preview visible and report the error in the terminal; a valid save recovers. Ctrl+C stops the server and watcher. The default port is 5173; use `--port N` if occupied, or `--port 0` to choose an available port.
+
+The page contains only rendered Markdown/diagrams and selection highlighting. Click a block, diagram background, mapped node/connector/label, or finish a text drag to copy its source location. Focus selects; Enter/Space copies. Locations use the absolute input filename and one-based line/UTF-16 columns, with an exclusive end. Clipboard failures are reported in the browser console, without adding UI.
+
+Use standard fenced `mermaid` blocks, as supported by Mermaid CLI and Markdown renderers. The existing markdown-it provenance adapter and CommonMark mdast/hast view preserve original file locations; relative images resolve beside the document. `.md`, `.markdown`, `.mmd`, and `.mermaid` inputs are supported. External Mermaid include syntax and GFM extensions are not introduced.
+
+**Sequence diagrams render and support whole-diagram selection. Participant/message/label source mapping is not implemented in the current Mermaid fork.** The CLI reports that limitation in the terminal. Precise flowchart selection remains available; no sequence element positions are guessed. Rendering needs the built Mermaid fork and installed Playwright Chromium; the browser itself loads neither Mermaid nor a Markdown parser.
+
+The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `preview` builds and runs it; after `pnpm build`, `node /absolute/path/to/mermaid-trace/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 
 ## Try the Markdown demo
 
