@@ -2,7 +2,7 @@
 
 Decision: mandatory for the first usable release, clarified by the user on 2026-09-26. Rendering another DSL while selecting only its whole diagram does not satisfy this project's purpose. This requirement supersedes earlier wording that deferred broader Mermaid coverage beyond the initial release.
 
-Contracts: [S6](../source-mapping/spec.md#s6--complete-mermaid-diagram-coverage) and [C8](../source-mapping/contracts.md#c8--all-diagram-coverage-s6-ac1ac5). No runtime support is added by this documentation change.
+Contracts: [S6](../source-mapping/spec.md#s6--complete-mermaid-diagram-coverage) and [C8](../source-mapping/contracts.md#c8--all-diagram-coverage-s6-ac1ac5). The [Merman migration](../merman-backend/spec.md) changes the producer direction without weakening this gate.
 
 ## Definition of support
 
@@ -59,10 +59,12 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 ## Implementation direction
 
 1. Generalize the projection and SVG visual-binding contract beyond flowchart-only node/edge selectors, using real parser semantic kinds and renderer identities. Preserve the existing mapping core, static artifact and optional activation split.
-2. Complete native sequence provenance and viewer integration first: participant declarations/references/aliases, message arrows and labels, self/repeated messages, notes, activation/lifeline visuals and nested control structures. Capture grammar locations and bind native DB/render identities; never match repeated display text to source.
-3. Add the remaining families through their native Jison/Langium/custom parser and renderer paths. Share original-coordinate transformation and artifact/activation infrastructure; type-specific syntax and semantic relationships stay explicit. Per-family stories must define exact constructs, generated pieces and test expectations before coding.
+2. Complete native sequence provenance and viewer integration first: participant declarations/references/aliases, message arrows and labels, self/repeated messages, notes, activation/lifeline visuals and nested control structures. Capture Merman parser locations and bind native semantic/render identities; never match repeated display text to source.
+3. Add the remaining families through Merman native parser and renderer paths, adding missing Mermaid 12 families explicitly. Share original-coordinate transformation and artifact/activation infrastructure; type-specific syntax and semantic relationships stay explicit. Per-family stories must define exact constructs, generated pieces and test expectations before coding.
 4. Maintain executable upstream-derived fixtures plus independent expected source spans, and compare mapped/unmapped rendering to catch visual regressions. Gate the release on actual conformance for every registry entry, including variant renderers and preprocess transformations. Partial patches remain prototype work, not a completed all-diagram feature.
 
 ## Verification
 
 Registry inventory checked against the current local detector modules. Existing tests verify the flowchart slice and sequence rendering/whole-diagram selection only. They do not establish S6/C8 conformance. Native sequence implementation and every remaining family are outstanding; no all-diagram acceptance suite has passed.
+
+Merman migration: keep this Mermaid-version inventory as the required scope. Its advertised type counts do not replace it. The pinned native package lacks source-map export; existing flowchart mappings remain legacy until native parity.

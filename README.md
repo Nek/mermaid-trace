@@ -2,7 +2,7 @@
 
 Connect Mermaid source, its AST, and diagram elements so a visual selection can identify the exact source that produced it.
 
-**Status:** experimental flowchart producer, independent SVG activation library, a clickable Markdown demo, and a file preview CLI. No published package or Rust crate yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
+**Status:** experimental flowchart producer, independent SVG activation library, a clickable Markdown demo, and a file preview CLI. Merman backend migration is underway on `feat/merman-backend`; no Trace package or crate is published yet. TypeScript is selected, with Clojure-inspired functional design and a preference for individual thi.ng libraries.
 
 **Required release scope:** source ↔ AST ↔ visual mapping for all built-in Mermaid diagram types, including experimental types and renderer variants. Rendering alone or whole-diagram fallback does not count as element support. The prototype currently implements only the documented flowchart subset; [the coverage checklist](docs/specs/diagram-coverage/spec.md) tracks the unfinished requirement.
 
@@ -26,6 +26,7 @@ Markdown integration is part of initial delivery: markdown-it fence provenance a
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
 | [Document selection](docs/specs/document-selection/spec.md) | Rendered Markdown blocks, headings, text drags and whole-diagram selection |
+| [Merman migration](docs/specs/merman-backend/spec.md) | Native backend, retained legacy mapping, and required provenance export |
 | [Diagram coverage](docs/specs/diagram-coverage/spec.md) | Required all-family coverage and release acceptance |
 | [Watch CLI](docs/specs/watch-cli/spec.md) | Live Markdown/Mermaid preview without source or debug UI |
 | [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |

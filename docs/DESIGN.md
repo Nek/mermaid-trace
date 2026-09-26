@@ -1,6 +1,6 @@
 # Mermaid Trace: TypeScript design direction
 
-Decision: use TypeScript for the JavaScript ecosystem implementation, applying Clojure's data-oriented and functional ideas wherever they improve clarity. The separately requested Rust implementation remains in scope. Library review: 2026-09-25.
+Decision: use TypeScript for the JavaScript ecosystem implementation, applying Clojure's data-oriented and functional ideas wherever they improve clarity. The Rust core/rendering implementation now uses Merman through a native Node binding; TypeScript owns integration and activation. Library review: 2026-09-25.
 
 ## Component boundaries
 
@@ -68,4 +68,10 @@ Mermaid's public diagram detector distinguishes flowcharts from types without ou
 
 User decision, 2026-09-26: every built-in Mermaid diagram family is required for the first usable release. The [coverage spec](specs/diagram-coverage/spec.md) is the release checklist. Earlier flowchart-first work is a feasibility slice; it does not limit the product to flowcharts. Sequence and other diagram-only viewer paths are incomplete mapping implementations.
 
-Extend provenance in Mermaid's native parsers/ASTs and preserve identities through each renderer. Share coordinate handling, artifact validation and activation across types; keep type-specific grammar and rendering bindings at their native boundaries. The current node/edge projection and flowchart SVG selectors are not a universal model. Generalize that contract around actual semantic kinds and visual bindings as coverage is implemented; do not add a parallel text-matching parser or estimate spans from SVG labels. Syntax transformations need exact original-source provenance, not just line offsets. Whole-diagram activation remains an explicit background gesture, not a substitute for missing element mappings.
+Implement native provenance export in Merman and preserve identities through each renderer. The earlier Mermaid fork remains a legacy flowchart producer during migration. Share coordinate handling, artifact validation and activation across types; keep type-specific grammar and rendering bindings at their native boundaries. The current node/edge projection and flowchart SVG selectors are not a universal model. Generalize that contract around actual semantic kinds and visual bindings as coverage is implemented; do not add a parallel text-matching parser or estimate spans from SVG labels. Syntax transformations need exact original-source provenance, not just line offsets. Whole-diagram activation remains an explicit background gesture, not a substitute for missing element mappings.
+
+## Merman migration
+
+User decision, 2026-09-26: adopt Merman on `feat/merman-backend` in the existing repository. See [MERMAN-1](specs/merman-backend/spec.md) for the selected story, package boundary and tests. Preserve the mapping core, static artifact, activation, Markdown and CLI. Isolate the Chromium producer from the native adapter and keep official Mermaid snapshots as reference evidence. Do not build a generic plugin layer or split the product repository.
+
+Pin the experimental native Node package, reuse one engine and dispose it on shutdown. Use its safe SVG pipeline. Its current public semantic/render operations do not expose source occurrences. Retain working legacy flowchart selection until native mapped parity; migrate non-flowchart static rendering first and report unavailable element mapping. Native provenance export is the next required upstream change, not something to reconstruct by matching labels or array positions. All-family release scope is unchanged.
