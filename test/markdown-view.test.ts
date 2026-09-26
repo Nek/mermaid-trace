@@ -3,15 +3,16 @@ import test from 'node:test';
 import { prepareMarkdown } from '../src/markdown-it.js';
 import { renderMarkdownView } from '../src/markdown-view.js';
 
-test('DOC-AC1/2/3: Markdown AST positions preserve text, section and fence provenance safely', () => {
+test('DOC-AC1/2/3: Markdown AST positions preserve text, heading and fence provenance safely', () => {
   const source = '# First\r\n\r\n> same **same** &amp; 😀\r\n> next \\*word\\* and `code`\r\n\r\n```mermaid\r\nflowchart LR\r\nA --> B\r\n```\r\n\r\n# Second\r\n\r\n[unsafe](javascript:alert(1))\r\n\r\n<script>alert(1)</script>';
   const document = { id: 'notes.md', revision: '1', source };
   const { blocks } = prepareMarkdown(document, 'doc');
   const view = renderMarkdownView(document, blocks, new Map([[blocks[0]!.id, '<svg></svg>']]));
   assert.doesNotMatch(view.html, /<script|href="javascript:/);
   assert.match(view.html, /data-mt-block="doc-0"/);
-  const section = view.targets.find(t => t.kind === 'section')!;
-  assert.deepEqual(section.span, { start: 0, end: source.indexOf('# Second') });
+  const heading = view.targets.find(t => t.span.start === 0)!;
+  assert.equal(heading.kind, 'h1');
+  assert.deepEqual(heading.span, { start: 0, end: '# First'.length });
   const repeated = view.texts.filter(t => t.value.includes('same'));
   assert.equal(repeated.length, 2);
   assert.notEqual(repeated[0]!.origins[0]!.start, repeated[1]!.origins[0]!.start);

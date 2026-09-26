@@ -34,7 +34,6 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
   const targets: DocumentTarget[] = [];
   const texts: DocumentText[] = [];
   const nodes = new Map<string, MarkdownNode>();
-  const sectionEnds = new Map<string, number>();
   const textMaps = new Map<string, Omit<DocumentText, 'id'>>();
   const lines = [...document.source.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)];
   const key = (node: { position?: MarkdownNode['position'] }) => `${node.position?.start.offset}:${node.position?.end.offset}`;
@@ -70,15 +69,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
       const exact = mapped.map(unit => unit.value).join('') === value;
       textMaps.set(key(node), { value, exact, origins: exact ? mapped.map(unit => unit.span) : value.split('').map(() => span) });
     }
-    if ('children' in node) {
-      for (const [i, child] of node.children.entries()) {
-        if (child.type === 'heading') {
-          const next = node.children.slice(i + 1).find(sibling => sibling.type === 'heading' && sibling.depth <= child.depth);
-          sectionEnds.set(key(child), next?.position?.start.offset ?? node.position!.end.offset!);
-        }
-        visitMarkdown(child);
-      }
-    }
+    if ('children' in node) node.children.forEach(visitMarkdown);
   };
   visitMarkdown(tree);
   const safe = sanitize(toHast(tree)) as Root;
@@ -102,9 +93,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
         return { type: 'element', tagName: 'div', properties: { 'data-mt-block': block.id }, children: [{ type: 'raw', value: svg }] };
       }
       if (/^(p|h[1-6]|blockquote|ul|ol|li|pre|hr)$/.test(node.tagName)) {
-        const span = spanOf(node);
-        const sectionEnd = sectionEnds.get(key(node));
-        const target = { id: `block-${targets.length}`, kind: sectionEnd === undefined ? node.tagName : 'section', span: { ...span, end: sectionEnd ?? span.end } };
+        const target = { id: `block-${targets.length}`, kind: node.tagName, span: spanOf(node) };
         targets.push(target);
         node.properties['data-md-target'] = target.id;
         node.properties.tabIndex = 0;

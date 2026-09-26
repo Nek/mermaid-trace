@@ -23,7 +23,7 @@ Markdown integration is part of initial delivery: markdown-it fence provenance a
 | [Artifact and integration contracts](docs/specs/source-mapping/contracts.md) | Static SVG, mapping integrity, and activation boundaries |
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
 | [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
-| [Document selection](docs/specs/document-selection/spec.md) | Rendered Markdown blocks, sections, text drags and whole-diagram selection |
+| [Document selection](docs/specs/document-selection/spec.md) | Rendered Markdown blocks, headings, text drags and whole-diagram selection |
 | [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
 | [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
 | [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
@@ -67,7 +67,7 @@ The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })
 corepack pnpm demo
 ```
 
-Open the local URL printed by Vite. The command renders [the example Markdown](docs/examples/interactive.md) once and generates a page containing static SVGs. The browser loads only the interaction/coordinate modules; it does not load Mermaid or markdown-it. Click a node, edge or label (or focus it and press Enter/Space) to select its original Markdown. Click diagram background to select its whole fenced block. Click prose/code/list blocks to select their source; click a heading to select its section. Drag rendered text to select characters across formatting or blocks. Occurrence buttons expose repeated references; selecting text highlights matching visuals. The source view is readonly. Diagrams remain visible with JavaScript disabled.
+Open the local URL printed by Vite. The command renders [the example Markdown](docs/examples/interactive.md) once and generates a page containing static SVGs. The browser loads only the interaction/coordinate modules; it does not load Mermaid or markdown-it. Click a node, edge or label (or focus it and press Enter/Space) to select its original Markdown. Click diagram background to select its whole fenced block. Click prose/code/list blocks to select their source; click a heading to select only that heading, including its Markdown syntax. Drag rendered text to select characters across formatting or blocks. Occurrence buttons expose repeated references; selecting text highlights matching visuals. The source view is readonly. Diagrams remain visible with JavaScript disabled.
 
 `activateSvg(svg, { source, onSelect })` accepts a safe inline SVG and returns its decoded `mapping`, `highlight(ranges)`, `select(pieceId)` and `dispose()`. Source spans are zero-based UTF-16, end-exclusive. Labels select their label text; node groups prefer a declaration, then the first occurrence. `data-mt-selected` provides a styling hook. The demo supplies visible focus and selection styles. Dispose before replacing or changing an SVG; duplicate attachment rejects. Source-selection gestures suppress hyperlink navigation.
 

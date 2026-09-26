@@ -86,13 +86,19 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     assert.equal(await page.locator('#selection-location').inputValue(), 'interactive.md:16:1-22:1');
     assert.equal(await page.locator('svg').nth(1).evaluate(element => element === document.activeElement && element.hasAttribute('data-mt-selected')), true);
     await page.getByText('Location copied.', { exact: true }).waitFor();
-    const heading = page.locator('article h2').first();
-    await heading.click();
-    const section = await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd));
-    assert.ok(section.startsWith('## Inside a list and a quote'));
-    assert.ok(section.includes('const meaning'));
-    assert.ok(!section.includes('## Inline text selection'));
-    assert.equal(await heading.evaluate(element => element === document.activeElement && element.hasAttribute('data-md-selected')), true);
+    for (const [selector, expected, location] of [
+      ['article h1', '# A small publishing workflow', 'interactive.md:1:1-1:30'],
+      ['article h2', '## Inside a list and a quote', 'interactive.md:12:1-12:29'],
+    ] as const) {
+      const heading = page.locator(selector).first();
+      await heading.click();
+      assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), expected);
+      assert.equal(await heading.evaluate(element => element === document.activeElement && element.hasAttribute('data-md-selected')), true);
+      assert.equal(await page.locator('[data-mt-selected]').count(), 0, 'heading selection must clear diagram highlights');
+      assert.equal(await page.locator('[data-md-selected]').count(), 1);
+      await page.getByText('Location copied.', { exact: true }).waitFor();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), location);
+    }
     await page.locator('article p').first().focus();
     assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), 'The same diagram appears twice. Each one points to its own fence in this document.');
     // A real drag across a rendered word maps only those characters, not its paragraph.
@@ -115,7 +121,7 @@ test('ACT-AC5: real Markdown page maps in both directions and displays offline w
     await page.locator('article h2').last().focus();
     await page.keyboard.up('Tab');
     assert.equal(await page.evaluate(() => document.getSelection()!.isCollapsed), true, 'structural focus clears a previous native text selection');
-    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd).startsWith('## Inline text selection')), true);
+    assert.equal(await page.locator('textarea').evaluate((input: HTMLTextAreaElement) => input.value.slice(input.selectionStart, input.selectionEnd)), '## Inline text selection');
     // A native range spanning formatting maps the original delimiters and entity spelling.
     await page.locator('article strong').evaluate(element => {
       const first = element.querySelector('[data-md-text]')!.firstChild!;
