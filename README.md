@@ -22,6 +22,7 @@ Markdown integration is part of initial delivery: markdown-it first, unified/rem
 | [Feature spec](docs/specs/source-mapping/spec.md) | User stories, observable acceptance criteria, scope, and unresolved decisions |
 | [Artifact and integration contracts](docs/specs/source-mapping/contracts.md) | Static SVG, mapping integrity, and activation boundaries |
 | [Markdown integration](docs/markdown-integration.md) | Renderer investigation, adapter choices, extraction mapping, and VS Code constraints |
+| [Markdown provenance](docs/specs/markdown-provenance/spec.md) | markdown-it adapter and exact bidirectional original-document ranges |
 | [Flowchart mapping proof](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
 | [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
 | [SVG baselines](docs/specs/svg-baselines/spec.md) | Upstream fixtures, deterministic rendering, and verification |
@@ -56,6 +57,6 @@ corepack pnpm snapshots:update
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
-The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). Activation and Markdown adapters remain unimplemented. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
+The producer calls the fork's explicit `mermaid.render(..., { sourceMap: true })` option; it does not intercept private parser methods. Removing our metadata recovers the original SVG bytes. See the [annotated SVG example](docs/examples/repeated-labels.svg). The markdown-it adapter prepares fences with exact original-document provenance, then consumes pre-rendered SVG artifacts. Activation remains unimplemented. The render API and artifact format are experimental; see the fork spec for supported input and limitations.
 
 Follow [SDD.md](docs/SDD.md): select one ready story, define its contracts and plan, derive tests, implement, verify, and record results. Read [SDD-PLANNING.md](docs/SDD-PLANNING.md) for planning and [SDD-DELIVERY.md](docs/SDD-DELIVERY.md) before implementation. Planned checks are not passing tests.

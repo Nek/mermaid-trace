@@ -13,7 +13,7 @@ Status: experimental flowchart producer and independent SVG reader implemented. 
 
 M1 has a [deterministic upstream SVG baseline](specs/svg-baselines/spec.md). The [first mapping proof](specs/flowchart-mapping/spec.md) now preserves exact node/edge spans and baseline SVG bytes. Markdown extraction provenance and the stable artifact contract are next. A renderer that merely places guessed locations in SVG does not satisfy M1 or M2. Browser-based rendering may be the initial approach; Node rendering without a browser is not promised.
 
-[FORK-1](specs/mermaid-fork/spec.md) replaces parser interception with explicit source maps from [Nek/mermaid](https://github.com/Nek/mermaid/tree/feat/flowchart-source-mappings). Next: Markdown extraction provenance, then a clickable Markdown demonstration using a separate activation module. Discussing the upstream API remains pending.
+[FORK-1](specs/mermaid-fork/spec.md) replaces parser interception with explicit source maps from [Nek/mermaid](https://github.com/Nek/mermaid/tree/feat/flowchart-source-mappings). [MD-1](specs/markdown-provenance/spec.md) verifies Markdown extraction provenance and synchronous consumption of prepared SVGs. Next: a clickable Markdown demonstration using a separate activation module. Discussing the upstream API remains pending.
 
 ## Foundation story: toolchain and initialization
 
