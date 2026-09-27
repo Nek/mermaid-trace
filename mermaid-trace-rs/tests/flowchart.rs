@@ -1968,3 +1968,60 @@ fn flow_ac4_layout_connectors_keep_exact_authored_spans_and_static_output() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_5_operator_inventory_has_exact_ranges_and_static_parity() {
+    let inventory: Value = serde_json::from_str(include_str!(
+        "../../mermaid-trace-ts/test/fixtures/flowchart/operators.json"
+    ))
+    .unwrap();
+    let operators = inventory["operators"].as_array().unwrap();
+    assert_eq!(operators.len(), 195);
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for batch in operators.chunks(16) {
+                    let mut source = format!(
+                        "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\n"
+                    );
+                    for (i, operator) in batch.iter().enumerate() {
+                        source.push_str(&format!(
+                            "A{i} e{i}@{} B{i}\r\n",
+                            operator.as_str().unwrap()
+                        ));
+                    }
+                    let mapped = mermaid_trace_rs::render("operators", &source).unwrap();
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "operators", &source).unwrap();
+                    assert_eq!(
+                        strip_trace(mapped["svg"].as_str().unwrap()),
+                        strip_trace(baseline["svg"].as_str().unwrap())
+                    );
+                    let pieces = mapped["mapping"]["pieces"].as_array().unwrap();
+                    for (i, operator) in batch.iter().enumerate() {
+                        let expected = format!("e{i}@{}", operator.as_str().unwrap());
+                        let start = source[..source.find(&expected).unwrap()]
+                            .encode_utf16()
+                            .count();
+                        let piece = pieces
+                            .iter()
+                            .find(|piece| {
+                                piece["kind"] == "edge"
+                                    && piece["domId"] == format!("edge:e{i}")
+                                    && piece.get("relation").is_none()
+                            })
+                            .unwrap();
+                        assert_eq!(
+                            piece["span"],
+                            serde_json::json!({"start":start,"end":start + expected.encode_utf16().count()}),
+                            "{expected}/{header}/{look}/{html}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

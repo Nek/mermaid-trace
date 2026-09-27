@@ -87,15 +87,20 @@ export function activateSvg(svg: SVGSVGElement, options: {
       ? hitTargets.get(event.target) ?? event.target.closest('[data-mt-refs]') ?? svg : null;
     return element && element.closest('svg') === svg && (element === svg || elements.includes(element)) ? element as SVGElement : null;
   };
+  let pointerTarget: SVGElement | null = null;
   const pointerFocus = (event: MouseEvent) => {
     const element = targetFor(event);
     if (!element || event.button !== 0) return;
+    pointerTarget = element;
     event.preventDefault();
     element.focus({ preventScroll: true });
   };
   const gesture = (event: Event) => {
     if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
-    const element = targetFor(event);
+    const element = event instanceof MouseEvent && event.type === 'click' && event.detail > 0
+      && pointerTarget && event.target instanceof Node && event.target.contains(pointerTarget)
+      ? pointerTarget : targetFor(event);
+    if (event.type === 'click') pointerTarget = null;
     if (!element) return;
     if (event.type !== 'focusin') {
       event.preventDefault();
