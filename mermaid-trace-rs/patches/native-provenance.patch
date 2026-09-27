@@ -27168,7 +27168,7 @@ index fe8d8293..be3798b6 100644
      match v {
          Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..dc937c86 100644
+index f4d33957..75b566a1 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
 @@ -581,11 +581,42 @@ impl<'a> ParsePipeline<'a> {
@@ -27219,7 +27219,7 @@ index f4d33957..dc937c86 100644
              let Some((code, meta)) = (match preprocessed {
                  Ok(preprocessed) => preprocessed,
                  Err(error) => return Ok(Err(error)),
-@@ -616,6 +647,75 @@ impl<'a> ParsePipeline<'a> {
+@@ -616,6 +647,78 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -27279,6 +27279,9 @@ index f4d33957..dc937c86 100644
 +            let title_key = match output.model() {
 +                RenderSemanticModel::State(_) => Some("state:title"),
 +                RenderSemanticModel::Flowchart(_) => Some("flowchart:title"),
++                RenderSemanticModel::Journey(model) if model.title.is_none() => {
++                    Some("journey:title")
++                }
 +                _ => None,
 +            };
 +            if let (Some(title_key), Some(evidence)) = (title_key, source_config.as_ref()) {
@@ -29412,7 +29415,7 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..069bfed5 100644
+index 61faa868..aaff5861 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
 @@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
@@ -29572,18 +29575,21 @@ index 61faa868..069bfed5 100644
          );
  
          out.push_str("</g>");
-@@ -567,7 +617,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +617,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
 -            r#"<text x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
 +            r#"<text{trace} x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
-+            trace =
-+                crate::svg::parity::source_attrs(&model.source_occurrences, "journey:title", false),
++            trace = crate::svg::parity::source_attrs(
++                &model.source_occurrences,
++                "journey:title",
++                title_from_meta
++            ),
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
-@@ -668,6 +720,7 @@ mod tests {
+@@ -668,6 +723,7 @@ mod tests {
              title_y: 25.0,
              actor_legend: Vec::new(),
              sections: vec![JourneySectionLayout {
@@ -31051,10 +31057,10 @@ index 00000000..56b40c23
 +}
 diff --git a/crates/merman/tests/journey_source_provenance.rs b/crates/merman/tests/journey_source_provenance.rs
 new file mode 100644
-index 00000000..4e525c4a
+index 00000000..ea22ba2e
 --- /dev/null
 +++ b/crates/merman/tests/journey_source_provenance.rs
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,177 @@
 +#![cfg(feature = "svg")]
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
@@ -31179,6 +31185,58 @@ index 00000000..4e525c4a
 +        sections[5].get("labelSpan").is_none(),
 +        "a real empty section frame has no invented label"
 +    );
++}
++
++#[test]
++fn journey_frontmatter_title_uses_original_scalar_provenance_without_overriding_body() {
++    let renderer = Renderer::new().with_engine(
++        Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":true}))),
++    );
++    for body in ["", "title Body 😀\r\n"] {
++        let source = format!(
++            "---\r\ntitle: 'Configured 😀'\r\n---\r\njourney\r\n{body}Task : 5 : Alice\r\n"
++        );
++        let RenderOutput::Svg(Some(output)) = renderer
++            .render(RenderRequest::svg(
++                &source,
++                OperationControl::new(),
++                SvgRequest::default(),
++            ))
++            .unwrap()
++        else {
++            panic!("no SVG")
++        };
++        let svg = roxmltree::Document::parse(output.svg()).unwrap();
++        let pieces: Vec<Value> = serde_json::from_str(
++            svg.descendants()
++                .find_map(|n| n.attribute("data-mt-native"))
++                .unwrap(),
++        )
++        .unwrap();
++        let titles: Vec<_> = pieces
++            .iter()
++            .filter(|p| p["domId"] == "journey:title")
++            .collect();
++        assert_eq!(titles.len(), 1);
++        let span = &titles[0]["labelSpan"];
++        assert_eq!(
++            &source
++                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
++            if body.is_empty() {
++                "Configured 😀"
++            } else {
++                "Body 😀"
++            }
++        );
++        let title = svg
++            .descendants()
++            .find(|n| n.attribute("data-mt-key") == Some("journey:title"))
++            .unwrap();
++        assert_eq!(
++            title.attribute("data-mt-label"),
++            if body.is_empty() { Some("true") } else { None }
++        );
++    }
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs
 new file mode 100644

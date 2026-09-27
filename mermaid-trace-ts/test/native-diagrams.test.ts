@@ -175,6 +175,8 @@ async function verifyNative(source: string, key: string, expected: string, label
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
   const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
+  const toMarkdownEnd = (offset: number) => toMarkdown(offset) - (source[offset - 1] === '\n' ? 2 : 0);
+  const markdownSelection = (text: string) => text.replace(/\n(?!$)/g, '\n> ');
   const reverseRole = reversePrimaryKey === key ? 'node' : reversePrimaryKey.startsWith('edge:') ? 'edge' : 'control';
   const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
   const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
@@ -328,12 +330,12 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), savedConfig, 'native configuration evidence must survive saved SVG and Markdown insertion');
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     await page.locator(labelSelector).first().click();
-    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label.replaceAll('\n', '\n> '));
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
     const start = toMarkdown(labelSpan.start);
-    const end = toMarkdown(labelSpan.end);
+    const end = toMarkdownEnd(labelSpan.end);
     await page.locator(labelSelector).first().focus();
     await page.locator(labelSelector).first().press('Enter');
-    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label.replaceAll('\n', '\n> '));
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end }));
     await original.evaluate((element, span) => {
       const doc = element.ownerDocument; const range = doc.createRange();
@@ -348,7 +350,7 @@ async function verifyNative(source: string, key: string, expected: string, label
         const doc = element.ownerDocument; const range = doc.createRange();
         range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
         doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
-      }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
+      }, { start: toMarkdown(offset), end: toMarkdownEnd(offset + reverseNodeSource.length) });
       // A straight SVG connector can have a zero-width bounding box while its stroke is rendered.
       await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`, { state: 'attached' });
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
@@ -359,7 +361,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       const target = controlKey === "state:note:first" ? page.locator("path.note-edge").first() : controlKey === "state:note:last" ? page.locator("path.note-edge").last() : controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
         await target.click();
-        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
       }
       if (controlKey.startsWith('state:note:')) {
         const local = controlSpans[index]!;
@@ -378,25 +380,46 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await body.count(), 1, 'live connector activation selects the note body');
         assert.equal(await body.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'selection has one visual treatment');
         assert.equal(await target.getAttribute('data-mt-selected'), 'true');
-        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
       }
       if (controlKey === 'state:region:last') {
         const rect = target.locator(':scope > g > rect.divider');
         await rect.click({ position: { x: 1, y: (await rect.boundingBox())!.height / 2 } });
-        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
         assert.equal(await page.locator('svg[data-mt-map]').getAttribute('data-mt-selected'), null);
       }
       const before = await page.evaluate(() => navigator.clipboard.readText());
       await target.focus();
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before, 'focus must not copy');
       await target.press(index % 2 ? 'Space' : 'Enter');
-      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
       const span = controlSpans[index]!;
-      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdown(span.end) }));
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) }));
+      if (controlKey === 'journey:title') {
+        await original.evaluate((element, span) => {
+          const doc = element.ownerDocument, range = doc.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+        }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) });
+        await target.locator(':scope[data-mt-selected=true]').waitFor();
+        assert.equal(await page.locator('[data-mt-role^=node][data-mt-selected=true]').count(), 0, 'title source selection must stay with its title');
+        await target.click();
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) }));
+        if (role === 'control') {
+          const field = source.indexOf('title:');
+          await original.evaluate((element, span) => {
+            const doc = element.ownerDocument, range = doc.createRange();
+            range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+            doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+          }, { start: toMarkdown(field), end: toMarkdown(field + "title: 'Configured 😀'".length) });
+          await page.waitForFunction(() => document.querySelector('[data-mt-key="journey:title"]')?.getAttribute('data-mt-selected') !== 'true');
+        }
+      }
     }
     await page.locator('svg[data-mt-map]').focus(); await page.keyboard.press('Enter');
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdown.slice(markdown.indexOf('> ```')));
-    await writeFile(filename, markdown.replaceAll(label.replaceAll('\n', '\n> '), 'Changed'));
+    await writeFile(filename, markdown.replaceAll(markdownSelection(label), 'Changed'));
     await page.locator('[data-mt-role=node-label]').filter({ hasText: 'Changed' }).first().waitFor();
     return savedConfig;
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
@@ -610,6 +633,17 @@ test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owne
       await preview.close(); preview = undefined;
     }
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('JOURNEY-2-TITLE: YAML titles keep saved and live source ownership and body precedence', { timeout: 180_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    for (const bodyTitle of [false, true]) {
+      const source = `---\ntitle: 'Configured 😀'\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\n${bodyTitle ? 'title Body 😀\n' : ''}Task : 5 : Alice\n`;
+      await verifyNative(source, 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', bodyTitle ? 'title Body 😀' : 'Configured 😀', bodyTitle ? 'control' : 'control-label']]);
+    }
+  }
+  await verifyNative('---\ntitle: >-\n  First 😀\n  Second\n---\njourney\nTask : 5 : Alice\n', 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', 'First 😀\n  Second', 'control-label']]);
+  await verifyNative('---\ntitle: >-\n  First 😀\n  Second\nconfig:\n  htmlLabels: false\n---\njourney\nTask : 5 : Alice\n', 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', 'First 😀\n  Second\n', 'control-label']]);
 });
 
 
