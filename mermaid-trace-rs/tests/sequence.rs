@@ -1,3 +1,5 @@
+mod support;
+
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 #[test]
@@ -146,4 +148,54 @@ fn seq_ac1_preprocessing_and_control_variants_keep_original_positions() {
     );
     assert_eq!(edges[0]["from"], "A");
     assert_eq!(edges[0]["to"], "B");
+}
+
+#[test]
+fn own_seq_note_attachments_do_not_declare_or_label_participants() {
+    let plain = Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for attachment in ["left of A", "right of A", "over A", "over A,B"] {
+        for (prefix, suffix) in [
+            ("", ""),
+            ("", "A->>B: Real message\r\n"),
+            ("", "participant A as Declared\r\nparticipant B\r\n"),
+            ("participant A\r\nparticipant B\r\n", ""),
+        ] {
+            let note = format!("note {attachment}: Available 😀");
+            let source = format!("sequenceDiagram\r\n{prefix}{note}\r\n{suffix}");
+            let result = mermaid_trace_rs::render("note-owner", &source).unwrap();
+            let untraced = mermaid_trace_rs::render_with(&plain, "note-owner", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(result["svg"].as_str().unwrap()),
+                support::strip_trace(untraced["svg"].as_str().unwrap())
+            );
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let start = source[..source.find(&note).unwrap()].encode_utf16().count() as u64;
+            let end = start + note.encode_utf16().count() as u64;
+            assert!(
+                !pieces.iter().any(|p| p["kind"] == "node"
+                    && p["span"]["start"].as_u64().unwrap() < end
+                    && p["span"]["end"].as_u64().unwrap() > start),
+                "note attachment syntax belongs to the note: {source}"
+            );
+            let owner = pieces.iter().find(|p| p["kind"] == "note").unwrap();
+            assert_eq!(
+                owner["targets"],
+                if attachment == "over A,B" {
+                    serde_json::json!(["A", "B"])
+                } else if attachment == "over A" {
+                    serde_json::json!(["A", "A"])
+                } else {
+                    serde_json::json!(["A"])
+                }
+            );
+            assert_eq!(owner["span"], serde_json::json!({"start":start,"end":end}));
+            if !prefix.is_empty() || !suffix.is_empty() {
+                assert!(
+                    pieces
+                        .iter()
+                        .any(|p| p["kind"] == "node" && p["semanticId"] == "A")
+                );
+            }
+        }
+    }
 }

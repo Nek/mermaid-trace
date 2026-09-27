@@ -13142,7 +13142,7 @@ index 1763d899..fbfffec8 100644
              acc_title: self.acc_title,
              acc_descr: self.acc_descr,
 diff --git a/crates/merman-core/src/diagrams/sequence/parse.rs b/crates/merman-core/src/diagrams/sequence/parse.rs
-index f84737e3..7be57dc8 100644
+index f84737e3..02d656f7 100644
 --- a/crates/merman-core/src/diagrams/sequence/parse.rs
 +++ b/crates/merman-core/src/diagrams/sequence/parse.rs
 @@ -68,19 +68,20 @@ impl SequenceSyntax {
@@ -13207,7 +13207,7 @@ index f84737e3..7be57dc8 100644
          Ok(db) => db,
          Err(message) => {
              return Ok(Err(Box::new(SequenceSemanticFailure::Db {
-@@ -235,16 +248,132 @@ fn construct_sequence_semantic_source(
+@@ -235,16 +248,165 @@ fn construct_sequence_semantic_source(
  fn build_sequence_db(
      actions: Vec<super::Action>,
      wrap_enabled: Option<bool>,
@@ -13260,7 +13260,13 @@ index f84737e3..7be57dc8 100644
 +        let actor = match action.as_ref() {
 +            super::Action::AddParticipant { id, .. }
 +            | super::Action::CreateParticipant { id, .. } => Some((id.clone(), true)),
-+            super::Action::EnsureParticipant { id } => Some((id.clone(), false)),
++            super::Action::EnsureParticipant { id }
++                if !within
++                    .first()
++                    .is_some_and(|(_, token, _)| matches!(token, Tok::Note)) =>
++            {
++                Some((id.clone(), false))
++            }
 +            _ => None,
 +        };
 +        let kind = match action.as_ref() {
@@ -13269,6 +13275,12 @@ index f84737e3..7be57dc8 100644
 +            super::Action::ActiveStart { .. } | super::Action::ActiveEnd { .. } => "activation",
 +            super::Action::ControlSignal { .. } => "control",
 +            _ => "decoration",
++        };
++        let note = match action.as_ref() {
++            super::Action::AddNote {
++                actors, placement, ..
++            } => Some((actors.clone(), *placement)),
++            _ => None,
 +        };
 +        let first_message = db.messages.len();
 +        let box_key = matches!(action.as_ref(), super::Action::BoxStart { .. })
@@ -13323,6 +13335,10 @@ index f84737e3..7be57dc8 100644
 +                occurrence["from"] = serde_json::to_value(&message.from).unwrap();
 +                occurrence["to"] = serde_json::to_value(&message.to).unwrap();
 +            }
++            if let Some((targets, placement)) = &note {
++                occurrence["targets"] = serde_json::json!(targets);
++                occurrence["placement"] = serde_json::json!(placement);
++            }
 +            if has_label {
 +                if let Some(label) = label {
 +                    occurrence["labelSpan"] = serde_json::to_value(label).unwrap();
@@ -13338,8 +13354,69 @@ index f84737e3..7be57dc8 100644
 +                db.source_occurrences[index]["span"]["end"] = serde_json::json!(span.end);
 +            }
 +        }
++    }
++    let note_targets: Vec<String> = db
++        .source_occurrences
++        .iter()
++        .filter(|piece| piece["kind"] == "note")
++        .flat_map(|piece| piece["targets"].as_array().into_iter().flatten())
++        .filter_map(|target| target.as_str().map(str::to_owned))
++        .collect();
++    for target in note_targets {
++        let key = format!("actor:{target}");
++        if !db
++            .source_occurrences
++            .iter()
++            .any(|piece| piece["domId"] == key)
++        {
++            db.source_occurrences.push(serde_json::json!({"kind":"decoration", "semanticId":target, "domId":key, "classification":"note-implied-anchor"}));
++        }
      }
      Ok(Ok(db))
+ }
+@@ -825,4 +987,43 @@ mod tests {
+                 .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+         );
+     }
++    #[test]
++    fn note_attachments_keep_ownership_without_becoming_actor_origins() {
++        for suffix in ["", "\nA->>B: message", "\nparticipant A\nparticipant B"] {
++            let note = "note over A,B: payload";
++            let source = format!("sequenceDiagram\n{note}{suffix}\n");
++            let db = parse_sequence_semantic_source(&source, &meta()).unwrap().db;
++            let end = "sequenceDiagram\n".len() + note.len();
++            assert!(
++                !db.source_occurrences
++                    .iter()
++                    .any(|p| p["kind"] == "node"
++                        && p["span"]["start"].as_u64().unwrap() < end as u64)
++            );
++            let owner = db
++                .source_occurrences
++                .iter()
++                .find(|p| p["kind"] == "note")
++                .unwrap();
++            assert_eq!(owner["targets"], serde_json::json!(["A", "B"]));
++            assert_eq!(owner["placement"], 2);
++            if suffix.is_empty() {
++                assert_eq!(
++                    db.source_occurrences
++                        .iter()
++                        .filter(|p| p["classification"] == "note-implied-anchor")
++                        .count(),
++                    2
++                );
++            } else {
++                assert_eq!(
++                    db.source_occurrences
++                        .iter()
++                        .filter(|p| p["kind"] == "node")
++                        .count(),
++                    2
++                );
++            }
++        }
++    }
  }
 diff --git a/crates/merman-core/src/diagrams/sequence/render_model.rs b/crates/merman-core/src/diagrams/sequence/render_model.rs
 index 3f182a61..f3404ae6 100644
