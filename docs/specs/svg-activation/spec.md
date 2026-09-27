@@ -67,3 +67,7 @@ Verification: the note-text reverse regression failed by highlighting its connec
 ACT-AC1/2 / FLOW-2 visibility: activation gives keyboard and widened pointer targets only to painted connectors, using the mounted browser's computed paint styles. Hidden/layout-only connector metadata and programmatic source selection survive; independently visible labels remain controls. Dispose restores original attributes/markup. Hosts reattach after changing artifact/style inputs.
 
 Verification: the failing invisible-link keyboard regression now passes saved/live activation across both layouts, three looks and both HTML modes. The complete 50-test TypeScript/browser suite and typecheck pass, preserving state-region and note-connector acceptance.
+
+ACT-AC2 / STATE-IMPLICIT-LABEL: label-only reverse selection suppresses the enclosing piece with the same semantic kind and identity, even if native node/label visual keys differ and their authored ranges are equal. Explicit pointer/keyboard activation still uses the selected occurrence IDs, preserving node selection. Separate diagram instances remain isolated.
+
+Verification: the implicit-state equal-range regression failed before removing the visual-key equality requirement, then passed all 12 state variants. All 51 TypeScript/browser tests and typecheck pass, including strengthened saved/live reverse-selection and explicit state node keyboard assertions.

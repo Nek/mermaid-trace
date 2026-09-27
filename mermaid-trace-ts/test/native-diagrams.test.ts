@@ -78,6 +78,10 @@ async function verifyNative(source: string, key: string, expected: string, label
     }
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
+    if (key.startsWith('state:node:')) {
+      await shape.first().focus(); await shape.first().press('Enter');
+      assert.equal(await shape.first().getAttribute('data-mt-selected'), 'true', 'state node keyboard activation keeps node selection');
+    }
     const consoleGlyph = shape.first().locator('.console-glyph');
     if (await consoleGlyph.count()) {
       await consoleGlyph.click();
@@ -91,6 +95,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     const labelSpan = event.span;
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
     assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
+    assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), 'true', 'the authored label remains selected');
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
     for (const [controlKey, text, role = 'control'] of controls) {
@@ -162,6 +167,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
     }, { start, end });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
+    assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'native original-source label selection excludes enclosing nodes');
     if (reverseNodeSource !== undefined) {
       const offset = source.indexOf(reverseNodeSource);
       await original.evaluate((element, span) => {
@@ -484,5 +490,13 @@ test('STATE NOTE: dashed connectors preserve saved/live source and clipboard acr
     const composite = `note ${position} of Group : Same 😀`;
     const source = `---\nconfig:\n  look: ${look}\n  handDrawnSeed: 42\n  htmlLabels: ${html}\n---\n${header}\nstate "Actor 😀" as A\nstate Group {\n  B\n}\n${note}\n${composite}\n`;
     await verifyNative(source, 'state:node:A', 'state "Actor 😀" as A', 'Actor 😀', [['state:note:first', note, 'edge'], ['state:note:last', composite, 'edge']]);
+  }
+});
+
+
+test('STATE AC4/6: implicit state labels reverse-select only their label despite equal declaration ranges', { timeout: 120_000 }, async () => {
+  for (const header of ['stateDiagram', 'stateDiagram-v2']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    const source = `---\nconfig:\n  look: ${look}\n  handDrawnSeed: 42\n  htmlLabels: ${html}\n---\n${header}\n%% 😀\n[*] --> Indexing\nIndexing --> [*] : indexed\n`;
+    await verifyNative(source, 'state:node:Indexing', 'Indexing', 'Indexing');
   }
 });

@@ -67,7 +67,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     set(svg, 'data-mt-selected', whole ? 'true' : null);
     const selected = new Set(whole ? [] : pieces.map(piece => piece.id));
     const labelOnly = new Set(pieces.filter(piece => ranges.filter(range => overlaps(piece.span, range)).every(range => matchingLabels.some(label =>
-      label.kind === piece.kind && label.semanticId === piece.semanticId && label.domId === piece.domId
+      label.kind === piece.kind && label.semanticId === piece.semanticId
       && range.start >= label.labelSpan!.start && range.start < label.labelSpan!.end && range.end <= label.labelSpan!.end)))
       .map(piece => piece.id));
     for (const element of elements) {
