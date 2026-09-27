@@ -1220,3 +1220,113 @@ fn flow_ac4_scoped_direction_occurrences_keep_native_groups_and_exact_ranges() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_accessibility_retains_exact_occurrences_and_effective_payloads() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\n  accTitle : First 😀  \r\naccTitle: Last 😀\r\naccDescr: Earlier\r\naccDescr {{\r\n  First 😀\r\n  second\r\n}}\r\nA[Actor] --> B\r\n"
+            );
+            let result = mermaid_trace_rs::render("accessible", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let slice = |span: &Value| {
+                &source[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize]
+            };
+            for (statement, payload, effective) in [
+                ("accTitle : First 😀", "First 😀", false),
+                ("accTitle: Last 😀", "Last 😀", true),
+                ("accDescr: Earlier", "Earlier", false),
+                (
+                    "accDescr {\r\n  First 😀\r\n  second\r\n}",
+                    "First 😀\r\n  second",
+                    true,
+                ),
+            ] {
+                let piece = native
+                    .iter()
+                    .find(|p| {
+                        p["classification"] == "accessibility" && slice(&p["span"]) == statement
+                    })
+                    .unwrap_or_else(|| panic!("missing {statement}"));
+                assert_eq!(piece["kind"], "nonvisual");
+                assert_eq!(piece["effective"], effective);
+                assert_eq!(slice(&piece["labelSpan"]), payload);
+            }
+            assert_eq!(
+                native
+                    .iter()
+                    .filter(|p| p["classification"] == "accessibility")
+                    .count(),
+                4
+            );
+            assert_eq!(
+                svg.descendants()
+                    .find(|n| n.has_tag_name("title"))
+                    .and_then(|n| n.text()),
+                Some("Last 😀")
+            );
+            assert_eq!(
+                svg.descendants()
+                    .find(|n| n.has_tag_name("desc"))
+                    .and_then(|n| n.text()),
+                Some("First 😀\nsecond")
+            );
+            assert!(
+                !svg.descendants()
+                    .filter(|n| n.has_tag_name("title") || n.has_tag_name("desc"))
+                    .any(|n| n.attribute("data-mt-role").is_some())
+            );
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "accessible", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+    for source in [
+        "flowchart LR\naccTitle: First\naccTitle: \naccDescr: \nA --> B\n",
+        "flowchart LR\naccDescr: Earlier\nA --> B\naccDescr {Unfinished 😀",
+    ] {
+        let result = mermaid_trace_rs::render("accessible-empty", source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|n| n.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        if source.contains("Unfinished") {
+            assert!(
+                native
+                    .iter()
+                    .any(|p| p["classification"] == "incomplete-accessibility"
+                        && p["effective"] == false)
+            );
+            assert!(native.iter().any(|p| p["field"] == "accDescr"
+                && p["classification"] == "accessibility"
+                && p["effective"] == true));
+            assert_eq!(
+                svg.descendants()
+                    .find(|n| n.has_tag_name("desc"))
+                    .and_then(|n| n.text()),
+                Some("Earlier")
+            );
+        } else {
+            let empty: Vec<_> = native
+                .iter()
+                .filter(|p| p["classification"] == "accessibility" && p["effective"] == true)
+                .collect();
+            assert_eq!(empty.len(), 2);
+            assert!(empty.iter().all(|p| p.get("labelSpan").is_none()));
+        }
+    }
+}

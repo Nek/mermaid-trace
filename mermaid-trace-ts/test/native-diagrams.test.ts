@@ -36,6 +36,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       Object.assign(window, { events, handles });
     }, activation);
     const first = page.locator('svg[data-mt-map]').first();
+    assert.equal(await first.locator('title[tabindex], desc[tabindex], title[data-mt-role], desc[data-mt-role]').count(), 0, 'nonvisual accessibility text must not become a selectable control');
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
     const ellipse = shape.first().locator(':scope > ellipse');
@@ -98,6 +99,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     preview = await watchPreview(filename, { port: 0, sourceView: true });
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const original = page.frameLocator('#source-frame').locator('#source');
+    assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label);
     const start = toMarkdown(labelSpan.start);
@@ -337,5 +339,13 @@ test('FLOW AC4/6: scoped directions select their group in saved and live Markdow
     await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:subgraph:G', group]], 'direction RL', [], 'flowchart:subgraph:G');
     const collapsed = 'subgraph H[Collapsed]\ndirection BT\nC --> D\nend';
     await verifyNative(source + collapsed + '\nH@{view: collapsed}\n', 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:subgraph:H', collapsed]], 'direction BT', [], 'flowchart:subgraph:H');
+  }
+});
+
+
+test('FLOW AC4/6: accessibility metadata preserves saved/live selection without invisible controls', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
+    const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\naccTitle: Accessible diagram\naccDescr {\n  First line\n  second line\n}\nA["Actor 😀"] --> B\n`;
+    await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['edge:L_A_B_0', '-->', 'edge']]);
   }
 });

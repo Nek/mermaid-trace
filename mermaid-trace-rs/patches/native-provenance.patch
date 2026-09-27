@@ -246,7 +246,7 @@ index fe6e3b0e..fee9cbb1 100644
          &mut self.model
      }
 diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
-index a9aec31b..bfdcabbe 100644
+index a9aec31b..a461488f 100644
 --- a/crates/merman-core/src/diagrams/flowchart.rs
 +++ b/crates/merman-core/src/diagrams/flowchart.rs
 @@ -70,6 +70,8 @@ use text::{
@@ -277,7 +277,75 @@ index a9aec31b..bfdcabbe 100644
      keyword: String,
      direction: Option<String>,
      acc_title: Option<String>,
-@@ -365,6 +368,12 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -181,7 +184,12 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
+             )?;
+             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
+             let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
+-                ast, acc_title, acc_descr, meta, control,
++                ast,
++                acc_title,
++                acc_descr,
++                &accessibility_statements,
++                meta,
++                control,
+             )? {
+                 Ok(source) => match source.into_render_model_controlled(meta, control)? {
+                     Ok(model) => {
+@@ -310,12 +318,19 @@ fn parse_flowchart_semantic_source(
+         parser_input: code,
+         title: acc_title,
+         description: acc_descr,
+-        ..
++        statements: accessibility_statements,
+     } = scan_flowchart_accessibility(code);
+     let ast = parse_flowchart_ast(&code, meta)?;
+     let control = OperationControl::new();
+-    parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, &control)
+-        .expect("a private parse control cannot be cancelled")
++    parse_flowchart_semantic_source_from_ast_controlled(
++        ast,
++        acc_title,
++        acc_descr,
++        &accessibility_statements,
++        meta,
++        &control,
++    )
++    .expect("a private parse control cannot be cancelled")
+ }
+ 
+ fn parse_flowchart_semantic_source_controlled(
+@@ -328,13 +343,20 @@ fn parse_flowchart_semantic_source_controlled(
+         parser_input: code,
+         title: acc_title,
+         description: acc_descr,
+-        ..
++        statements: accessibility_statements,
+     } = scan_flowchart_accessibility_controlled(code, control)?;
+     let ast = match parse_flowchart_ast_controlled(&code, meta, control)? {
+         Ok(ast) => ast,
+         Err(error) => return Ok(Err(error)),
+     };
+-    parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, control)
++    parse_flowchart_semantic_source_from_ast_controlled(
++        ast,
++        acc_title,
++        acc_descr,
++        &accessibility_statements,
++        meta,
++        control,
++    )
+ }
+ 
+ fn parse_flowchart_ast_controlled(
+@@ -352,6 +374,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+     ast: FlowchartAst,
+     acc_title: Option<String>,
+     acc_descr: Option<String>,
++    accessibility_statements: &[FlowchartAccessibilityStatement],
+     meta: &ParseMetadata,
+     control: &OperationControl,
+ ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
+@@ -365,6 +388,12 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          .and_then(|v| v.as_bool())
          .unwrap_or(false);
      let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
@@ -290,7 +358,7 @@ index a9aec31b..bfdcabbe 100644
      builder.visit_statements(&ast.statements, control)?;
  
      let subgraph_ids: HashSet<String> = builder
-@@ -374,8 +383,24 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -374,8 +403,42 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          .collect();
  
      let mut build = FlowchartBuildState::new(subgraph_ids);
@@ -312,11 +380,29 @@ index a9aec31b..bfdcabbe 100644
 +    source_occurrences.extend(builder.source_occurrences);
 +    if build.trace_source {
 +        source_occurrences.push(serde_json::json!({"kind":"nonvisual","classification":"diagram-header","span":ast.header_span}));
++        let mut last_complete = HashMap::new();
++        for (index, statement) in accessibility_statements.iter().enumerate() {
++            if index.is_multiple_of(128) {
++                control.checkpoint()?;
++            }
++            if statement.complete {
++                last_complete.insert(statement.directive.prefix(), index);
++            }
++        }
++        for (index, statement) in accessibility_statements.iter().enumerate() {
++            control.checkpoint()?;
++            let effective = last_complete.get(statement.directive.prefix()) == Some(&index);
++            let mut piece = serde_json::json!({"kind":"nonvisual","classification":if statement.complete {"accessibility"} else {"incomplete-accessibility"},"field":statement.directive.prefix(),"effective":effective,"span":statement.span});
++            if let Some(payload) = statement.payload {
++                piece["labelSpan"] = serde_json::json!(payload);
++            }
++            source_occurrences.push(piece);
++        }
 +    }
      let mut nodes = nodes;
      let mut edges = edges;
  
-@@ -400,6 +425,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -400,6 +463,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
      let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
      {
          let mut semantic_ctx = FlowchartSemanticContext {
@@ -324,7 +410,7 @@ index a9aec31b..bfdcabbe 100644
              nodes: &mut nodes,
              node_index: &mut node_index,
              edges: &mut edges,
-@@ -422,10 +448,57 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -422,10 +486,57 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          }
      }
  
@@ -382,7 +468,7 @@ index a9aec31b..bfdcabbe 100644
          keyword: ast.keyword,
          direction,
          acc_descr,
-@@ -446,7 +519,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -446,7 +557,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
  fn prepare_flowchart_shape_data(
      statements: &[Stmt],
      control: &OperationControl,
@@ -391,7 +477,7 @@ index a9aec31b..bfdcabbe 100644
      let mut documents = HashMap::new();
      let mut stack = vec![statements.iter()];
      let mut visited = 0usize;
-@@ -481,7 +554,7 @@ fn prepare_flowchart_shape_data(
+@@ -481,7 +592,7 @@ fn prepare_flowchart_shape_data(
              Stmt::ShapeData { yaml, .. } => {
                  prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
              }
@@ -400,7 +486,7 @@ index a9aec31b..bfdcabbe 100644
              | Stmt::Style(_)
              | Stmt::ClassDef(_)
              | Stmt::ClassAssign(_)
-@@ -497,12 +570,13 @@ fn prepare_flowchart_shape_data(
+@@ -497,12 +608,13 @@ fn prepare_flowchart_shape_data(
  fn prepare_flowchart_shape_data_document(
      source: &str,
      control: &OperationControl,
@@ -416,7 +502,7 @@ index a9aec31b..bfdcabbe 100644
      documents.insert(source.to_string(), document);
      Ok(())
  }
-@@ -1001,7 +1075,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
+@@ -1001,7 +1113,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                      );
                  }
              }
@@ -425,7 +511,7 @@ index a9aec31b..bfdcabbe 100644
          }
      }
      control.checkpoint()
-@@ -1565,6 +1639,7 @@ impl FlowchartSemanticSource {
+@@ -1565,6 +1677,7 @@ impl FlowchartSemanticSource {
      ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
          control.checkpoint()?;
          let FlowchartSemanticSource {
@@ -433,7 +519,7 @@ index a9aec31b..bfdcabbe 100644
              acc_descr,
              acc_title,
              class_defs,
-@@ -1649,12 +1724,13 @@ impl FlowchartSemanticSource {
+@@ -1649,12 +1762,13 @@ impl FlowchartSemanticSource {
              tooltips: render_tooltips,
              warning_facts,
          };
@@ -448,7 +534,7 @@ index a9aec31b..bfdcabbe 100644
          Ok(Ok((model, render_context)))
      }
  }
-@@ -1681,6 +1757,7 @@ fn append_missing_subgraph_nodes(
+@@ -1681,6 +1795,7 @@ fn append_missing_subgraph_nodes(
                  provenance: FlowNodeProvenance::SubgraphAnchor,
                  syntax: FlowNodeSyntax::BareReference,
                  id_span: None,
@@ -456,6 +542,99 @@ index a9aec31b..bfdcabbe 100644
                  label: None,
                  label_type: TitleKind::Text,
                  label_span: None,
+diff --git a/crates/merman-core/src/diagrams/flowchart/accessibility.rs b/crates/merman-core/src/diagrams/flowchart/accessibility.rs
+index 0e12a803..d4ca786d 100644
+--- a/crates/merman-core/src/diagrams/flowchart/accessibility.rs
++++ b/crates/merman-core/src/diagrams/flowchart/accessibility.rs
+@@ -1,7 +1,7 @@
+ #[cfg(test)]
+ use std::cell::Cell;
+ 
+-use crate::{OperationControl, OperationControlResult};
++use crate::{OperationControl, OperationControlResult, SourceSpan};
+ 
+ #[cfg(test)]
+ thread_local! {
+@@ -37,6 +37,8 @@ impl FlowchartAccessibilityDirective {
+ pub(super) struct FlowchartAccessibilityStatement {
+     pub(super) directive: FlowchartAccessibilityDirective,
+     pub(super) complete: bool,
++    pub(super) span: SourceSpan,
++    pub(super) payload: Option<SourceSpan>,
+ }
+ 
+ /// One source-backed interpretation of Flowchart accessibility statements.
+@@ -83,7 +85,13 @@ pub(super) fn scan_flowchart_accessibility_controlled(
+             let rest = after_prefix.trim_start();
+             if let Some(value) = rest.strip_prefix(':') {
+                 title = Some(value.trim().to_string());
+-                statements.push(inline_statement(FlowchartAccessibilityDirective::Title));
++                statements.push(inline_statement(
++                    FlowchartAccessibilityDirective::Title,
++                    prefix_start,
++                    line_end,
++                    line,
++                    value,
++                ));
+                 mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
+                 start = line_end;
+                 continue;
+@@ -110,7 +118,13 @@ pub(super) fn scan_flowchart_accessibility_controlled(
+ 
+         if let Some(value) = rest.strip_prefix(':') {
+             description = Some(value.trim().to_string());
+-            statements.push(inline_statement(directive));
++            statements.push(inline_statement(
++                directive,
++                prefix_start,
++                line_end,
++                line,
++                value,
++            ));
+             mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
+             start = line_end;
+             continue;
+@@ -132,6 +146,8 @@ pub(super) fn scan_flowchart_accessibility_controlled(
+         statements.push(FlowchartAccessibilityStatement {
+             directive,
+             complete: closing_brace.is_some(),
++            span: SourceSpan::new(prefix_start, statement_end),
++            payload: trimmed_payload_span(&code[content_start..content_end], content_start),
+         });
+         mask_range_preserving_newlines(&mut masked, start, statement_end, control)?;
+         start = statement_end;
+@@ -148,13 +164,30 @@ pub(super) fn scan_flowchart_accessibility_controlled(
+     })
+ }
+ 
+-fn inline_statement(directive: FlowchartAccessibilityDirective) -> FlowchartAccessibilityStatement {
++fn inline_statement(
++    directive: FlowchartAccessibilityDirective,
++    start: usize,
++    end: usize,
++    line: &str,
++    value: &str,
++) -> FlowchartAccessibilityStatement {
+     FlowchartAccessibilityStatement {
+         directive,
+         complete: true,
++        span: SourceSpan::new(start, end - (line.len() - line.trim_end().len())),
++        payload: trimmed_payload_span(value, end - value.len()),
+     }
+ }
+ 
++fn trimmed_payload_span(value: &str, start: usize) -> Option<SourceSpan> {
++    (!value.trim().is_empty()).then(|| {
++        SourceSpan::new(
++            start + value.len() - value.trim_start().len(),
++            start + value.trim_end().len(),
++        )
++    })
++}
++
+ fn next_line_end_controlled(
+     code: &str,
+     start: usize,
 diff --git a/crates/merman-core/src/diagrams/flowchart/ast.rs b/crates/merman-core/src/diagrams/flowchart/ast.rs
 index 64188dfa..f935a4bf 100644
 --- a/crates/merman-core/src/diagrams/flowchart/ast.rs
@@ -18482,10 +18661,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..80836bb6
+index 00000000..8a9b88c8
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,265 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -18700,6 +18879,55 @@ index 00000000..80836bb6
 +        map.iter()
 +            .any(|p| p["classification"] == "ignored-root-direction"
 +                && slice(&p["span"]) == "direction BT")
++    );
++}
++
++#[test]
++fn native_accessibility_metadata_retains_bytes_and_complete_occurrence_precedence() {
++    let source = "flowchart LR\r\n%% 😀\r\n accTitle : Earlier\r\naccTitle: Last 😀\r\naccDescr {\r\n First 😀\r\n second\r\n}\r\nA --> B\r\naccDescr {Unfinished";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let map: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|node| node.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let slice = |span: &Value| {
++        &source[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
++    };
++    for (statement, payload, effective) in [
++        ("accTitle : Earlier", "Earlier", false),
++        ("accTitle: Last 😀", "Last 😀", true),
++        (
++            "accDescr {\r\n First 😀\r\n second\r\n}",
++            "First 😀\r\n second",
++            true,
++        ),
++    ] {
++        let p = map
++            .iter()
++            .find(|p| p["classification"] == "accessibility" && slice(&p["span"]) == statement)
++            .unwrap();
++        assert_eq!(p["kind"], "nonvisual");
++        assert_eq!(p["effective"], effective);
++        assert_eq!(slice(&p["labelSpan"]), payload);
++    }
++    assert!(
++        map.iter()
++            .any(|p| p["classification"] == "incomplete-accessibility" && p["effective"] == false)
 +    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs
