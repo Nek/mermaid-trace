@@ -13528,7 +13528,7 @@ index 2d861649..11f5a878 100644
 +    }
 +}
 diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
-index 46e623f8..c88aed52 100644
+index 46e623f8..d381cf96 100644
 --- a/crates/merman-core/src/diagrams/state/db.rs
 +++ b/crates/merman-core/src/diagrams/state/db.rs
 @@ -1,9 +1,9 @@
@@ -13697,7 +13697,7 @@ index 46e623f8..c88aed52 100644
                      ctx.edges.push(StateDiagramRenderEdge {
                          id: format!("edge{}", *ctx.graph_item_count),
                          start: relation.state1.id.clone(),
-@@ -807,6 +848,49 @@ fn build_layout_data_typed(
+@@ -807,6 +848,47 @@ fn build_layout_data_typed(
          parsed_item: &StateStmt,
          alt_flag: bool,
      ) -> std::result::Result<(), String> {
@@ -13726,11 +13726,9 @@ index 46e623f8..c88aed52 100644
 +            {
 +                ctx.source_occurrences.push(json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span,"effective":true}));
 +            }
-+            if let Some(span) = if parsed_item.note.is_some() {
-+                parsed_item.id_span
-+            } else {
-+                parsed_item.span.or(parsed_item.id_span)
-+            } {
++            if parsed_item.note.is_none()
++                && let Some(span) = parsed_item.span.or(parsed_item.id_span)
++            {
 +                let mut piece = json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span});
 +                if parsed_item.note.is_none() {
 +                    piece["declaration"] = json!(parsed_item.span.is_some());
@@ -13747,19 +13745,31 @@ index 46e623f8..c88aed52 100644
          let item_id = parsed_item.id.clone();
          if item_id == "root" || item_id.is_empty() {
              return Ok(());
-@@ -842,6 +926,8 @@ fn build_layout_data_typed(
+@@ -842,6 +924,12 @@ fn build_layout_data_typed(
                  id: item_id.clone(),
                  shape,
                  label: json!(sanitize_text(&item_id, config)),
-+                label_sources: vec![parsed_item.id_span],
++                label_sources: vec![if parsed_item.note.is_none() {
++                    parsed_item.id_span
++                } else {
++                    None
++                }],
 +                has_title_declaration: false,
                  css_classes,
                  css_styles: styles.clone(),
                  node_type: None,
-@@ -852,11 +938,20 @@ fn build_layout_data_typed(
+@@ -852,11 +940,28 @@ fn build_layout_data_typed(
              }
          });
  
++        // Attachment fields belong to the note; a later real state occurrence can own its ID label.
++        if parsed_item.note.is_none()
++            && !entry.has_title_declaration
++            && entry.label_sources.first().is_some_and(Option::is_none)
++        {
++            entry.label_sources = vec![parsed_item.id_span];
++        }
++
 +        if !entry.has_title_declaration && parsed_item.span.is_some() && parsed_item.note.is_none()
 +        {
 +            if entry.label.as_str() == Some(sanitize_text(&item_id, config).as_str()) {
@@ -13777,7 +13787,7 @@ index 46e623f8..c88aed52 100644
              config,
          );
  
-@@ -868,7 +963,10 @@ fn build_layout_data_typed(
+@@ -868,7 +973,10 @@ fn build_layout_data_typed(
              entry.is_group = true;
              let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
              entry.dir = Some(dir);
@@ -13789,7 +13799,7 @@ index 46e623f8..c88aed52 100644
              entry.shape = if parsed_item.ty == "divider" {
                  SHAPE_DIVIDER.to_string()
              } else {
-@@ -932,6 +1030,21 @@ fn build_layout_data_typed(
+@@ -932,6 +1040,21 @@ fn build_layout_data_typed(
              n.text = sanitize_text(&n.text, config);
  
              let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
@@ -13801,7 +13811,7 @@ index 46e623f8..c88aed52 100644
 +                .unwrap_or(false)
 +            {
 +                if let Some(span) = parsed_item.span {
-+                    let mut piece = json!({"kind":"control","semanticId":note_id,"domId":format!("state:node:{note_id}"),"span":span});
++                    let mut piece = json!({"kind":"control","semanticId":note_id,"domId":format!("state:node:{note_id}"),"span":span,"target":item_id,"position":n.position});
 +                    if let Some(label) = parsed_item.label_span {
 +                        piece["labelSpan"] = json!(label);
 +                    }
@@ -13811,7 +13821,7 @@ index 46e623f8..c88aed52 100644
              let parent_base_id = format!("{item_id}{PARENT_ID}");
              let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
                  || ctx.states.contains_key(&parent_base_id)
-@@ -940,6 +1053,15 @@ fn build_layout_data_typed(
+@@ -940,6 +1063,15 @@ fn build_layout_data_typed(
              } else {
                  parent_base_id
              };
@@ -13827,7 +13837,7 @@ index 46e623f8..c88aed52 100644
              let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
              let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
  
-@@ -1010,6 +1132,17 @@ fn build_layout_data_typed(
+@@ -1010,6 +1142,17 @@ fn build_layout_data_typed(
                  std::mem::swap(&mut from, &mut to);
              }
  
@@ -13845,7 +13855,7 @@ index 46e623f8..c88aed52 100644
              ctx.edges.push(StateDiagramRenderEdge {
                  id: format!("{from}-{to}"),
                  start: from,
-@@ -1028,6 +1161,7 @@ fn build_layout_data_typed(
+@@ -1028,6 +1171,7 @@ fn build_layout_data_typed(
  
      {
          let mut ctx = TypedLayoutContext {
@@ -13853,7 +13863,7 @@ index 46e623f8..c88aed52 100644
              states,
              classes,
              config,
-@@ -1040,6 +1174,113 @@ fn build_layout_data_typed(
+@@ -1040,6 +1184,152 @@ fn build_layout_data_typed(
          setup_doc(&mut ctx, None, root_doc, false)?;
      }
  
@@ -13918,6 +13928,7 @@ index 46e623f8..c88aed52 100644
 +                    let source_backed = source_occurrences.iter().any(|piece| {
 +                        piece["domId"] == format!("state:node:{}", node.id)
 +                            && piece["kind"] == "node"
++                            || piece["kind"] == "control" && piece["target"] == node.id
 +                    });
 +                    if !source_backed {
 +                        continue;
@@ -13964,10 +13975,48 @@ index 46e623f8..c88aed52 100644
 +        }
 +    }
 +
++    if config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        .unwrap_or(false)
++    {
++        // Classify implied anchors after collecting real state and style ownership.
++        let authored_nodes: HashSet<String> = source_occurrences
++            .iter()
++            .filter(|piece| piece["kind"] == "node")
++            .filter_map(|piece| piece["domId"].as_str().map(str::to_owned))
++            .collect();
++        let note_owners: HashMap<String, Value> = source_occurrences
++            .iter()
++            .filter(|piece| piece["kind"] == "control")
++            .filter_map(|piece| {
++                piece["target"]
++                    .as_str()
++                    .map(|target| (target.to_owned(), piece["semanticId"].clone()))
++            })
++            .collect();
++        for node in &nodes {
++            let Some(owner) = note_owners.get(&node.id) else {
++                continue;
++            };
++            if !authored_nodes.contains(&format!("state:node:{}", node.id)) {
++                source_occurrences.push(json!({"kind":"decoration","semanticId":node.id,"domId":format!("state:node:{}",node.id),"classification":"note-implied-anchor","ownerId":owner}));
++            }
++            if let Some(scratch) = node_db.get(&node.id) {
++                for (index, span) in scratch.label_sources.iter().enumerate() {
++                    if span.is_none() {
++                        source_occurrences.push(json!({"kind":"decoration","semanticId":node.id,"domId":format!("state:label:{}:{index}",node.id),"classification":"note-implied-anchor","ownerId":owner}));
++                    }
++                }
++            }
++        }
++    }
++
      // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
      for node in nodes.iter_mut() {
          let Some(label_val) = node.label.clone() else {
-@@ -1064,7 +1305,7 @@ fn build_layout_data_typed(
+@@ -1064,7 +1354,7 @@ fn build_layout_data_typed(
          node.description = Some(rest);
      }
  
@@ -13976,7 +14025,7 @@ index 46e623f8..c88aed52 100644
  }
  
  fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
-@@ -1102,6 +1343,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+@@ -1102,6 +1392,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
  
  fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
      match stmt {
@@ -30683,10 +30732,10 @@ index 00000000..91db05f3
 +}
 diff --git a/crates/merman/tests/state_source_provenance.rs b/crates/merman/tests/state_source_provenance.rs
 new file mode 100644
-index 00000000..d0269409
+index 00000000..074d7c32
 --- /dev/null
 +++ b/crates/merman/tests/state_source_provenance.rs
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,144 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30780,6 +30829,55 @@ index 00000000..d0269409
 +        assert!(svg.descendants().any(
 +            |n| n.has_tag_name("path") && n.attribute("data-mt-key") == piece["domId"].as_str()
 +        ));
++    }
++}
++
++#[test]
++fn note_properties_belong_to_the_note_and_keep_their_reference_as_data() {
++    for header in ["stateDiagram", "stateDiagram-v2"] {
++        for (before, after) in [
++            ("Published --> [*]\r\n", ""),
++            ("", "Published\r\n"),
++            ("", ""),
++        ] {
++            let note = "note right of Published : Available 😀";
++            let source = format!("{header}\r\n%% 😀\r\n{before}{note}\r\n{after}");
++            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++                MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++            ));
++            let RenderOutput::Svg(Some(output)) = renderer
++                .render(RenderRequest::svg(
++                    &source,
++                    OperationControl::new(),
++                    SvgRequest::default(),
++                ))
++                .unwrap()
++            else {
++                panic!("missing SVG")
++            };
++            let svg = roxmltree::Document::parse(output.svg()).unwrap();
++            let pieces: Vec<Value> = serde_json::from_str(
++                svg.descendants()
++                    .find_map(|n| n.attribute("data-mt-native"))
++                    .unwrap(),
++            )
++            .unwrap();
++            let start = source.find(note).unwrap();
++            let end = start + note.len();
++            assert!(!pieces.iter().any(|p| p["kind"] == "node"
++                && p["span"]["start"].as_u64().unwrap() < end as u64
++                && p["span"]["end"].as_u64().unwrap() > start as u64));
++            let owner = pieces
++                .iter()
++                .find(|p| p["kind"] == "control" && p["span"] == json!({"start":start,"end":end}))
++                .unwrap();
++            assert_eq!(owner["target"], "Published");
++            assert_eq!(owner["position"], "right of");
++            assert!(
++                svg.descendants()
++                    .any(|n| n.attribute("data-mt-key") == owner["domId"].as_str())
++            );
++        }
 +    }
 +}
 diff --git a/docs/json5-provenance.md b/docs/json5-provenance.md

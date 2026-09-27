@@ -589,3 +589,106 @@ fn state_note_connectors_map_the_owning_note_statement() {
         }
     }
 }
+
+#[test]
+fn state_note_attachment_tokens_belong_to_the_note_not_the_state() {
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for position in ["left", "right"] {
+                    for multiline in [false, true] {
+                        let note = if multiline {
+                            format!("note {position} of Published\r\n  Available 😀\r\nend note")
+                        } else {
+                            format!("note {position} of Published : Available 😀")
+                        };
+                        let source = format!(
+                            "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\nEditing --> Published : publish\r\nPublished --> [*]\r\n{note}\r\n"
+                        );
+                        let result = mermaid_trace_rs::render("note-ownership", &source).unwrap();
+                        let start = source[..source.find(&note).unwrap()].encode_utf16().count();
+                        let end = start + note.encode_utf16().count();
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        assert!(
+                            !pieces.iter().any(|piece| piece["kind"] == "node"
+                                && piece["span"]["start"].as_u64().unwrap() < end as u64
+                                && piece["span"]["end"].as_u64().unwrap() > start as u64),
+                            "note properties must not select the referenced state"
+                        );
+                        assert!(
+                            pieces.iter().any(|piece| piece["kind"] == "control"
+                                && piece["span"] == serde_json::json!({"start":start,"end":end})),
+                            "the whole note statement owns its attachment token"
+                        );
+                        assert!(
+                            pieces.iter().any(|piece| piece["semanticId"] == "Published"
+                                && selected(&source, &piece["span"]) == "Published"),
+                            "real state references remain mapped"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn state_notes_do_not_supply_another_states_declaration_or_label_origin() {
+    for suffix in ["", "\nPublished --> [*]", "\nPublished"] {
+        let note = "note right of Published : Available 😀";
+        let source = format!("stateDiagram-v2\n{note}{suffix}\n");
+        let result = mermaid_trace_rs::render("note-first", &source).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let note_end = ("stateDiagram-v2\n".to_owned() + note)
+            .encode_utf16()
+            .count();
+        assert!(
+            !pieces
+                .iter()
+                .any(|p| p["kind"] == "node"
+                    && p["span"]["start"].as_u64().unwrap() < note_end as u64),
+            "note syntax is owned only by the note"
+        );
+        if !suffix.is_empty() {
+            assert!(
+                pieces
+                    .iter()
+                    .any(|p| p["domId"] == "state:label:Published:0"
+                        && p["span"]["start"].as_u64().unwrap() >= note_end as u64),
+                "a later real state occurrence supplies the default label origin"
+            );
+        } else {
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(
+                native.iter().any(|p| p["kind"] == "decoration"
+                    && p["semanticId"] == "Published"
+                    && p["classification"] == "note-implied-anchor"),
+                "the native generated anchor has no invented declaration"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_note_only_anchor_preserves_later_style_relationships_without_claiming_note_syntax() {
+    let source = "stateDiagram-v2\nnote right of Published : Available\nstyle Published fill:red\n";
+    let result = mermaid_trace_rs::render("note-style", source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    assert!(
+        pieces.iter().any(|p| p["semanticId"] == "Published"
+            && selected(source, &p["span"]) == "style Published fill:red"),
+        "the real style statement keeps its visual relationship"
+    );
+    assert!(
+        !pieces
+            .iter()
+            .any(|p| p["kind"] == "node" && selected(source, &p["span"]) == "Published"),
+        "a note attachment must not become a state selection"
+    );
+}

@@ -119,6 +119,13 @@ async function verifyNative(source: string, key: string, expected: string, label
       if (controlKey.startsWith('state:note:')) {
         await page.evaluate(span => (window as any).handles[0].highlight([span]), control.span);
         assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'full note source selects its connector');
+        const attachmentStart = control.span.start + source.slice(control.span.start, control.span.end).indexOf(' of ') + 4;
+        const attachment = source.slice(attachmentStart).split(/\s/)[0]!;
+        for (const span of [{ start: attachmentStart, end: attachmentStart + attachment.length }, { start: control.span.start + 5, end: attachmentStart }]) {
+          await page.evaluate(span => (window as any).handles[0].highlight([span]), span);
+          assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true], [data-mt-role=node-label][data-mt-selected=true]').count(), 0, 'note properties belong to the note, not the attachment state');
+          assert.equal(await first.locator('[data-mt-role=control][data-mt-selected=true]').count(), 1, 'note attachment and placement select the note');
+        }
         const noteLabel = await page.evaluate(span => (window as any).handles[0].mapping.pieces.find((piece: any) => piece.kind === 'control' && piece.span.start === span.start && piece.span.end === span.end)?.labelSpan, control.span);
         assert.ok(noteLabel, 'the note retains its own text range');
         await page.evaluate(span => (window as any).handles[0].highlight([span]), noteLabel);
@@ -187,6 +194,16 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
       }
       if (controlKey.startsWith('state:note:')) {
+        const local = controlSpans[index]!;
+        const attachmentStart = local.start + source.slice(local.start, local.end).indexOf(' of ') + 4;
+        const attachment = source.slice(attachmentStart).split(/\s/)[0]!;
+        await original.evaluate((element, span) => {
+          const doc = element.ownerDocument, range = doc.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+        }, { start: toMarkdown(attachmentStart), end: toMarkdown(attachmentStart + attachment.length) });
+        await page.waitForSelector('[data-mt-role=control][data-mt-selected=true]');
+        assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true], [data-mt-role=node-label][data-mt-selected=true]').count(), 0, 'source note attachment must not select its referenced state');
         const point = await noteConnectorPoint(target);
         await page.mouse.click(point.x, point.y);
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
