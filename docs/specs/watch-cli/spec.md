@@ -69,3 +69,9 @@ WATCH-AC2 also requires shutdown to terminate outstanding HTTP connections, incl
 ## WATCH-CACHE-1: leave document directories unchanged
 
 After language tooling separation, previews must not create JS tooling beside the input. The existing live acceptance test asserts the document directory retains exactly its Markdown and asset files. It fails with an unexpected `.vite` directory. Plan: disable Vite dependency discovery using its existing `optimizeDeps.noDiscovery` option; the browser uses only Trace modules and Vite’s own client, with no bare dependencies to optimize. Keep asset resolution, watching and reload behavior unchanged. Verification: the existing regression failed with `.vite` present before the fix. `make typecheck test` then passed all 6 Rust and 24 TypeScript/browser tests, including assets, clipboard, saves/recovery and optional source selection.
+
+## WATCH-STABLE-1: unchanged content preserves selection
+
+Duplicate watcher events and saves that produce identical rendered content must not reload the page or interrupt native source selection and clipboard actions. Plan: compare the successfully rendered HTML with the current artifact before sending Vite's full-reload message. Changed and invalid-save behavior remains covered by WATCH-AC2. Regression: select the title, save identical Markdown, and verify no document reload occurs.
+
+Verification: the new unchanged-save regression failed with one unexpected reload before the fix. Comparing completed HTML prevents that reload; all 30 TypeScript/browser tests and typecheck pass, including changed saves, invalid-edit recovery and native source selection.

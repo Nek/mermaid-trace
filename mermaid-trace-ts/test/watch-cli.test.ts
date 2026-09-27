@@ -57,6 +57,13 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, c
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'unchanged');
     await page.locator('h1').click();
     await page.waitForFunction(() => navigator.clipboard.readText().then(text => text.endsWith(':1:1-1:8')));
+    let unchangedReloads = 0;
+    const recordReload = () => { unchangedReloads++; };
+    page.on('domcontentloaded', recordReload);
+    await writeFile(filename, markdown);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    page.off('domcontentloaded', recordReload);
+    assert.equal(unchangedReloads, 0, 'Saving unchanged content must retain selection without reloading');
     assert.equal(await page.locator('[data-md-selected]').count(), 1);
     assert.equal(await page.locator('svg[data-mt-selected=true]').count(), 0);
     const word = await page.locator('strong').evaluate(element => {

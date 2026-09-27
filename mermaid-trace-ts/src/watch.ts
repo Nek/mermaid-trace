@@ -92,7 +92,7 @@ export async function watchPreview(input: string, options: { sourceView?: boolea
       dirty = false;
       try {
         const next = await renderFile(filename, producer!, options.sourceView === true);
-        if (!dirty && !closed) {
+        if (!dirty && !closed && next !== html) {
           const initial = !html;
           html = next;
           if (!initial) server.ws.send({ type: 'full-reload', path: '*' });
