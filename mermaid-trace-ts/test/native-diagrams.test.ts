@@ -31,10 +31,10 @@ async function verifyNative(source: string, key: string, expected: string, label
     await page.evaluate(async activation => {
       const { activateSvg } = await import(activation);
       const events: unknown[] = [];
-      const handles = [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => events.push(event) }));
+      const handles = [...document.querySelectorAll('svg[data-mt-map]')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => events.push(event) }));
       Object.assign(window, { events, handles });
     }, activation);
-    const first = page.locator('svg').first();
+    const first = page.locator('svg[data-mt-map]').first();
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
     await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
@@ -45,7 +45,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(source.slice(event.span.start, event.span.end), label);
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
     assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
-    assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+    assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
     for (const [controlKey, text, role = 'control'] of controls) {
       const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
@@ -96,7 +96,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdown(span.end) }));
     }
-    await page.locator('svg').focus(); await page.keyboard.press('Enter');
+    await page.locator('svg[data-mt-map]').focus(); await page.keyboard.press('Enter');
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdown.slice(markdown.indexOf('> ```')));
     await writeFile(filename, markdown.replaceAll(label, 'Changed'));
     await page.locator('[data-mt-role=node-label]').filter({ hasText: 'Changed' }).first().waitFor();
@@ -181,6 +181,16 @@ test('FLOW AC5/6: native ELK header and configuration retain saved and live sele
       ['flowchart:subgraph:G', group],
       ['flowchart:subgraph:G', 'Group', 'control-label'],
       ['edge:L_A_B_0', 'go', 'edge-label'],
+    ]);
+  }
+});
+
+
+test('FLOW AC5/6: formula glyphs retain saved and live label selection', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    const source = `---\nconfig:\n  htmlLabels: true\n---\n${header}\nA["$$x^2$$"] -->|"$$\\sqrt{x}$$"| B\n`;
+    await verifyNative(source, 'node:A', 'A["$$x^2$$"]', '$$x^2$$', [
+      ['edge:L_A_B_0', '$$\\sqrt{x}$$', 'edge-label'],
     ]);
   }
 });

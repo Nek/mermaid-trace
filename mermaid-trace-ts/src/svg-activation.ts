@@ -102,6 +102,18 @@ export function activateSvg(svg: SVGSVGElement, options: {
     set(element, 'role', 'button');
     set(element, 'aria-label', `Select ${element.getAttribute('data-mt-role')} ${piece.semanticId}`);
     set(element, 'aria-pressed', 'false');
+    if (element.localName === 'g' && element.getAttribute('data-mt-role')!.endsWith('-label')) {
+      const bounds = (element as SVGGElement).getBBox();
+      if (bounds.width > 0 && bounds.height > 0) {
+        const target = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        for (const name of ['x', 'y', 'width', 'height'] as const) target.setAttribute(name, String(bounds[name]));
+        target.setAttribute('aria-hidden', 'true');
+        target.setAttribute('focusable', 'false');
+        target.style.cssText = 'fill:transparent;stroke:none;pointer-events:all;cursor:pointer';
+        element.prepend(target);
+        hitTargets.set(target, element);
+      }
+    }
     const geometry = element.getAttribute('data-mt-role') === 'edge' && ['path', 'line'].includes(element.localName) ? [element]
       : element.getAttribute('data-mt-role') === 'control' ? [...element.querySelectorAll('line.loopLine')] : [];
     for (const shape of geometry) {

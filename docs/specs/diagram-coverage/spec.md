@@ -18,9 +18,9 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 
 | Registry entry | Element mapping status |
 |---|---|
-| `flowchart-v2` | Native node/reference, connector and label mapping restored; group/title/style pieces and full syntax/variant conformance pending |
+| `flowchart-v2` | Native nodes/references, connectors, labels, subgraph frames/titles and YAML titles mapped; repeated-label, shape-data/directive and full syntax/variant conformance pending |
 | `sequence` | Native participants/messages/labels/notes/activations/controls implemented; complete syntax/occurrence conformance pending |
-| `flowchart-elk` | Not verified through mapped viewer; required |
+| `flowchart-elk` | Native ELK capability enabled; saved/live frame, node, connector and label selection verified; complete family conformance pending |
 | `classDiagram` | Missing |
 | `stateDiagram` | Pinned native state inventory verified: declarations/references, repeated descriptions, composites/concurrency, special states, transitions, notes, titles and directive relationships; 286 fixtures, 48 variants and saved/live interaction checks (STATE-2) |
 | `er` | Missing |

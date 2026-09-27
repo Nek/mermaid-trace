@@ -278,3 +278,116 @@ fn flow_ac5_elk_and_math_render_without_a_browser_and_preserve_source() {
         );
     }
 }
+
+#[test]
+fn flow_ac5_html_math_keeps_formula_geometry_and_source_selection() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: true\n---\n{header}\nA[\"before $$x^2$$ after<br/>$$\\frac{{1}}{{2}}$$\"] -->|\"$$\\sqrt{{x}}$$\"| B\n"
+        );
+        let result = mermaid_trace_rs::render("flow-formulas", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        for key in ["node:A", "edge:L_A_B_0"] {
+            let label = svg
+                .descendants()
+                .find(|n| {
+                    n.attribute("data-mt-key") == Some(key)
+                        && n.attribute("data-mt-role")
+                            .is_some_and(|role| role.ends_with("-label"))
+                })
+                .expect("formula label remains selectable");
+            assert!(
+                label
+                    .descendants()
+                    .any(|n| n.has_tag_name("svg")
+                        && n.descendants().any(|p| p.has_tag_name("path"))),
+                "formula geometry was dropped for {key}"
+            );
+        }
+        assert!(!svg.descendants().any(|n| n.has_tag_name("foreignObject")));
+        let a = result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["domId"] == "node:A")
+            .unwrap();
+        let span = &a["labelSpan"];
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            "before $$x^2$$ after<br/>$$\\frac{1}{2}$$"
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "flow-formulas", &source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
+fn flow_ac5_pinned_math_inventory_retains_every_formula_label() {
+    let fixtures = std::path::Path::new("vendor/merman/fixtures/flowchart");
+    let files: Vec<_> = std::fs::read_dir(fixtures)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.extension().is_some_and(|extension| extension == "mmd")
+                && (path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains("katex")
+                    || path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .contains("math_flowcharts"))
+        })
+        .collect();
+    assert_eq!(
+        files.len(),
+        5,
+        "refresh the pinned math inventory explicitly"
+    );
+    for file in files {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: true\n---\n{}",
+            std::fs::read_to_string(&file).unwrap()
+        );
+        let result = mermaid_trace_rs::render("formula-corpus", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        for piece in result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["labelSpan"].is_object())
+        {
+            let span = &piece["labelSpan"];
+            let text = &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize];
+            if !text.contains("$$") {
+                continue;
+            }
+            let key = piece["domId"].as_str().unwrap();
+            let label = svg
+                .descendants()
+                .find(|n| {
+                    n.attribute("data-mt-key") == Some(key)
+                        && n.attribute("data-mt-role")
+                            .is_some_and(|role| role.ends_with("-label"))
+                })
+                .unwrap();
+            assert!(
+                label
+                    .descendants()
+                    .any(|n| n.has_tag_name("svg")
+                        && n.descendants().any(|p| p.has_tag_name("path"))),
+                "missing native formula geometry: {} {key}",
+                file.display()
+            );
+        }
+        assert!(!svg.descendants().any(|n| n.has_tag_name("foreignObject")));
+    }
+}
