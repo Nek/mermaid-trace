@@ -1330,3 +1330,148 @@ fn flow_ac4_accessibility_retains_exact_occurrences_and_effective_payloads() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_configuration_constructs_keep_original_evidence_and_visual_parity() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let frontmatter = "---\r\ntitle: Config 😀\r\nconfig:\r\n  flowchart:\r\n    nodeSpacing: 60\r\n  unknown:\r\n    nested: 'Value 😀'\r\n---\r\n";
+            let first = "%%{init: { flowchart: { nodeSpacing: 70 }, theme: 'default' }}%%";
+            let second = format!(
+                "%%{{initialize: {{ htmlLabels: {html}, flowchart: {{ nodeSpacing: 80, \"html\\u004cabels\": {html} }}, values: [{{ nested: 'Value 😀' }}] }}}}%%"
+            );
+            let source = format!(
+                "\u{feff}{frontmatter}{first}\r\n{second}\r\n{header}\r\nA[Actor] --> B\r\n"
+            );
+            let result = mermaid_trace_rs::render("configuration", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let slice = |span: &Value| {
+                &source[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize]
+            };
+            assert!(native.iter().any(|p| p["kind"] == "nonvisual"
+                && p["classification"] == "frontmatter"
+                && slice(&p["span"]) == frontmatter));
+            for (order, authored, keyword) in
+                [(0, first, "init"), (1, second.as_str(), "initialize")]
+            {
+                assert!(
+                    native.iter().any(|p| p["kind"] == "nonvisual"
+                        && p["classification"] == "source-directive"
+                        && p["keyword"] == keyword
+                        && p["complete"] == true
+                        && p["order"] == order
+                        && slice(&p["span"]) == authored),
+                    "missing full {keyword}"
+                );
+            }
+            let value = native
+                .iter()
+                .find(|p| {
+                    p["classification"] == "configuration-key"
+                        && p["path"] == serde_json::json!(["config", "unknown", "nested"])
+                })
+                .unwrap();
+            assert_eq!(slice(&value["span"]), "nested: 'Value 😀'");
+            assert_eq!(slice(&value["labelSpan"]), "Value 😀");
+            assert!(
+                native
+                    .iter()
+                    .any(|p| p["classification"] == "configuration-key"
+                        && p["path"] == serde_json::json!(["flowchart", "nodeSpacing"])
+                        && slice(&p["span"]) == "nodeSpacing")
+            );
+            assert!(
+                !native
+                    .iter()
+                    .any(|p| p["classification"] == "configuration-key"
+                        && p["path"] == serde_json::json!(["flowchart", "htmlLabels"])),
+                "do not fabricate parser-missing escaped key ranges"
+            );
+            assert!(
+                result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["domId"] == "flowchart:title")
+            );
+            assert!(
+                result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|p| p["classification"].is_null())
+            );
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "configuration", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn flow_ac4_directive_metadata_preserves_native_ignored_and_incomplete_behavior() {
+    for (source, keyword, complete) in [
+        ("%%{wrap}%%\nflowchart LR\nA --> B\n", "wrap", true),
+        (
+            "flowchart LR\nA --> B\n%%{init: { theme: 'default'",
+            "init",
+            false,
+        ),
+        (
+            "%%{init: { broken: [ }}%%\nflowchart LR\nA --> B\n",
+            "init",
+            true,
+        ),
+    ] {
+        let result = mermaid_trace_rs::render("directive-status", source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|n| n.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let directives: Vec<_> = native
+            .iter()
+            .filter(|p| p["classification"] == "source-directive")
+            .collect();
+        assert_eq!(directives.len(), 1);
+        assert_eq!(directives[0]["keyword"], keyword);
+        assert_eq!(directives[0]["complete"], complete);
+        let span = &directives[0]["span"];
+        let expected_start = source.find("%%{").unwrap();
+        let expected_end = if complete {
+            source.find("}%%").unwrap() + 3
+        } else {
+            source.len()
+        };
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            &source[expected_start..expected_end]
+        );
+        assert!(
+            result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p["kind"] != "nonvisual")
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "directive-status", source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}

@@ -36,6 +36,8 @@ async function verifyNative(source: string, key: string, expected: string, label
       Object.assign(window, { events, handles });
     }, activation);
     const first = page.locator('svg[data-mt-map]').first();
+    const configEvidence = (element: Element) => JSON.parse(element.querySelector('[data-mt-native]')?.getAttribute('data-mt-native') ?? '[]').filter((piece: { classification?: string }) => ['frontmatter', 'source-directive', 'configuration-key'].includes(piece.classification ?? ''));
+    const savedConfig = await first.evaluate(configEvidence);
     assert.equal(await first.locator('title[tabindex], desc[tabindex], title[data-mt-role], desc[data-mt-role]').count(), 0, 'nonvisual accessibility text must not become a selectable control');
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
@@ -99,6 +101,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     preview = await watchPreview(filename, { port: 0, sourceView: true });
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const original = page.frameLocator('#source-frame').locator('#source');
+    assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), savedConfig, 'native configuration evidence must survive saved SVG and Markdown insertion');
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label);
@@ -140,6 +143,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdown.slice(markdown.indexOf('> ```')));
     await writeFile(filename, markdown.replaceAll(label, 'Changed'));
     await page.locator('[data-mt-role=node-label]').filter({ hasText: 'Changed' }).first().waitFor();
+    return savedConfig;
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
@@ -347,5 +351,15 @@ test('FLOW AC4/6: accessibility metadata preserves saved/live selection without 
   for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
     const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\naccTitle: Accessible diagram\naccDescr {\n  First line\n  second line\n}\nA["Actor 😀"] --> B\n`;
     await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['edge:L_A_B_0', '-->', 'edge']]);
+  }
+});
+
+
+test('FLOW AC4/6: configuration provenance survives saved SVG and live Markdown without adding controls', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
+    const source = `---\ntitle: Configured\nconfig:\n  flowchart:\n    nodeSpacing: 60\n---\n%%{init: { flowchart: { nodeSpacing: 70 } }}%%\n%%{initialize: { htmlLabels: ${html} }}%%\n${header}\nA["Actor 😀"] --> B\n`;
+    const evidence = await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:title', 'Configured', 'control-label']]);
+    assert.equal(evidence.filter((piece: { classification: string }) => piece.classification === 'frontmatter').length, 1);
+    assert.equal(evidence.filter((piece: { classification: string }) => piece.classification === 'source-directive').length, 2);
   }
 });

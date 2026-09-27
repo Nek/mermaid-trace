@@ -16041,7 +16041,7 @@ index fe8d8293..be3798b6 100644
      match v {
          Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..75332de3 100644
+index f4d33957..4b992179 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
 @@ -581,11 +581,42 @@ impl<'a> ParsePipeline<'a> {
@@ -16092,7 +16092,7 @@ index f4d33957..75332de3 100644
              let Some((code, meta)) = (match preprocessed {
                  Ok(preprocessed) => preprocessed,
                  Err(error) => return Ok(Err(error)),
-@@ -616,6 +647,40 @@ impl<'a> ParsePipeline<'a> {
+@@ -616,6 +647,75 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -16112,6 +16112,41 @@ index f4d33957..75332de3 100644
 +                            *value = serde_json::to_value(mapped).expect("source span");
 +                        }
 +                    }
++                }
++            }
++            if matches!(output.model(), RenderSemanticModel::Flowchart(_))
++                && let Some(evidence) = source_config.as_ref()
++                && let Some(occurrences) = output.source_occurrences_mut()
++            {
++                if let Some(frontmatter) = evidence.frontmatter() {
++                    occurrences.push(serde_json::json!({"kind":"nonvisual","classification":"frontmatter","span":frontmatter.full_span()}));
++                }
++                for directive in evidence.directives() {
++                    control.checkpoint()?;
++                    occurrences.push(serde_json::json!({"kind":"nonvisual","classification":"source-directive","keyword":directive.keyword(),"order":directive.order(),"complete":directive.complete(),"span":directive.full_span()}));
++                }
++                for key in evidence.keys() {
++                    control.checkpoint()?;
++                    let origin = match key.origin() {
++                        crate::preprocess::SourceConfigOrigin::Frontmatter => {
++                            serde_json::json!({"kind":"frontmatter"})
++                        }
++                        crate::preprocess::SourceConfigOrigin::Directive { directive_index } => {
++                            serde_json::json!({"kind":"directive","index":directive_index})
++                        }
++                    };
++                    let span = SourceSpan::new(
++                        key.span().start,
++                        key.value_span()
++                            .map_or(key.span().end, |value| value.end.max(key.span().end)),
++                    );
++                    let mut piece = serde_json::json!({"kind":"nonvisual","classification":"configuration-key","path":key.path_segments().collect::<Vec<_>>(),"origin":origin,"order":key.order(),"span":span});
++                    if let Some(payload) =
++                        key.value_selection().filter(|span| span.start < span.end)
++                    {
++                        piece["labelSpan"] = serde_json::json!(payload);
++                    }
++                    occurrences.push(piece);
 +                }
 +            }
 +            let title_key = match output.model() {
@@ -18661,10 +18696,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..8a9b88c8
+index 00000000..3e0be9cd
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,311 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -18928,6 +18963,52 @@ index 00000000..8a9b88c8
 +    assert!(
 +        map.iter()
 +            .any(|p| p["classification"] == "incomplete-accessibility" && p["effective"] == false)
++    );
++}
++
++#[test]
++fn native_configuration_evidence_preserves_original_frontmatter_and_directive_ranges() {
++    let frontmatter =
++        "---\r\ntitle: Config 😀\r\nconfig:\r\n  flowchart:\r\n    nodeSpacing: 60\r\n---\r\n";
++    let directive = "%%{init: { flowchart: { nodeSpacing: 70 } }}%%";
++    let source = format!("\u{feff}{frontmatter}{directive}\r\nflowchart LR\r\nA --> B\r\n");
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            &source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let map: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|node| node.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let slice = |span: &Value| {
++        &source[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
++    };
++    assert!(
++        map.iter()
++            .any(|p| p["classification"] == "frontmatter" && slice(&p["span"]) == frontmatter)
++    );
++    assert!(
++        map.iter()
++            .any(|p| p["classification"] == "source-directive" && slice(&p["span"]) == directive)
++    );
++    assert!(
++        map.iter()
++            .any(|p| p["classification"] == "configuration-key"
++                && p["origin"]["kind"] == "directive"
++                && p["path"] == json!(["flowchart", "nodeSpacing"])
++                && slice(&p["span"]) == "nodeSpacing")
 +    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs
