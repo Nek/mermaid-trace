@@ -21,6 +21,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
   const elements = [...svg.querySelectorAll('[data-mt-refs]')];
   const hitTargets = new Map<Element, Element>();
   const refs = (element: Element) => element.getAttribute('data-mt-refs')!.split(' ');
+  const labelIds = new Set(elements.filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
   const changes = new Map<Element, Map<string, { before: string | null; after: string | null }>>();
   const set = (element: Element, name: string, value: string | null) => {
     const attributes = changes.get(element) ?? new Map();
@@ -52,7 +53,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
     set(svg, 'data-mt-selected', whole ? 'true' : null);
     const selected = new Set(whole ? [] : pieces.map(piece => piece.id));
-    const labelOnly = new Set(pieces.filter(piece => piece.labelSpan && ranges.filter(range => overlaps(piece.span, range))
+    const labelOnly = new Set(pieces.filter(piece => piece.labelSpan && labelIds.has(piece.id) && ranges.filter(range => overlaps(piece.span, range))
       .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end))
       .map(piece => piece.id));
     for (const element of elements) {

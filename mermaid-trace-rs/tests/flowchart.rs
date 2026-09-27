@@ -146,10 +146,18 @@ fn map_native_ac1_preprocessing_chains_and_declarations_preserve_parity() {
         ),
         "A[\"Café 😀\"]"
     );
-    assert!(
-        mermaid_trace_rs::render("flow-repeat", "flowchart LR\nA[x]\nA[y] --> B")
-            .unwrap_err()
-            .contains("Unsupported source map")
+    let repeated =
+        mermaid_trace_rs::render("flow-repeat", "flowchart LR\nA[x]\nA[y] --> B").unwrap();
+    let effective = repeated["mapping"]["pieces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["domId"] == "node:A" && p["effective"] == true)
+        .unwrap();
+    assert_eq!(effective["span"], serde_json::json!({"start":18,"end":22}));
+    assert_eq!(
+        effective["labelSpan"],
+        serde_json::json!({"start":20,"end":21})
     );
 }
 
@@ -389,5 +397,86 @@ fn flow_ac5_pinned_math_inventory_retains_every_formula_label() {
             );
         }
         assert!(!svg.descendants().any(|n| n.has_tag_name("foreignObject")));
+    }
+}
+
+#[test]
+fn flow_ac4_repeated_declarations_keep_native_effective_origin_and_all_occurrences() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            for final_label in ["Same 😀", ""] {
+                let declaration = format!("A[\"{final_label}\"]");
+                let source = format!(
+                    "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\nA[\"Old 😀\"]\r\nA[\"Same 😀\"]\r\n{declaration} --> B\r\nA --> B\r\n"
+                );
+                let result = mermaid_trace_rs::render("replaced-label", &source)
+                    .expect("valid repeated declarations must render");
+                let pieces: Vec<_> = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|p| p["domId"] == "node:A")
+                    .collect();
+                assert_eq!(pieces.len(), 4);
+                assert_eq!(pieces.iter().filter(|p| p["effective"] == true).count(), 1);
+                assert_eq!(
+                    pieces[2]["effective"], true,
+                    "native last label must win even when text repeats"
+                );
+                let text: Vec<_> = source.encode_utf16().collect();
+                let slice =
+                    |start: usize, end: usize| String::from_utf16(&text[start..end]).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some("node:A")
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    slice(
+                        node.attribute("data-mt-start").unwrap().parse().unwrap(),
+                        node.attribute("data-mt-end").unwrap().parse().unwrap()
+                    ),
+                    declaration
+                );
+                assert_eq!(
+                    node.attribute("data-mt-refs")
+                        .unwrap()
+                        .split_whitespace()
+                        .count(),
+                    4
+                );
+                let label = svg.descendants().find(|n| {
+                    n.attribute("data-mt-role") == Some("node-label")
+                        && n.ancestors()
+                            .any(|a| a.attribute("data-mt-key") == Some("node:A"))
+                });
+                if final_label.is_empty() {
+                    assert!(
+                        label.is_none(),
+                        "an empty label has no fabricated text range"
+                    );
+                } else {
+                    let label = label.unwrap();
+                    assert_eq!(label.attribute("data-mt-refs"), pieces[2]["id"].as_str());
+                    assert_eq!(
+                        slice(
+                            label.attribute("data-mt-start").unwrap().parse().unwrap(),
+                            label.attribute("data-mt-end").unwrap().parse().unwrap()
+                        ),
+                        final_label
+                    );
+                }
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "replaced-label", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
     }
 }

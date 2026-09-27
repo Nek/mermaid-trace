@@ -6,6 +6,7 @@ export type Piece = {
   readonly domId: string;
   readonly span: Span;
   readonly labelSpan?: Span;
+  readonly effective?: boolean;
   readonly from?: string;
   readonly to?: string;
 };

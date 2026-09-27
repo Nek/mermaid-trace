@@ -24,6 +24,7 @@ function validate(mapping: SourceMapping) {
     check((mapping.format === 'mermaid-trace/0' ? ['node', 'edge'] : ['node', 'edge', 'note', 'activation', 'control']).includes(piece.kind), 'piece kind');
     check(typeof piece.semanticId === 'string' && typeof piece.domId === 'string' && piece.domId.length, 'semantic/visual identity');
     span(piece.span);
+    if (piece.effective !== undefined) check(typeof piece.effective === 'boolean', 'effective occurrence');
     if (piece.labelSpan !== undefined) {
       span(piece.labelSpan);
       check(piece.labelSpan.start >= piece.span.start && piece.labelSpan.end <= piece.span.end, 'label outside piece');

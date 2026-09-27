@@ -98,12 +98,14 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
         // Preserve occurrence queries while using the explicit declaration for visual activation.
         indices.sort_by_key(|&i| {
             (
+                pieces[i]["effective"] != true,
                 pieces[i].get("labelSpan").is_none(),
                 pieces[i]["declaration"] != true,
             )
         });
         let primary = &pieces[indices[0]];
         if primary["kind"] == "node"
+            && primary["effective"] != true
             && !key.starts_with("state:")
             && indices
                 .iter()
@@ -139,7 +141,10 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
             )?;
             // A label is a child of a renderer-owned identity; never associate it by its text.
             if !label && (primary.get("labelSpan").is_some() || kind == "node") {
-                for text in node.descendants().filter(|n| n.has_tag_name("text")) {
+                for text in node
+                    .descendants()
+                    .filter(|n| n.has_tag_name("text") && visible(*n))
+                {
                     if text
                         .ancestors()
                         .skip(1)

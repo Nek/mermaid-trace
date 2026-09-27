@@ -10,10 +10,11 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = []) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], supersededLabel?: string) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
+  const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
   const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
   const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
   const browser = await chromium.launch();
@@ -43,6 +44,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     await first.locator(labelSelector).first().click();
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
+    const labelSpan = event.span;
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
     assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
@@ -66,6 +68,12 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(source.slice(control.span.start, control.span.end), text);
       controlSpans.push(control.span);
     }
+    if (supersededLabel !== undefined) {
+      const start = source.indexOf(supersededLabel);
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + supersededLabel.length });
+      assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'superseded label maps to its semantic node');
+      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a superseded label must not select another occurrence’s displayed label');
+    }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     await writeFile(filename, markdown);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
@@ -73,7 +81,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     const original = page.frameLocator('#source-frame').locator('#source');
     await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label);
-    const start = markdown.indexOf(label);
+    const start = toMarkdown(labelSpan.start);
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + label.length }));
     await original.evaluate((element, span) => {
       const doc = element.ownerDocument; const range = doc.createRange();
@@ -93,7 +101,6 @@ async function verifyNative(source: string, key: string, expected: string, label
       await target.press(index % 2 ? 'Space' : 'Enter');
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
       const span = controlSpans[index]!;
-      const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdown(span.end) }));
     }
     await page.locator('svg[data-mt-map]').focus(); await page.keyboard.press('Enter');
@@ -192,5 +199,15 @@ test('FLOW AC5/6: formula glyphs retain saved and live label selection', { timeo
     await verifyNative(source, 'node:A', 'A["$$x^2$$"]', '$$x^2$$', [
       ['edge:L_A_B_0', '$$\\sqrt{x}$$', 'edge-label'],
     ]);
+  }
+});
+
+
+test('FLOW AC4/6: repeated declarations select the effective native occurrence and preserve reverse lookup', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nA["Previous 😀"]\nA["Current 😀"]\nA["Current 😀"] -->|go| B\nA --> B\n`;
+      await verifyNative(source, 'node:A', 'A["Current 😀"]', 'Current 😀', [['edge:L_A_B_0', 'go', 'edge-label']], 'Current 😀');
+    }
   }
 });
