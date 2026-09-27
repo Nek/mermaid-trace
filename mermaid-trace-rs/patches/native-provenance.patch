@@ -11495,28 +11495,38 @@ index 64188dfa..f935a4bf 100644
      },
  }
 diff --git a/crates/merman-core/src/diagrams/flowchart/build.rs b/crates/merman-core/src/diagrams/flowchart/build.rs
-index 6837a47d..6721b7cf 100644
+index 6837a47d..11a9f490 100644
 --- a/crates/merman-core/src/diagrams/flowchart/build.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/build.rs
-@@ -3,6 +3,8 @@ use crate::{OperationControl, OperationControlResult};
+@@ -3,6 +3,10 @@ use crate::{OperationControl, OperationControlResult};
  use std::collections::{HashMap, HashSet};
  
  pub(super) struct FlowchartBuildState {
 +    pub(super) trace_source: bool,
 +    pub(super) source_occurrences: Vec<serde_json::Value>,
++    reference_endpoints: HashSet<(usize, usize)>,
++    styled_vertex_ids: HashSet<String>,
      pub(super) nodes: Vec<Node>,
      pub(super) node_index: HashMap<String, usize>,
      pub(super) edges: Vec<Edge>,
-@@ -14,6 +16,8 @@ pub(super) struct FlowchartBuildState {
+@@ -14,6 +18,10 @@ pub(super) struct FlowchartBuildState {
  impl FlowchartBuildState {
      pub(super) fn new(subgraph_ids: HashSet<String>) -> Self {
          Self {
 +            trace_source: false,
 +            source_occurrences: Vec::new(),
++            reference_endpoints: HashSet::new(),
++            styled_vertex_ids: HashSet::new(),
              nodes: Vec::new(),
              node_index: HashMap::new(),
              edges: Vec::new(),
-@@ -74,7 +78,7 @@ impl FlowchartBuildState {
+@@ -69,45 +77,55 @@ impl FlowchartBuildState {
+                         continue;
+                     }
+                     n.provenance = FlowNodeProvenance::Authored;
+-                    self.upsert_node(n);
++                    self.upsert_node(n, true);
+                 }
                  Stmt::ShapeData {
                      target,
                      target_span,
@@ -11525,35 +11535,100 @@ index 6837a47d..6721b7cf 100644
                  } => {
                      // Reserve the structural node slot in source order. The semantic replay is
                      // the sole owner of parsing and applying shapeData values.
-@@ -84,12 +88,13 @@ impl FlowchartBuildState {
-                             provenance: FlowNodeProvenance::Authored,
-                             syntax: FlowNodeSyntax::ExplicitDefinition,
-                             id_span: *target_span,
-+                            class_span: None,
-                             label: None,
-                             label_type: TitleKind::Text,
-                             label_span: None,
-                             label_selection: None,
-                             shape: None,
+                     if !self.used_edge_ids.contains(target) {
+-                        self.upsert_node(Node {
+-                            id: target.clone(),
+-                            provenance: FlowNodeProvenance::Authored,
+-                            syntax: FlowNodeSyntax::ExplicitDefinition,
+-                            id_span: *target_span,
+-                            label: None,
+-                            label_type: TitleKind::Text,
+-                            label_span: None,
+-                            label_selection: None,
+-                            shape: None,
 -                            shape_data: None,
-+                            shape_data: Some(yaml.clone()),
-                             icon: None,
-                             form: None,
-                             pos: None,
-@@ -107,7 +112,7 @@ impl FlowchartBuildState {
+-                            icon: None,
+-                            form: None,
+-                            pos: None,
+-                            img: None,
+-                            constraint: None,
+-                            asset_width: None,
+-                            asset_height: None,
+-                            styles: Vec::new(),
+-                            classes: Vec::new(),
+-                            link: None,
+-                            link_target: None,
+-                            have_callback: false,
+-                        });
++                        self.upsert_node(
++                            Node {
++                                id: target.clone(),
++                                provenance: FlowNodeProvenance::Authored,
++                                syntax: FlowNodeSyntax::ExplicitDefinition,
++                                id_span: *target_span,
++                                class_span: None,
++                                label: None,
++                                label_type: TitleKind::Text,
++                                label_span: None,
++                                label_selection: None,
++                                shape: None,
++                                shape_data: Some(yaml.clone()),
++                                icon: None,
++                                form: None,
++                                pos: None,
++                                img: None,
++                                constraint: None,
++                                asset_width: None,
++                                asset_height: None,
++                                styles: Vec::new(),
++                                classes: Vec::new(),
++                                link: None,
++                                link_target: None,
++                                have_callback: false,
++                            },
++                            true,
++                        );
++                    }
++                }
++                Stmt::Style(style) => {
++                    // Native semantic replay creates unknown style targets, except IDs
++                    // already assigned to edges. Later bare endpoints are references.
++                    if self.trace_source && !self.used_edge_ids.contains(&style.target) {
++                        self.styled_vertex_ids.insert(style.target.clone());
+                     }
                  }
-                 Stmt::Style(_) => {}
+-                Stmt::Style(_) => {}
                  Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
 -                Stmt::Direction(_)
 +                Stmt::Direction { .. }
                  | Stmt::ClassDef(_)
                  | Stmt::ClassAssign(_)
                  | Stmt::Click(_)
-@@ -144,6 +149,35 @@ impl FlowchartBuildState {
+@@ -138,12 +156,53 @@ impl FlowchartBuildState {
+             {
+                 node.provenance = FlowNodeProvenance::SubgraphAnchor;
+             }
+-            self.upsert_node(node);
++            let reference_only = has_edges
++                && node.syntax == FlowNodeSyntax::BareReference
++                && (self.node_index.contains_key(&node.id)
++                    || self.styled_vertex_ids.contains(&node.id)
++                    || self.subgraph_ids.contains(&node.id));
++            if self.trace_source
++                && reference_only
++                && let Some(span) = node.id_span
++            {
++                self.reference_endpoints.insert((span.start, span.end));
++            }
++            self.upsert_node(node, !reference_only);
+         }
+         Ok(())
      }
  
-     fn upsert_node(&mut self, n: Node) {
+-    fn upsert_node(&mut self, n: Node) {
++    fn upsert_node(&mut self, n: Node, owns_source: bool) {
 +        if self.trace_source
++            && owns_source
 +            && let Some(id_span) = n.id_span
 +        {
 +            let span = crate::SourceSpan::new(
@@ -11585,7 +11660,7 @@ index 6837a47d..6721b7cf 100644
          if let Some(&idx) = self.node_index.get(&n.id) {
              if matches!(n.provenance, FlowNodeProvenance::Authored) {
                  self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-@@ -212,6 +246,16 @@ impl FlowchartBuildState {
+@@ -212,6 +271,28 @@ impl FlowchartBuildState {
  
          self.edge_pair_counts.insert(key, existing + 1);
  
@@ -11598,11 +11673,23 @@ index 6837a47d..6721b7cf 100644
 +                piece["labelSpan"] = serde_json::json!(label);
 +            }
 +            self.source_occurrences.push(piece);
++            // Grammar expansion retains each original endpoint occurrence, including
++            // duplicate IDs in a group. Bind references to this assigned edge identity.
++            for (endpoint, target, span) in [
++                ("from", &e.from, e.endpoint_spans[0]),
++                ("to", &e.to, e.endpoint_spans[1]),
++            ] {
++                if let Some(span) = span
++                    && self.reference_endpoints.contains(&(span.start, span.end))
++                {
++                    self.source_occurrences.push(serde_json::json!({"kind":"edge","semanticId":key,"domId":format!("edge:{key}"),"from":e.from,"to":e.to,"span":span,"relation":"endpoint-reference","endpoint":endpoint,"target":target}));
++                }
++            }
 +        }
          e.id = final_id;
          e.is_user_defined_id = is_user_defined_id;
          e.link.length = e.link.length.min(10);
-@@ -232,6 +276,7 @@ mod tests {
+@@ -232,6 +313,7 @@ mod tests {
                  provenance: FlowNodeProvenance::Authored,
                  syntax: FlowNodeSyntax::ExplicitDefinition,
                  id_span: None,
@@ -11775,7 +11862,7 @@ index 51d8d9e1..dea89962 100644
  }
  
 diff --git a/crates/merman-core/src/diagrams/flowchart/model.rs b/crates/merman-core/src/diagrams/flowchart/model.rs
-index 8d2244b6..a3a63808 100644
+index 8d2244b6..42942259 100644
 --- a/crates/merman-core/src/diagrams/flowchart/model.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/model.rs
 @@ -136,12 +136,27 @@ impl FlowchartRenderStyleSources {
@@ -11865,15 +11952,16 @@ index 8d2244b6..a3a63808 100644
      pub icon: Option<String>,
      pub form: Option<String>,
      pub pos: Option<String>,
-@@ -694,6 +720,7 @@ pub(crate) enum FlowNodeSyntax {
+@@ -694,6 +720,8 @@ pub(crate) enum FlowNodeSyntax {
  
  #[derive(Debug, Clone)]
  pub(crate) struct Edge {
 +    pub source_span: Option<SourceSpan>,
++    pub endpoint_spans: [Option<SourceSpan>; 2],
      pub from: String,
      pub to: String,
      pub id: Option<String>,
-@@ -772,6 +799,7 @@ pub(crate) struct SubgraphHeader {
+@@ -772,6 +800,7 @@ pub(crate) struct SubgraphHeader {
      pub header_span: Option<SourceSpan>,
      pub raw_id_span: Option<SourceSpan>,
      pub raw_title: String,
@@ -11881,7 +11969,7 @@ index 8d2244b6..a3a63808 100644
      pub title_kind: TitleKind,
      pub id_equals_title: bool,
  }
-@@ -783,8 +811,25 @@ impl Default for SubgraphHeader {
+@@ -783,8 +812,25 @@ impl Default for SubgraphHeader {
              header_span: None,
              raw_id_span: None,
              raw_title: String::new(),
@@ -11908,7 +11996,7 @@ index 8d2244b6..a3a63808 100644
 +    effective
 +}
 diff --git a/crates/merman-core/src/diagrams/flowchart/semantic.rs b/crates/merman-core/src/diagrams/flowchart/semantic.rs
-index 7d377ab1..0455c517 100644
+index 7d377ab1..76e567b7 100644
 --- a/crates/merman-core/src/diagrams/flowchart/semantic.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/semantic.rs
 @@ -12,6 +12,7 @@ use super::{
@@ -12483,15 +12571,16 @@ index 7d377ab1..0455c517 100644
              label: None,
              label_type: TitleKind::Text,
              label_span: None,
-@@ -657,6 +1035,7 @@ mod tests {
+@@ -657,6 +1035,8 @@ mod tests {
          let mut node_index = HashMap::new();
          let mut edges = (0..512)
              .map(|index| Edge {
 +                source_span: None,
++                endpoint_spans: [None; 2],
                  from: format!("n{index}"),
                  to: format!("n{}", index + 1),
                  id: Some(format!("edge-{index}")),
-@@ -695,6 +1074,7 @@ mod tests {
+@@ -695,6 +1075,7 @@ mod tests {
          let control = OperationControl::new();
          control.cancel_after_checkpoints(3);
          let mut context = FlowchartSemanticContext {
@@ -12641,7 +12730,7 @@ index 4490f80f..241975bc 100644
      pub recovery_error: Option<LexError>,
  }
 diff --git a/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop b/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
-index 185ff516..8095f52a 100644
+index 185ff516..43c52684 100644
 --- a/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
 +++ b/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
 @@ -5,7 +5,7 @@ grammar;
@@ -12680,15 +12769,16 @@ index 185ff516..8095f52a 100644
        let mut segment_edges: Vec<Edge> = Vec::new();
        for from in &prev_group {
          for to in &next_group {
-@@ -121,6 +121,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
+@@ -121,6 +121,8 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
            let label_span = label.as_ref().and_then(|l| l.span);
            let label_selection = label.as_ref().and_then(|l| l.selection);
            segment_edges.push(Edge {
 +            source_span: Some(span),
++            endpoint_spans: [from.id_span, to.id_span],
              from: from.id.clone(),
              to: to.id.clone(),
              id: edge_id,
-@@ -152,11 +153,19 @@ Seps1: () = {
+@@ -152,11 +154,19 @@ Seps1: () = {
  };
  
  SubgraphBlock: SubgraphBlock = {
@@ -12711,7 +12801,7 @@ index 185ff516..8095f52a 100644
  };
  
  NodeGroup: Vec<Node> = {
-@@ -203,7 +212,8 @@ NodeRef: Node = {
+@@ -203,7 +213,8 @@ NodeRef: Node = {
        asset_width: None,
        asset_height: None,
        styles: Vec::new(),
@@ -12721,7 +12811,7 @@ index 185ff516..8095f52a 100644
        link: None,
        link_target: None,
        have_callback: false,
-@@ -213,7 +223,7 @@ NodeRef: Node = {
+@@ -213,7 +224,7 @@ NodeRef: Node = {
      id_span: Some(SourceSpan::new(l, r)),
      id,
      provenance: FlowNodeProvenance::Authored,
@@ -12730,7 +12820,7 @@ index 185ff516..8095f52a 100644
        FlowNodeSyntax::BareReference
      } else {
        FlowNodeSyntax::ExplicitDefinition
-@@ -232,7 +242,8 @@ NodeRef: Node = {
+@@ -232,7 +243,8 @@ NodeRef: Node = {
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -12740,7 +12830,7 @@ index 185ff516..8095f52a 100644
      link: None,
      link_target: None,
      have_callback: false,
-@@ -263,7 +274,8 @@ NodeRefChain: Node = {
+@@ -263,7 +275,8 @@ NodeRefChain: Node = {
        asset_width: None,
        asset_height: None,
        styles: Vec::new(),
@@ -12750,7 +12840,7 @@ index 185ff516..8095f52a 100644
        link: None,
        link_target: None,
        have_callback: false,
-@@ -288,7 +300,8 @@ NodeRefChain: Node = {
+@@ -288,7 +301,8 @@ NodeRefChain: Node = {
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -12760,7 +12850,7 @@ index 185ff516..8095f52a 100644
      link: None,
      link_target: None,
      have_callback: false,
-@@ -297,7 +310,7 @@ NodeRefChain: Node = {
+@@ -297,7 +311,7 @@ NodeRefChain: Node = {
      id_span: Some(SourceSpan::new(l, r)),
      id,
      provenance: FlowNodeProvenance::Authored,
@@ -12769,7 +12859,7 @@ index 185ff516..8095f52a 100644
        FlowNodeSyntax::BareReference
      } else {
        FlowNodeSyntax::ExplicitDefinition
-@@ -316,14 +329,15 @@ NodeRefChain: Node = {
+@@ -316,14 +330,15 @@ NodeRefChain: Node = {
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -14344,13 +14434,13 @@ index 280e3b85..348ab7c8 100644
  
  Block: Vec<Stmt> = {
 diff --git a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs b/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
-index 979d9b43..be5836b6 100644
+index 979d9b43..bdabdae1 100644
 --- a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
 +++ b/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
 @@ -1,9 +1,9 @@
  // auto-generated: "lalrpop 0.23.1"
 -// sha3: 938bdc6e00e5abb93bebab99f9608fdbda94b7e900b8ab81a28516ec69aa20a2
-+// sha3: 41d844287de18b5127adceff26b9a5050a42aeeeed76028b19429b6898a78700
++// sha3: f22096759889ceb5d86f582c0bff7b381d2dd369a8f511da00c2df201d398aa6
  use crate::diagrams::flowchart::{
    ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
    FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
@@ -17043,15 +17133,16 @@ index 979d9b43..be5836b6 100644
        let mut segment_edges: Vec<Edge> = Vec::new();
        for from in &prev_group {
          for to in &next_group {
-@@ -3004,6 +3082,7 @@ fn __action23<
+@@ -3004,6 +3082,8 @@ fn __action23<
            let label_span = label.as_ref().and_then(|l| l.span);
            let label_selection = label.as_ref().and_then(|l| l.selection);
            segment_edges.push(Edge {
 +            source_span: Some(span),
++            endpoint_spans: [from.id_span, to.id_span],
              from: from.id.clone(),
              to: to.id.clone(),
              id: edge_id,
-@@ -3042,30 +3121,47 @@ fn __action24<
+@@ -3042,30 +3122,47 @@ fn __action24<
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
  fn __action25<
  >(
@@ -17103,7 +17194,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, first, _): (usize, Node, usize),
      (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
-@@ -3079,7 +3175,7 @@ fn __action27<
+@@ -3079,7 +3176,7 @@ fn __action27<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17112,7 +17203,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, first, _): (usize, Node, usize),
      (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
-@@ -3093,7 +3189,7 @@ fn __action28<
+@@ -3093,7 +3190,7 @@ fn __action28<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17121,7 +17212,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, n, _): (usize, Node, usize),
-@@ -3103,14 +3199,14 @@ fn __action29<
+@@ -3103,14 +3200,14 @@ fn __action29<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17139,7 +17230,7 @@ index 979d9b43..be5836b6 100644
  ) -> Node
  {
      {
-@@ -3136,7 +3232,8 @@ fn __action30<
+@@ -3136,7 +3233,8 @@ fn __action30<
        asset_width: None,
        asset_height: None,
        styles: Vec::new(),
@@ -17149,7 +17240,7 @@ index 979d9b43..be5836b6 100644
        link: None,
        link_target: None,
        have_callback: false,
-@@ -3145,19 +3242,19 @@ fn __action30<
+@@ -3145,19 +3243,19 @@ fn __action30<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17172,7 +17263,7 @@ index 979d9b43..be5836b6 100644
        FlowNodeSyntax::BareReference
      } else {
        FlowNodeSyntax::ExplicitDefinition
-@@ -3176,7 +3273,8 @@ fn __action31<
+@@ -3176,7 +3274,8 @@ fn __action31<
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -17182,7 +17273,7 @@ index 979d9b43..be5836b6 100644
      link: None,
      link_target: None,
      have_callback: false,
-@@ -3184,14 +3282,14 @@ fn __action31<
+@@ -3184,14 +3283,14 @@ fn __action31<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17200,7 +17291,7 @@ index 979d9b43..be5836b6 100644
  ) -> Node
  {
      {
-@@ -3217,7 +3315,8 @@ fn __action32<
+@@ -3217,7 +3316,8 @@ fn __action32<
        asset_width: None,
        asset_height: None,
        styles: Vec::new(),
@@ -17210,7 +17301,7 @@ index 979d9b43..be5836b6 100644
        link: None,
        link_target: None,
        have_callback: false,
-@@ -3226,13 +3325,13 @@ fn __action32<
+@@ -3226,13 +3326,13 @@ fn __action32<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17227,7 +17318,7 @@ index 979d9b43..be5836b6 100644
  ) -> Node
  {
      Node {
-@@ -3254,7 +3353,8 @@ fn __action33<
+@@ -3254,7 +3354,8 @@ fn __action33<
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -17237,7 +17328,7 @@ index 979d9b43..be5836b6 100644
      link: None,
      link_target: None,
      have_callback: false,
-@@ -3262,19 +3362,19 @@ fn __action33<
+@@ -3262,19 +3363,19 @@ fn __action33<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17260,7 +17351,7 @@ index 979d9b43..be5836b6 100644
        FlowNodeSyntax::BareReference
      } else {
        FlowNodeSyntax::ExplicitDefinition
-@@ -3293,7 +3393,8 @@ fn __action34<
+@@ -3293,7 +3394,8 @@ fn __action34<
      asset_width: None,
      asset_height: None,
      styles: Vec::new(),
@@ -17270,7 +17361,7 @@ index 979d9b43..be5836b6 100644
      link: None,
      link_target: None,
      have_callback: false,
-@@ -3301,46 +3402,48 @@ fn __action34<
+@@ -3301,46 +3403,48 @@ fn __action34<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17331,7 +17422,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, __0, _): (usize, Node, usize),
  ) -> alloc::vec::Vec<Node>
-@@ -3349,7 +3452,7 @@ fn __action39<
+@@ -3349,7 +3453,7 @@ fn __action39<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17340,7 +17431,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
      (_, e, _): (usize, Node, usize),
-@@ -3359,7 +3462,7 @@ fn __action40<
+@@ -3359,7 +3463,7 @@ fn __action40<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17349,7 +17440,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3369,7 +3472,7 @@ fn __action41<
+@@ -3369,7 +3473,7 @@ fn __action41<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17358,7 +17449,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
  ) -> alloc::vec::Vec<Node>
-@@ -3378,7 +3481,7 @@ fn __action42<
+@@ -3378,7 +3482,7 @@ fn __action42<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17367,7 +17458,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, __0, _): (usize, LabeledText, usize),
  ) -> Option<LabeledText>
-@@ -3387,7 +3490,7 @@ fn __action43<
+@@ -3387,7 +3491,7 @@ fn __action43<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17376,7 +17467,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3397,26 +3500,26 @@ fn __action44<
+@@ -3397,26 +3501,26 @@ fn __action44<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17409,7 +17500,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, __0, _): (usize, SubgraphHeader, usize),
  ) -> Option<SubgraphHeader>
-@@ -3425,7 +3528,7 @@ fn __action47<
+@@ -3425,7 +3529,7 @@ fn __action47<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17418,7 +17509,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3435,26 +3538,26 @@ fn __action48<
+@@ -3435,26 +3539,26 @@ fn __action48<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17453,7 +17544,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3464,7 +3567,7 @@ fn __action51<
+@@ -3464,7 +3568,7 @@ fn __action51<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17462,7 +17553,7 @@ index 979d9b43..be5836b6 100644
  >(
      (_, __0, _): (usize, String, usize),
  ) -> Option<String>
-@@ -3473,7 +3576,7 @@ fn __action52<
+@@ -3473,7 +3577,7 @@ fn __action52<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -17471,7 +17562,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3483,7 +3586,7 @@ fn __action53<
+@@ -3483,7 +3587,7 @@ fn __action53<
  }
  
  #[allow(clippy::needless_lifetimes)]
@@ -17480,7 +17571,7 @@ index 979d9b43..be5836b6 100644
  >(
      __lookbehind: &usize,
      __lookahead: &usize,
-@@ -3494,7 +3597,31 @@ fn __action54<
+@@ -3494,7 +3598,31 @@ fn __action54<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17513,7 +17604,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3503,7 +3630,7 @@ fn __action55<
+@@ -3503,7 +3631,7 @@ fn __action55<
  {
      let __start0 = __0.0;
      let __end0 = __0.0;
@@ -17522,7 +17613,7 @@ index 979d9b43..be5836b6 100644
          &__start0,
          &__end0,
      );
-@@ -3518,7 +3645,7 @@ fn __action55<
+@@ -3518,7 +3646,7 @@ fn __action55<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17531,7 +17622,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3527,7 +3654,7 @@ fn __action56<
+@@ -3527,7 +3655,7 @@ fn __action56<
  {
      let __start0 = __0.0;
      let __end0 = __0.0;
@@ -17540,7 +17631,7 @@ index 979d9b43..be5836b6 100644
          &__start0,
          &__end0,
      );
-@@ -3542,7 +3669,7 @@ fn __action56<
+@@ -3542,7 +3670,7 @@ fn __action56<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17549,7 +17640,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3551,7 +3678,7 @@ fn __action57<
+@@ -3551,7 +3679,7 @@ fn __action57<
  {
      let __start0 = __0.0;
      let __end0 = __0.0;
@@ -17558,7 +17649,7 @@ index 979d9b43..be5836b6 100644
          &__start0,
          &__end0,
      );
-@@ -3566,7 +3693,7 @@ fn __action57<
+@@ -3566,7 +3694,7 @@ fn __action57<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17567,7 +17658,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3575,7 +3702,7 @@ fn __action58<
+@@ -3575,7 +3703,7 @@ fn __action58<
  {
      let __start0 = __0.0;
      let __end0 = __0.0;
@@ -17576,7 +17667,7 @@ index 979d9b43..be5836b6 100644
          &__start0,
          &__end0,
      );
-@@ -3590,23 +3717,45 @@ fn __action58<
+@@ -3590,23 +3718,45 @@ fn __action58<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17627,7 +17718,7 @@ index 979d9b43..be5836b6 100644
          __temp0,
          __0,
          __1,
-@@ -3618,21 +3767,21 @@ fn __action59<
+@@ -3618,21 +3768,21 @@ fn __action59<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17653,7 +17744,7 @@ index 979d9b43..be5836b6 100644
          __temp0,
          __0,
          __1,
-@@ -3642,23 +3791,23 @@ fn __action60<
+@@ -3642,23 +3792,23 @@ fn __action60<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17682,7 +17773,7 @@ index 979d9b43..be5836b6 100644
          __temp0,
          __0,
          __1,
-@@ -3670,22 +3819,22 @@ fn __action61<
+@@ -3670,22 +3820,22 @@ fn __action61<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17710,7 +17801,7 @@ index 979d9b43..be5836b6 100644
          __temp0,
          __0,
          __1,
-@@ -3696,55 +3845,149 @@ fn __action62<
+@@ -3696,55 +3846,149 @@ fn __action62<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17877,7 +17968,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3752,12 +3995,12 @@ fn __action65<
+@@ -3752,12 +3996,12 @@ fn __action65<
  {
      let __start0 = __1.2;
      let __end0 = __1.2;
@@ -17892,7 +17983,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -3766,7 +4009,7 @@ fn __action65<
+@@ -3766,7 +4010,7 @@ fn __action65<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17901,7 +17992,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3774,12 +4017,12 @@ fn __action66<
+@@ -3774,12 +4018,12 @@ fn __action66<
  {
      let __start0 = __1.2;
      let __end0 = __1.2;
@@ -17916,7 +18007,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -3788,7 +4031,7 @@ fn __action66<
+@@ -3788,7 +4032,7 @@ fn __action66<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17925,7 +18016,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3796,12 +4039,12 @@ fn __action67<
+@@ -3796,12 +4040,12 @@ fn __action67<
  {
      let __start0 = __1.2;
      let __end0 = __1.2;
@@ -17940,7 +18031,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -3810,44 +4053,42 @@ fn __action67<
+@@ -3810,44 +4054,42 @@ fn __action67<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -17997,7 +18088,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3858,20 +4099,20 @@ fn __action69<
+@@ -3858,20 +4100,20 @@ fn __action69<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18022,7 +18113,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3880,22 +4121,22 @@ fn __action70<
+@@ -3880,22 +4122,22 @@ fn __action70<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18050,7 +18141,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3906,21 +4147,21 @@ fn __action71<
+@@ -3906,21 +4148,21 @@ fn __action71<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18077,7 +18168,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3930,20 +4171,20 @@ fn __action72<
+@@ -3930,20 +4172,20 @@ fn __action72<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18102,7 +18193,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3952,20 +4193,20 @@ fn __action73<
+@@ -3952,20 +4194,20 @@ fn __action73<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18127,7 +18218,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __1,
-@@ -3974,7 +4215,35 @@ fn __action74<
+@@ -3974,7 +4216,35 @@ fn __action74<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18164,7 +18255,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -3982,11 +4251,11 @@ fn __action75<
+@@ -3982,11 +4252,11 @@ fn __action75<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18178,7 +18269,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -3994,19 +4263,19 @@ fn __action75<
+@@ -3994,19 +4264,19 @@ fn __action75<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18201,7 +18292,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4014,7 +4283,7 @@ fn __action76<
+@@ -4014,7 +4284,7 @@ fn __action76<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18210,7 +18301,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4022,11 +4291,11 @@ fn __action77<
+@@ -4022,11 +4292,11 @@ fn __action77<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18224,7 +18315,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4034,19 +4303,19 @@ fn __action77<
+@@ -4034,19 +4304,19 @@ fn __action77<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18247,7 +18338,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4054,7 +4323,7 @@ fn __action78<
+@@ -4054,7 +4324,7 @@ fn __action78<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18256,7 +18347,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4062,11 +4331,11 @@ fn __action79<
+@@ -4062,11 +4332,11 @@ fn __action79<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18270,7 +18361,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4074,19 +4343,19 @@ fn __action79<
+@@ -4074,19 +4344,19 @@ fn __action79<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18293,7 +18384,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4094,7 +4363,7 @@ fn __action80<
+@@ -4094,7 +4364,7 @@ fn __action80<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18302,7 +18393,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4102,11 +4371,11 @@ fn __action81<
+@@ -4102,11 +4372,11 @@ fn __action81<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18316,7 +18407,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4114,19 +4383,19 @@ fn __action81<
+@@ -4114,19 +4384,19 @@ fn __action81<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18339,7 +18430,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4134,159 +4403,159 @@ fn __action82<
+@@ -4134,159 +4404,159 @@ fn __action82<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18556,7 +18647,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4294,7 +4563,7 @@ fn __action89<
+@@ -4294,7 +4564,7 @@ fn __action89<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18565,7 +18656,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Node, usize),
      __1: (usize, alloc::vec::Vec<Node>, usize),
-@@ -4302,11 +4571,11 @@ fn __action90<
+@@ -4302,11 +4572,11 @@ fn __action90<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18579,7 +18670,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
      )
-@@ -4314,21 +4583,21 @@ fn __action90<
+@@ -4314,21 +4584,21 @@ fn __action90<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18606,7 +18697,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -4338,21 +4607,21 @@ fn __action91<
+@@ -4338,21 +4608,21 @@ fn __action91<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18632,7 +18723,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -4362,21 +4631,21 @@ fn __action92<
+@@ -4362,21 +4632,21 @@ fn __action92<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18659,7 +18750,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -4386,21 +4655,21 @@ fn __action93<
+@@ -4386,21 +4656,21 @@ fn __action93<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18685,7 +18776,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __1,
          __temp0,
-@@ -4410,7 +4679,7 @@ fn __action94<
+@@ -4410,7 +4680,7 @@ fn __action94<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18694,7 +18785,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, SubgraphHeader, usize),
-@@ -4421,11 +4690,11 @@ fn __action95<
+@@ -4421,11 +4691,11 @@ fn __action95<
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
@@ -18708,7 +18799,7 @@ index 979d9b43..be5836b6 100644
          __0,
          __temp0,
          __2,
-@@ -4436,7 +4705,7 @@ fn __action95<
+@@ -4436,7 +4706,7 @@ fn __action95<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -18717,7 +18808,7 @@ index 979d9b43..be5836b6 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, (), usize),
-@@ -4446,12 +4715,12 @@ fn __action96<
+@@ -4446,12 +4716,12 @@ fn __action96<
  {
      let __start0 = __0.2;
      let __end0 = __1.0;
@@ -30275,10 +30366,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..60f27c32
+index 00000000..56b40c23
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,480 @@
+@@ -0,0 +1,548 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30315,15 +30406,30 @@ index 00000000..60f27c32
 +            .filter(|p| p["kind"] == "node")
 +            .map(|p| slice(&p["span"]))
 +            .collect::<Vec<_>>(),
-+        ["A[\"same\"]", "B[\"same\"]", "A", "B"]
++        ["A[\"same\"]", "B[\"same\"]"]
 +    );
-+    let edges: Vec<_> = map.iter().filter(|p| p["kind"] == "edge").collect();
++    let edges: Vec<_> = map
++        .iter()
++        .filter(|p| p["kind"] == "edge" && p.get("relation").is_none())
++        .collect();
 +    assert_eq!(
 +        edges.iter().map(|p| slice(&p["span"])).collect::<Vec<_>>(),
 +        ["-->|same|", "-->"]
 +    );
 +    assert_eq!(slice(&edges[0]["labelSpan"]), "same");
 +    assert_ne!(edges[0]["domId"], edges[1]["domId"]);
++    let references: Vec<_> = map
++        .iter()
++        .filter(|p| p["relation"] == "endpoint-reference")
++        .collect();
++    assert_eq!(
++        references
++            .iter()
++            .map(|p| slice(&p["span"]))
++            .collect::<Vec<_>>(),
++        ["A", "B"]
++    );
++    assert!(references.iter().all(|p| p["domId"] == edges[1]["domId"]));
 +    for edge in edges {
 +        let key = edge["domId"].as_str().unwrap();
 +        assert!(
@@ -30758,6 +30864,59 @@ index 00000000..60f27c32
 +            );
 +        }
 +    }
++}
++
++#[test]
++fn style_created_endpoint_references_keep_edge_ownership_and_style_label_origin() {
++    let source = "flowchart LR\r\n%% 😀\r\nstyle A fill:red\r\nA --> B\r\n";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let pieces: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|n| n.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let start = source.find("A --> B").unwrap();
++    let span = json!({"start":start,"end":start+1});
++    assert!(
++        !pieces
++            .iter()
++            .any(|p| p["kind"] == "node" && p["span"] == span)
++    );
++    let reference = pieces
++        .iter()
++        .find(|p| p["relation"] == "endpoint-reference" && p["span"] == span)
++        .unwrap();
++    assert_eq!(reference["from"], "A");
++    assert_eq!(reference["to"], "B");
++    assert_eq!(reference["target"], "A");
++    assert!(
++        svg.descendants()
++            .any(|n| n.attribute("data-mt-key") == reference["domId"].as_str())
++    );
++    let style = pieces
++        .iter()
++        .find(|p| p["relation"] == "style" && p["semanticId"] == "A")
++        .unwrap();
++    assert_eq!(style["declaration"], true);
++    let label_start = source.find("style A").unwrap() + 6;
++    assert_eq!(
++        style["labelSpan"],
++        json!({"start":label_start,"end":label_start+1})
++    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs
 new file mode 100644

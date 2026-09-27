@@ -24,6 +24,77 @@ async function noteConnectorPoint(target: Locator) {
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
+test('OWN-FLOW-ENDPOINT: saved and live references select owning connection groups', { timeout: 240_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-flow-owner-'));
+  const filename = join(directory, 'flow.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) {
+      for (const html of [false, true]) for (const nested of [false, true]) {
+        for (const [statement, counts, visualCounts] of [
+          ['A --> B', [1, 1], [1, 1]],
+          ['A & B --> C & D', [2, 2, 2, 2], [4, 4, 4, 4]],
+          ['A --> B --> C', [1, 2, 1], [1, 2, 1]],
+          ['A & A --> B', [1, 1, 2], [2, 2, 2]],
+          ['A --> B\r\nA --> B', [1, 1, 1, 1], [1, 1, 1, 1]],
+          ['H --> B', [1, 1], [1, 1]],
+          ['E --> B', [1, 1], [1, 1]],
+        ] as const) {
+          const body = `A[Alpha 😀]\r\nB[Beta]\r\nC[Gamma]\r\nD[Delta]\r\nstyle E fill:red\r\nsubgraph H\r\nI[Inside]\r\nend\r\n${statement}\r\n`;
+          const source = `---\r\nconfig:\r\n  look: ${look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: ${html}\r\n---\r\n${header}\r\n` + (nested ? `subgraph G\r\n${body}end\r\n` : body);
+          const { svg } = await producer.render('own-flow', source);
+          const offsets = [...statement.matchAll(/[ABCDEH]/g)].map(match => source.indexOf(statement) + match.index);
+          await page.setContent(svg + svg.replaceAll('own-flow', 'own-copy'));
+          await page.evaluate(async activation => {
+            const { activateSvg } = await import(activation);
+            Object.assign(window, { handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect() {} })) });
+          }, activation);
+          const first = page.locator('svg').first();
+          for (const [index, start] of offsets.entries()) {
+            const pieces = await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + 1 });
+            assert.equal(pieces.length, counts[index], source);
+            assert.ok(pieces.every((piece: any) => piece.kind === 'edge' && piece.relation === 'endpoint-reference'));
+            assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), visualCounts[index], 'equal-span connection parts stay consolidated');
+            assert.equal(await first.locator('[data-mt-role^=node][data-mt-selected=true]').count(), 0);
+            assert.equal(await first.getAttribute('data-mt-selected'), null);
+            assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+          }
+          await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+          assert.equal(await page.locator('[tabindex], [data-mt-selected]').count(), 0);
+          const markdown = '# Flow\r\n\r\n```mermaid\r\n' + source + '```\r\n';
+          await writeFile(filename, markdown);
+          preview = await watchPreview(filename, { port: 0, sourceView: true });
+          await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+          const original = page.frameLocator('#source-frame').locator('#source');
+          for (const [index, offset] of offsets.entries()) {
+            const start = markdown.indexOf(source) + offset;
+            await original.evaluate((element, span) => {
+              const range = element.ownerDocument.createRange();
+              range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+              const selection = element.ownerDocument.getSelection()!;
+              selection.removeAllRanges(); selection.addRange(range);
+            }, { start, end: start + 1 });
+            await page.waitForFunction(count => document.querySelectorAll('[data-mt-role=edge][data-mt-selected=true]').length === count, visualCounts[index]);
+            assert.equal(await page.locator('[data-mt-role^=node][data-mt-selected=true]').count(), 0);
+          }
+          const edge = page.locator('[data-mt-role=edge]').first();
+          await edge.focus(); await edge.press('Enter');
+          assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), '-->');
+          const arrow = markdown.indexOf(statement) + statement.indexOf('-->');
+          await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: arrow, end: arrow + 3 }));
+          await preview.close(); preview = undefined;
+        }
+      }
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('OWN-STATE-ENDPOINT: saved and live references select their transition owner', { timeout: 240_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-state-owner-'));
   const filename = join(directory, 'states.md');
@@ -104,6 +175,7 @@ async function verifyNative(source: string, key: string, expected: string, label
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
   const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
+  const reverseRole = reversePrimaryKey === key ? 'node' : reversePrimaryKey.startsWith('edge:') ? 'edge' : 'control';
   const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
   const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
   const browser = await chromium.launch();
@@ -241,8 +313,8 @@ async function verifyNative(source: string, key: string, expected: string, label
       if (reversePrimaryKey === key) {
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
       } else {
-        assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=control][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its group');
-        assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'a group directive must not select its contained node');
+        assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its owning object');
+        assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'an owning object must not select a merely referenced node');
       }
       assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
@@ -277,7 +349,8 @@ async function verifyNative(source: string, key: string, expected: string, label
         range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
         doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
       }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
-      await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reversePrimaryKey === key ? 'node' : 'control'}][data-mt-selected=true]`);
+      // A straight SVG connector can have a zero-width bounding box while its stroke is rendered.
+      await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`, { state: 'attached' });
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
       assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
@@ -483,7 +556,7 @@ test('FLOW AC4/6: bare default ID labels preserve saved and live exact selection
         ['node:BareB', 'BareB', 'node-label'],
         ['node:Styled', 'style Styled fill:#fff', 'node'],
         ['node:Styled', 'Styled', 'node-label'],
-      ], 'BareA\n');
+      ], 'BareA\n', [], 'edge:L_Styled_BareA_0');
     }
   }
 });

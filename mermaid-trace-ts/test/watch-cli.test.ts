@@ -277,7 +277,7 @@ test('MAP-NATIVE-AC2/3: production flowchart selections, source pane, clipboard,
     const labelStart = source.indexOf('review');
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source }, { start: labelStart, end: labelStart + 6 }));
     const node = page.locator('[data-mt-role=node][data-mt-key="node:A"]');
-    assert.equal((await node.getAttribute('data-mt-refs'))!.split(' ').length, 2);
+    assert.equal((await node.getAttribute('data-mt-refs'))!.split(' ').length, 1, 'a later endpoint belongs to its connection');
     await node.locator('rect').first().click({ position: { x: 5, y: 5 } });
     assert.equal(await selected(), 'A[Draft]');
     await page.locator('[data-mt-role=node-label][data-mt-key="node:A"], [data-mt-role=node][data-mt-key="node:A"] [data-mt-role=node-label]').first().click();
@@ -298,7 +298,8 @@ test('MAP-NATIVE-AC2/3: production flowchart selections, source pane, clipboard,
       const range = doc.createRange(); range.setStart(text, start); range.setEnd(text, start + 1);
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
     });
-    await page.waitForSelector('[data-mt-role=node][data-mt-key="node:A"][data-mt-selected=true]');
+    await page.waitForSelector('[data-mt-role=edge][data-mt-selected=true]');
+    assert.equal(await page.locator('[data-mt-role^=node][data-mt-selected=true]').count(), 0, 'endpoint source selects its owning connector');
     await page.locator('svg').focus(); await page.keyboard.press('Enter');
     assert.equal(await selected(), source.slice(source.indexOf('> ```'), source.length));
     await writeFile(filename, source.replace('Draft', 'Saved'));

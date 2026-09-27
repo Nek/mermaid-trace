@@ -17,10 +17,13 @@ fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
         .unwrap()
     };
     let nodes: Vec<_> = pieces.iter().filter(|p| p["kind"] == "node").collect();
-    let edges: Vec<_> = pieces.iter().filter(|p| p["kind"] == "edge").collect();
+    let edges: Vec<_> = pieces
+        .iter()
+        .filter(|p| p["kind"] == "edge" && p.get("relation").is_none())
+        .collect();
     assert_eq!(
         nodes.iter().map(|p| slice(&p["span"])).collect::<Vec<_>>(),
-        ["A[\"same\"]", "B[\"same\"]", "A", "B"]
+        ["A[\"same\"]", "B[\"same\"]"]
     );
     assert_eq!(
         nodes[0]["labelSpan"],
@@ -43,6 +46,18 @@ fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
         serde_json::json!({"start":66,"end":70})
     );
     assert_ne!(edges[0]["domId"], edges[1]["domId"]);
+    let references: Vec<_> = pieces
+        .iter()
+        .filter(|p| p["relation"] == "endpoint-reference")
+        .collect();
+    assert_eq!(
+        references
+            .iter()
+            .map(|p| slice(&p["span"]))
+            .collect::<Vec<_>>(),
+        ["A", "B"]
+    );
+    assert!(references.iter().all(|p| p["domId"] == edges[1]["domId"]));
     for edge in edges {
         assert_eq!(edge["from"], "A");
         assert_eq!(edge["to"], "B");
@@ -60,7 +75,7 @@ fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
             .unwrap()
             .split_whitespace()
             .count(),
-        2
+        1
     );
     assert_eq!(node.attribute("data-mt-start"), Some("29"));
 }
@@ -417,7 +432,26 @@ fn flow_ac4_repeated_declarations_keep_native_effective_origin_and_all_occurrenc
                     .iter()
                     .filter(|p| p["domId"] == "node:A")
                     .collect();
-                assert_eq!(pieces.len(), 4);
+                assert_eq!(
+                    pieces.len(),
+                    3,
+                    "all real declarations remain; the later endpoint belongs to its edge"
+                );
+                let endpoint = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["relation"] == "endpoint-reference" && p["endpoint"] == "from")
+                    .unwrap();
+                let start = source[..source.rfind("A --> B").unwrap()]
+                    .encode_utf16()
+                    .count();
+                assert_eq!(
+                    endpoint["span"],
+                    serde_json::json!({"start":start,"end":start+1})
+                );
+                assert_eq!(endpoint["from"], "A");
+                assert_eq!(endpoint["to"], "B");
                 assert_eq!(pieces.iter().filter(|p| p["effective"] == true).count(), 1);
                 assert_eq!(
                     pieces[2]["effective"], true,
@@ -446,7 +480,7 @@ fn flow_ac4_repeated_declarations_keep_native_effective_origin_and_all_occurrenc
                         .unwrap()
                         .split_whitespace()
                         .count(),
-                    4
+                    3
                 );
                 let label = svg.descendants().find(|n| {
                     n.attribute("data-mt-role") == Some("node-label")
@@ -2022,6 +2056,176 @@ fn flow_ac4_5_operator_inventory_has_exact_ranges_and_static_parity() {
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn own_flow_endpoint_references_bind_the_actual_connections() {
+    for header in ["graph", "flowchart", "flowchart-elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for nested in [false, true] {
+                    for (statement, reference_counts, edge_count) in [
+                        ("A --> B", vec![1, 1], 1),
+                        ("A & B --> C & D", vec![2, 2, 2, 2], 4),
+                        ("A --> B --> C", vec![1, 2, 1], 2),
+                        ("A --> A", vec![1, 1], 1),
+                        ("A & A --> B", vec![1, 1, 2], 2),
+                        ("A --> B & B", vec![2, 1, 1], 2),
+                        ("A e1@-->|go| B", vec![1, 1], 1),
+                        ("A --> B\r\nA --> B", vec![1, 1, 1, 1], 2),
+                        ("H --> B", vec![1, 1], 1),
+                        ("E --> B", vec![1, 1], 1),
+                    ] {
+                        let declarations = "A[Alpha 😀]\r\nB[Beta]\r\nC[Gamma]\r\nD[Delta]\r\n";
+                        let body = format!(
+                            "{declarations}style E fill:red\r\nsubgraph H\r\nI[Inside]\r\nend\r\n{statement}\r\n"
+                        );
+                        let body = if nested {
+                            format!("subgraph G\r\n{body}end\r\n")
+                        } else {
+                            body
+                        };
+                        let source = format!(
+                            "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header} LR\r\n{body}"
+                        );
+                        let result = mermaid_trace_rs::render("flow-owner", &source).unwrap();
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        let primary: Vec<_> = pieces
+                            .iter()
+                            .filter(|p| p["kind"] == "edge" && p.get("relation").is_none())
+                            .collect();
+                        assert_eq!(primary.len(), edge_count, "{source}");
+                        let byte = source.find(statement).unwrap();
+                        let tokens: Vec<_> = statement
+                            .char_indices()
+                            .filter(|(_, c)| ['A', 'B', 'C', 'D', 'E', 'H'].contains(c))
+                            .collect();
+                        assert_eq!(tokens.len(), reference_counts.len());
+                        for ((offset, id), count) in tokens.into_iter().zip(reference_counts) {
+                            let start = source[..byte + offset].encode_utf16().count();
+                            let span = serde_json::json!({"start":start,"end":start+1});
+                            assert!(
+                                !pieces
+                                    .iter()
+                                    .any(|p| p["kind"] == "node" && p["span"] == span),
+                                "a reference must not select its destination: {source}"
+                            );
+                            let owners: Vec<_> = pieces
+                                .iter()
+                                .filter(|p| {
+                                    p["kind"] == "edge"
+                                        && p["relation"] == "endpoint-reference"
+                                        && p["span"] == span
+                                })
+                                .collect();
+                            assert_eq!(
+                                owners.len(),
+                                count,
+                                "every actual owning connection must bind the token: {source}"
+                            );
+                            for owner in owners {
+                                let edge = primary
+                                    .iter()
+                                    .find(|p| p["domId"] == owner["domId"])
+                                    .unwrap();
+                                assert_eq!(owner["from"], edge["from"]);
+                                assert_eq!(owner["to"], edge["to"]);
+                                assert_eq!(owner["target"], id.to_string());
+                                assert!(owner.get("labelSpan").is_none());
+                            }
+                        }
+                        let svg =
+                            roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                        for edge in primary {
+                            let visual = svg
+                                .descendants()
+                                .find(|n| {
+                                    n.attribute("data-mt-key") == edge["domId"].as_str()
+                                        && n.attribute("data-mt-role") == Some("edge")
+                                })
+                                .unwrap();
+                            assert_eq!(
+                                visual
+                                    .attribute("data-mt-start")
+                                    .unwrap()
+                                    .parse::<u64>()
+                                    .unwrap(),
+                                edge["span"]["start"].as_u64().unwrap(),
+                                "references must not replace the primary connector click range"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn own_flow_real_node_origins_survive_reference_consolidation() {
+    for (body, expected) in [
+        ("A --> B\r\nA --> B\r\n", vec!["A", "B"]),
+        ("A --> B --> C\r\n", vec!["A", "B", "C"]),
+        ("style A fill:red\r\nA --> B\r\n", vec!["B"]),
+        ("A & A --> B\r\n", vec!["A", "B"]),
+        (
+            "A[Alpha 😀] --> B[Beta]\r\nA:::hot --> B\r\n",
+            vec!["A[Alpha 😀]", "B[Beta]", "A:::hot"],
+        ),
+        (
+            "A[Alpha 😀] --> B[Beta]\r\nA[Again] --> B\r\n",
+            vec!["A[Alpha 😀]", "B[Beta]", "A[Again]"],
+        ),
+        (
+            "A[Alpha 😀] --> B[Beta]\r\nA\r\nB\r\n",
+            vec!["A[Alpha 😀]", "B[Beta]", "A", "B"],
+        ),
+        ("subgraph G\r\nA\r\nend\r\nG --> B\r\n", vec!["A", "B"]),
+    ] {
+        let source = format!("flowchart LR\r\n%% 😀\r\n{body}");
+        let result = mermaid_trace_rs::render("flow-real-origins", &source).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let text: Vec<_> = source.encode_utf16().collect();
+        let slice = |span: &Value| {
+            String::from_utf16(
+                &text[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize],
+            )
+            .unwrap()
+        };
+        let nodes: Vec<_> = pieces
+            .iter()
+            .filter(|p| p["kind"] == "node" && p.get("relation").is_none())
+            .collect();
+        assert_eq!(
+            nodes.iter().map(|p| slice(&p["span"])).collect::<Vec<_>>(),
+            expected,
+            "{source}"
+        );
+        if body.starts_with("style") {
+            assert!(
+                pieces
+                    .iter()
+                    .any(|p| p["relation"] == "endpoint-reference" && p["target"] == "A"),
+                "style-created endpoints belong to the connection"
+            );
+            let style = pieces
+                .iter()
+                .find(|p| p["relation"] == "style" && p["semanticId"] == "A")
+                .unwrap();
+            assert_eq!(style["declaration"], true);
+            assert_eq!(slice(&style["labelSpan"]), "A");
+        }
+        if body.contains("G --> B") {
+            let reference = pieces
+                .iter()
+                .find(|p| p["relation"] == "endpoint-reference" && p["target"] == "G")
+                .unwrap();
+            assert_eq!(slice(&reference["span"]), "G");
+            assert_eq!(reference["from"], "G");
+            assert!(pieces.iter().any(|p| p["domId"] == "flowchart:subgraph:G"));
         }
     }
 }

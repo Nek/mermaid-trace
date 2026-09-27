@@ -95,9 +95,12 @@ test('FLOW AC4/5/6: every public shape has saved SVG pointer/keyboard/reverse se
           const keyboard = await page.evaluate(() => (window as any).events.at(-1));
           assert.equal(keyboard.role, 'node', description);
           assert.deepEqual(keyboard.span, span, description);
+          await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + `S${i}`.length });
+          assert.equal(await node.getAttribute('data-mt-selected'), 'true', `the actual declaration owns its ID: ${description}`);
           const bare = source.indexOf(`S${i} --> Final`);
           await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: bare, end: bare + `S${i}`.length });
-          assert.equal(await node.getAttribute('data-mt-selected'), 'true', description);
+          assert.equal(await node.getAttribute('data-mt-selected'), null, `a pure endpoint reference does not navigate to the node: ${description}`);
+          assert.equal(await first.locator(`[data-mt-key="edge:L_S${i}_Final_0"][data-mt-role=edge]`).getAttribute('data-mt-selected'), 'true', description);
           const label = first.locator(`[data-mt-key="${key}"][data-mt-role=node-label]`);
           const hasLabel = !inventory.withoutLabels.includes(shape);
           assert.equal(await label.count(), Number(hasLabel), description);
@@ -150,6 +153,15 @@ test('FLOW AC4/5/6: every public shape has saved SVG pointer/keyboard/reverse se
       await node.focus(); await node.press(i % 2 ? 'Space' : 'Enter');
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), statement, shape);
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
+      const endpoint = markdownSource.indexOf(`S${i} --> Final`);
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange();
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        const selection = element.ownerDocument.getSelection()!;
+        selection.removeAllRanges(); selection.addRange(range);
+      }, toMarkdown({ start: endpoint, end: endpoint + `S${i}`.length }));
+      await page.waitForSelector(`[data-mt-key="edge:L_S${i}_Final_0"][data-mt-role=edge][data-mt-selected=true]`);
+      assert.equal(await node.getAttribute('data-mt-selected'), null, `live endpoint ownership: ${shape}`);
       if (!inventory.withoutLabels.includes(shape)) {
         const label = page.locator(`[data-mt-key="${key}"][data-mt-role=node-label]`);
         await label.click();
