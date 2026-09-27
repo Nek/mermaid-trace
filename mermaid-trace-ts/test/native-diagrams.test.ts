@@ -10,7 +10,7 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], supersededLabel?: string) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -81,11 +81,11 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
     }
-    if (supersededLabel !== undefined) {
-      const start = source.indexOf(supersededLabel);
-      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + supersededLabel.length });
-      assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'superseded label maps to its semantic node');
-      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a superseded label must not select another occurrence’s displayed label');
+    if (reverseNodeSource !== undefined) {
+      const start = source.indexOf(reverseNodeSource);
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + reverseNodeSource.length });
+      assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
+      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a source occurrence without this label binding must not select the displayed label');
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     await writeFile(filename, markdown);
@@ -102,6 +102,16 @@ async function verifyNative(source: string, key: string, expected: string, label
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
     }, { start, end: start + label.length });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
+    if (reverseNodeSource !== undefined) {
+      const offset = source.indexOf(reverseNodeSource);
+      await original.evaluate((element, span) => {
+        const doc = element.ownerDocument; const range = doc.createRange();
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+      }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
+      await page.waitForSelector(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`);
+      assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), null);
+    }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
       const target = page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
@@ -249,6 +259,20 @@ test('FLOW AC4/6: empty and collapsed subgraphs retain saved and live frame/titl
           ['flowchart:subgraph:G', 'Empty 😀', 'control-label'],
         ]);
       }
+    }
+  }
+});
+
+
+test('FLOW AC4/6: style-created nodes and style source relationships work in saved SVG and Markdown', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nstyle Q fill:#fff\nstyle Q stroke:#333\nQ --> A["Actor 😀"]\nstyle A fill:#eee\nsubgraph G[Group]\nC --> D\nend\nstyle G fill:#bbb\n`;
+      await verifyNative(source, 'node:Q', 'style Q fill:#fff', 'Q', [
+        ['node:Q', 'style Q fill:#fff', 'node'],
+        ['node:A', 'A["Actor 😀"]', 'node'],
+        ['flowchart:subgraph:G', 'subgraph G[Group]\nC --> D\nend'],
+      ], 'style Q stroke:#333');
     }
   }
 });

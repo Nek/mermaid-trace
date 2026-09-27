@@ -603,3 +603,126 @@ fn flow_ac4_empty_and_collapsed_subgraph_proxies_keep_group_identity() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_styles_retain_native_relationships_created_nodes_and_label_origins() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\nstyle Q fill:#fff\r\nstyle Q stroke:#333\r\nQ --> A[\"Actor 😀\"]\r\nstyle A fill:#eee\r\nstyle R fill:#ddd\r\nR[\"Replacement 😀\"]\r\nsubgraph G[Group]\r\nC --> D\r\nend\r\nstyle G fill:#bbb\r\nstyle H fill:#aaa\r\nsubgraph H[Later group]\r\nE --> F\r\nend\r\nA e1@--> Q\r\nstyle e1 fill:#f00\r\n"
+            );
+            let result = mermaid_trace_rs::render("styled-native", &source).unwrap();
+            let text: Vec<_> = source.encode_utf16().collect();
+            let slice = |span: &Value| {
+                String::from_utf16(
+                    &text[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            for (key, expected, label) in [
+                ("node:Q", "style Q fill:#fff", "Q"),
+                ("node:A", "A[\"Actor 😀\"]", "Actor 😀"),
+                ("node:R", "R[\"Replacement 😀\"]", "Replacement 😀"),
+            ] {
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some(key)
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .expect("style-created node must remain mapped");
+                let span = serde_json::json!({"start":node.attribute("data-mt-start").unwrap().parse::<usize>().unwrap(),"end":node.attribute("data-mt-end").unwrap().parse::<usize>().unwrap()});
+                assert_eq!(slice(&span), expected);
+                let label_node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-role") == Some("node-label")
+                            && n.ancestors()
+                                .any(|a| a.attribute("data-mt-key") == Some(key))
+                    })
+                    .unwrap();
+                let label_span = serde_json::json!({"start":label_node.attribute("data-mt-start").unwrap().parse::<usize>().unwrap(),"end":label_node.attribute("data-mt-end").unwrap().parse::<usize>().unwrap()});
+                assert_eq!(slice(&label_span), label);
+            }
+            for (key, statements) in [
+                ("node:Q", vec!["style Q fill:#fff", "style Q stroke:#333"]),
+                ("node:A", vec!["style A fill:#eee"]),
+                ("node:R", vec!["style R fill:#ddd"]),
+                ("flowchart:subgraph:G", vec!["style G fill:#bbb"]),
+                ("flowchart:subgraph:H", vec!["style H fill:#aaa"]),
+            ] {
+                let styles: Vec<_> = pieces
+                    .iter()
+                    .filter(|p| p["domId"] == key && p["relation"] == "style")
+                    .map(|p| slice(&p["span"]))
+                    .collect();
+                assert_eq!(styles, statements);
+            }
+            let native = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let metadata: Vec<Value> = serde_json::from_str(
+                native
+                    .descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(metadata.iter().any(|p| p["kind"] == "nonvisual"
+                && p["relation"] == "style"
+                && &source[p["span"]["start"].as_u64().unwrap() as usize
+                    ..p["span"]["end"].as_u64().unwrap() as usize]
+                    == "style e1 fill:#f00"));
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "styled-native", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
+    let renderer = mermaid_trace_rs::renderer();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let mut files: Vec<_> = std::fs::read_dir("vendor/merman/fixtures/flowchart")
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect();
+    files.sort();
+    assert_eq!(files.len(), 1158, "refresh the pinned inventory explicitly");
+    for file in files {
+        let source = std::fs::read_to_string(&file).unwrap();
+        let result = mermaid_trace_rs::render_with(&renderer, "flow-inventory", &source)
+            .unwrap_or_else(|error| panic!("{}: {error}", file.display()));
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        for node in svg.descendants().filter(|node| node.has_tag_name("g")) {
+            if node
+                .attribute("class")
+                .unwrap_or("")
+                .split_whitespace()
+                .any(|class| {
+                    ["node", "rough-node", "cluster", "image-shape", "icon-shape"].contains(&class)
+                })
+            {
+                assert!(
+                    matches!(node.attribute("data-mt-role"), Some("node" | "control")),
+                    "unmapped semantic wrapper: {} {:?}",
+                    file.display(),
+                    node.attribute("id")
+                );
+            }
+        }
+        let baseline = mermaid_trace_rs::render_with(&plain, "flow-inventory", &source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap()),
+            "annotation changed {} rendering",
+            file.display()
+        );
+    }
+}

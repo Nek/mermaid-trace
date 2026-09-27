@@ -246,7 +246,7 @@ index fe6e3b0e..fee9cbb1 100644
          &mut self.model
      }
 diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
-index a9aec31b..7edeb807 100644
+index a9aec31b..da1876a3 100644
 --- a/crates/merman-core/src/diagrams/flowchart.rs
 +++ b/crates/merman-core/src/diagrams/flowchart.rs
 @@ -123,6 +123,7 @@ pub(crate) struct FlowSubGraph {
@@ -270,7 +270,7 @@ index a9aec31b..7edeb807 100644
      builder.visit_statements(&ast.statements, control)?;
  
      let subgraph_ids: HashSet<String> = builder
-@@ -374,8 +381,20 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -374,8 +381,21 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          .collect();
  
      let mut build = FlowchartBuildState::new(subgraph_ids);
@@ -286,13 +286,22 @@ index a9aec31b..7edeb807 100644
 +        nodes,
 +        edges,
 +        mut source_occurrences,
++        subgraph_ids,
 +        ..
 +    } = build;
 +    source_occurrences.extend(builder.source_occurrences);
      let mut nodes = nodes;
      let mut edges = edges;
  
-@@ -422,10 +441,26 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -400,6 +420,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+     let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
+     {
+         let mut semantic_ctx = FlowchartSemanticContext {
++            source_occurrences: &mut source_occurrences,
+             nodes: &mut nodes,
+             node_index: &mut node_index,
+             edges: &mut edges,
+@@ -422,10 +443,52 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          }
      }
  
@@ -301,6 +310,32 @@ index a9aec31b..7edeb807 100644
 +    for (index, piece) in source_occurrences.iter_mut().enumerate() {
 +        if index.is_multiple_of(128) {
 +            control.checkpoint()?;
++        }
++        if piece["relation"] == "style"
++            && piece["kind"] != "nonvisual"
++            && piece["semanticId"]
++                .as_str()
++                .is_some_and(|id| subgraph_ids.contains(id))
++        {
++            piece["kind"] = serde_json::json!("control");
++            piece["domId"] = serde_json::json!(format!(
++                "flowchart:subgraph:{}",
++                piece["semanticId"].as_str().expect("native style target")
++            ));
++        }
++        if let Some(origin) = piece
++            .as_object_mut()
++            .and_then(|p| p.remove("defaultLabelOrigin"))
++        {
++            let default_label = piece["kind"] == "node"
++                && piece["semanticId"]
++                    .as_str()
++                    .and_then(|id| node_index.get(id))
++                    .is_some_and(|&index| nodes[index].label.is_none());
++            if default_label {
++                piece["labelSpan"] = origin;
++                piece["effective"] = serde_json::json!(true);
++            }
 +        }
 +        if let Some(origin) = piece.as_object_mut().and_then(|p| p.remove("labelOrigin")) {
 +            let effective = piece["semanticId"]
@@ -319,7 +354,7 @@ index a9aec31b..7edeb807 100644
          keyword: ast.keyword,
          direction,
          acc_descr,
-@@ -1565,6 +1600,7 @@ impl FlowchartSemanticSource {
+@@ -1565,6 +1628,7 @@ impl FlowchartSemanticSource {
      ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
          control.checkpoint()?;
          let FlowchartSemanticSource {
@@ -327,7 +362,7 @@ index a9aec31b..7edeb807 100644
              acc_descr,
              acc_title,
              class_defs,
-@@ -1649,12 +1685,13 @@ impl FlowchartSemanticSource {
+@@ -1649,12 +1713,13 @@ impl FlowchartSemanticSource {
              tooltips: render_tooltips,
              warning_facts,
          };
@@ -553,10 +588,56 @@ index 8d2244b6..f3c1acc1 100644
              id_equals_title: true,
          }
 diff --git a/crates/merman-core/src/diagrams/flowchart/semantic.rs b/crates/merman-core/src/diagrams/flowchart/semantic.rs
-index 7d377ab1..0ba66ca4 100644
+index 7d377ab1..d3582c06 100644
 --- a/crates/merman-core/src/diagrams/flowchart/semantic.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/semantic.rs
-@@ -657,6 +657,7 @@ mod tests {
+@@ -12,6 +12,7 @@ use super::{
+ };
+ 
+ pub(super) struct FlowchartSemanticContext<'a> {
++    pub(super) source_occurrences: &'a mut Vec<serde_json::Value>,
+     pub(super) nodes: &'a mut Vec<Node>,
+     pub(super) node_index: &'a mut HashMap<String, usize>,
+     pub(super) edges: &'a mut Vec<Edge>,
+@@ -81,11 +82,37 @@ impl<'a> FlowchartSemanticContext<'a> {
+                     stack.extend(sg.statements.iter().rev().map(ReplayItem::Statement));
+                 }
+                 Stmt::Style(s) => {
++                    let trace_span = (self
++                        .config
++                        .as_value()
++                        .get("traceSource")
++                        .and_then(serde_json::Value::as_bool)
++                        == Some(true))
++                    .then(|| {
++                        s.editor_evidence
++                            .iter()
++                            .find(|e| e.kind == crate::EditorExpectedSyntaxKind::Directive)
++                            .map(|e| e.span)
++                    })
++                    .flatten();
+                     if seen_edge_indices.contains_key(&s.target) {
++                        if let Some(span) = trace_span {
++                            self.source_occurrences.push(serde_json::json!({"kind":"nonvisual","relation":"style","classification":"ignored-edge-style","semanticId":s.target,"span":span}));
++                        }
+                         continue;
+                     }
+                     self.vertex_calls.push(s.target.clone());
+                     let is_new_vertex = seen_vertex_ids.insert(s.target.clone());
++                    if let Some(span) = trace_span {
++                        let mut piece = serde_json::json!({"kind":"node","semanticId":s.target,"domId":format!("node:{}",s.target),"relation":"style","span":span});
++                        if is_new_vertex && !active_subgraphs.contains_key(&s.target) {
++                            piece["declaration"] = serde_json::json!(true);
++                            if let Some(target) = s.target_span {
++                                piece["defaultLabelOrigin"] = serde_json::json!(target);
++                            }
++                        }
++                        self.source_occurrences.push(piece);
++                    }
+                     vertex_css
+                         .entry(s.target.clone())
+                         .or_insert_with(FlowSubgraphVertexStyle::default)
+@@ -657,6 +684,7 @@ mod tests {
          let mut node_index = HashMap::new();
          let mut edges = (0..512)
              .map(|index| Edge {
@@ -564,6 +645,14 @@ index 7d377ab1..0ba66ca4 100644
                  from: format!("n{index}"),
                  to: format!("n{}", index + 1),
                  id: Some(format!("edge-{index}")),
+@@ -695,6 +723,7 @@ mod tests {
+         let control = OperationControl::new();
+         control.cancel_after_checkpoints(3);
+         let mut context = FlowchartSemanticContext {
++            source_occurrences: &mut Vec::new(),
+             nodes: &mut nodes,
+             node_index: &mut node_index,
+             edges: &mut edges,
 diff --git a/crates/merman-core/src/diagrams/flowchart/subgraph.rs b/crates/merman-core/src/diagrams/flowchart/subgraph.rs
 index d48a80e9..7eed5c20 100644
 --- a/crates/merman-core/src/diagrams/flowchart/subgraph.rs
