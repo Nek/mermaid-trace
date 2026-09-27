@@ -12122,6 +12122,87 @@ index 1fb7fe45..2d3e8544 100644
 +        );
 +    }
 +}
+diff --git a/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs b/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
+index 41e431da..df683c96 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs
+@@ -72,6 +72,7 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
+         layout_shape,
+         Some(
+             "circle"
++                | "ellipse"
+                 | "circ"
+                 | "diamond"
+                 | "diam"
+@@ -1732,6 +1733,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
+ 
+     match layout_shape {
+         Some("circle" | "circ") => intersect_circle(node, point),
++        Some("ellipse") => intersect_ellipse(node, point),
+         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
+         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
+         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
+@@ -1772,3 +1774,60 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
+         _ => intersect_rect(node, point),
+     }
+ }
++
++fn intersect_ellipse(
++    node: &BoundaryNode,
++    point: &crate::model::LayoutPoint,
++) -> crate::model::LayoutPoint {
++    let dx = point.x - node.x;
++    let dy = point.y - node.y;
++    let rx = node.width / 2.0;
++    let ry = node.height / 2.0;
++    let length = (dx / rx).hypot(dy / ry);
++    if !length.is_finite() || length == 0.0 {
++        return crate::model::LayoutPoint {
++            x: node.x,
++            y: node.y,
++        };
++    }
++    crate::model::LayoutPoint {
++        x: node.x + dx / length,
++        y: node.y + dy / length,
++    }
++}
++
++#[cfg(test)]
++mod ellipse_tests {
++    use super::*;
++
++    #[test]
++    fn connector_intersections_follow_ellipse_boundary_for_axes_and_diagonals() {
++        let node = BoundaryNode {
++            x: 20.0,
++            y: 10.0,
++            width: 120.0,
++            height: 40.0,
++        };
++        assert!(force_intersect_for_layout_shape(Some("ellipse")));
++        for (dx, dy) in [(100.0, 0.0), (0.0, 100.0), (100.0, 100.0), (-100.0, -100.0)] {
++            let hit = intersect_ellipse(
++                &node,
++                &crate::model::LayoutPoint {
++                    x: node.x + dx,
++                    y: node.y + dy,
++                },
++            );
++            let residual = ((hit.x - node.x) / 60.0).powi(2) + ((hit.y - node.y) / 20.0).powi(2);
++            assert!((residual - 1.0).abs() < 1e-12);
++            assert!(((hit.x - node.x) * dy - (hit.y - node.y) * dx).abs() < 1e-9);
++        }
++        let center = intersect_ellipse(
++            &node,
++            &crate::model::LayoutPoint {
++                x: node.x,
++                y: node.y,
++            },
++        );
++        assert_eq!((center.x, center.y), (node.x, node.y));
++    }
++}
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs b/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs
 index 5c28ed08..e824b314 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/cluster.rs
@@ -12412,11 +12493,122 @@ index d7e49e57..20a7003e 100644
              label_group_class,
              escape_xml_display(&compiled_styles.label_style),
              fmt_display(-metrics.width / 2.0 + label.dx),
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/basic_geoms.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/basic_geoms.rs
+index 59f0bf72..b3860f07 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/basic_geoms.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/basic_geoms.rs
+@@ -116,3 +116,60 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
+         escape_attr(common.style),
+     );
+ }
++
++pub(in crate::svg::parity::flowchart::render::node) fn render_ellipse(
++    out: &mut String,
++    common: &super::super::FlowchartNodeRenderCommon<'_>,
++    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
++) {
++    let rx = common.layout_node.width.max(1.0) / 2.0;
++    let ry = common.layout_node.height.max(1.0) / 2.0;
++    if common.look_is_hand_drawn() {
++        let path = format!(
++            "M{} 0 A{} {} 0 1 0 {} 0 A{} {} 0 1 0 {} 0 Z",
++            fmt(-rx),
++            fmt(rx),
++            fmt(ry),
++            fmt(rx),
++            fmt(rx),
++            fmt(ry),
++            fmt(-rx)
++        );
++        if let Some((fill, stroke)) =
++            super::super::helpers::timed_node_roughjs(common.timing, details, || {
++                roughjs_hachure_paths_for_svg_path(
++                    &path,
++                    common.fill_color,
++                    common.stroke_color,
++                    common.stroke_width,
++                    common.stroke_dasharray,
++                    FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
++                    FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
++                    FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
++                    common.hand_drawn_seed,
++                )
++            })
++        {
++            let _ = write!(
++                out,
++                r#"<g class="basic label-container" style="{}"><path d="{}" stroke="{}" stroke-width="{}" fill="none"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
++                escape_attr(common.rough_group_style),
++                escape_attr(&fill),
++                escape_attr(common.fill_color),
++                fmt_display(FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT as f64),
++                escape_attr(&stroke),
++                escape_attr(common.stroke_color),
++                fmt_display(common.stroke_width as f64),
++                escape_attr(common.stroke_dasharray)
++            );
++            return;
++        }
++    }
++    let _ = write!(
++        out,
++        r#"<ellipse class="basic label-container" style="{}" rx="{}" ry="{}" cx="0" cy="0"/>"#,
++        escape_attr(common.style),
++        fmt(rx),
++        fmt(ry)
++    );
++}
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/dispatch.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/dispatch.rs
+index 0a63098b..beecec82 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/dispatch.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/dispatch.rs
+@@ -90,11 +90,7 @@ pub(in super::super) fn render_flowchart_shape(
+             super::render_double_circle(out, common);
+         }
+         FlowchartShape::Ellipse => {
+-            return Err(Error::InvalidModel {
+-                message:
+-                    "Flowchart ellipse is present in FlowDB but broken in Mermaid 11.16's renderer"
+-                        .to_string(),
+-            });
++            super::render_ellipse(out, common, details);
+         }
+         FlowchartShape::Hexagon => {
+             super::render_hexagon(out, common, details);
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs
+index 0e88fbb6..e59cae96 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs
+@@ -44,7 +44,7 @@ mod triangle;
+ mod wave_document;
+ mod window_pane;
+ 
+-pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
++pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle, render_ellipse};
+ pub(super) use bow_tie_rect::render_bow_tie_rect;
+ pub(super) use browser::render_browser;
+ pub(super) use bucket::render_bucket;
 diff --git a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs b/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
-index 8e2e7251..7f515a75 100644
+index 8e2e7251..6f0e3da8 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
-@@ -450,6 +450,15 @@ pub(super) fn render_flowchart_svg_model(
+@@ -58,15 +58,6 @@ pub(super) fn render_flowchart_svg_model(
+     } = request;
+     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
+     let model = &render_model;
+-    if model
+-        .nodes
+-        .iter()
+-        .any(|node| node.layout_shape.as_deref() == Some("ellipse"))
+-    {
+-        return Err(crate::Error::InvalidModel {
+-            message: "No such shape: ellipse. Please check your syntax.".to_string(),
+-        });
+-    }
+ 
+     let render_timing = options.timing();
+     let measurer = options.text_measurer();
+@@ -450,6 +441,15 @@ pub(super) fn render_flowchart_svg_model(
  
      let root_document = document.push_root_open(&mut out)?;
      document.push_accessibility_metadata(&mut out);
@@ -12432,7 +12624,7 @@ index 8e2e7251..7f515a75 100644
      out.push_str("<style>");
      out.push_str(&css);
      out.push_str("</style>");
-@@ -493,9 +502,14 @@ pub(super) fn render_flowchart_svg_model(
+@@ -493,9 +493,14 @@ pub(super) fn render_flowchart_svg_model(
          let title_y = -title_top_margin;
          let _ = write!(
              &mut out,

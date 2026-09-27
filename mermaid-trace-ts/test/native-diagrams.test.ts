@@ -38,7 +38,20 @@ async function verifyNative(source: string, key: string, expected: string, label
     const first = page.locator('svg[data-mt-map]').first();
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
-    await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
+    const ellipse = shape.first().locator(':scope > ellipse');
+    const rough = shape.first().locator(':scope > g.basic.label-container > path').last();
+    if (await ellipse.count()) {
+      await ellipse.click({ position: { x: 3, y: (await ellipse.boundingBox())!.height / 2 } });
+    } else if (await rough.count()) {
+      const point = await rough.evaluate(element => {
+        const path = element as SVGGeometryElement;
+        const point = path.getPointAtLength(path.getTotalLength() * 0.2).matrixTransform(path.getScreenCTM()!);
+        return { x: point.x, y: point.y };
+      });
+      await page.mouse.click(point.x, point.y);
+    } else {
+      await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
+    }
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
     await first.locator(labelSelector).first().click();
@@ -208,6 +221,18 @@ test('FLOW AC4/6: repeated declarations select the effective native occurrence a
     for (const html of [false, true]) {
       const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nA["Previous 😀"]\nA["Current 😀"]\nA["Current 😀"] -->|go| B\nA --> B\n`;
       await verifyNative(source, 'node:A', 'A["Current 😀"]', 'Current 😀', [['edge:L_A_B_0', 'go', 'edge-label']], 'Current 😀');
+    }
+  }
+});
+
+
+test('FLOW AC5/6: ellipse silhouettes, labels and connectors remain selectable in saved and live SVG', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      for (const look of ['classic', 'handDrawn']) {
+        const source = `---\nconfig:\n  htmlLabels: ${html}\n  look: ${look}\n  handDrawnSeed: 42\n---\n${header}\nA(-Actor 😀-) -->|go| B\n`;
+        await verifyNative(source, 'node:A', 'A(-Actor 😀-)', 'Actor 😀', [['edge:L_A_B_0', 'go', 'edge-label']]);
+      }
     }
   }
 });

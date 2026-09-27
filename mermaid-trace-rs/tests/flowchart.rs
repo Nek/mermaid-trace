@@ -480,3 +480,64 @@ fn flow_ac4_repeated_declarations_keep_native_effective_origin_and_all_occurrenc
         }
     }
 }
+
+#[test]
+fn flow_ac5_legacy_ellipse_syntax_renders_native_geometry_and_exact_ranges() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            for look in ["classic", "handDrawn"] {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  look: {look}\n  handDrawnSeed: 42\n---\n{header}\nA(-Café 😀-) -->|go| B\n"
+                );
+                let result = mermaid_trace_rs::render("ellipse-native", &source)
+                    .expect("accepted ellipse syntax must render");
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some("node:A")
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .unwrap();
+                assert!(
+                    node.descendants()
+                        .any(|n| n.has_tag_name(if look == "classic" {
+                            "ellipse"
+                        } else {
+                            "path"
+                        })),
+                    "missing native ellipse silhouette"
+                );
+                let text: Vec<_> = source.encode_utf16().collect();
+                let slice = |span: &Value| {
+                    String::from_utf16(
+                        &text[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize],
+                    )
+                    .unwrap()
+                };
+                let piece = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "node:A")
+                    .unwrap();
+                assert_eq!(slice(&piece["span"]), "A(-Café 😀-)");
+                assert_eq!(slice(&piece["labelSpan"]), "Café 😀");
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "ellipse-native", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+    let source = std::fs::read_to_string(
+        "vendor/merman/fixtures/flowchart/upstream_flow_text_ellipse_vertex_parser_only_spec.mmd",
+    )
+    .unwrap();
+    mermaid_trace_rs::render("ellipse-pinned", &source)
+        .expect("pinned ellipse fixture must render");
+}
