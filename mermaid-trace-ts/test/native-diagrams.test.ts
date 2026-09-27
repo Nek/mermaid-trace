@@ -290,3 +290,18 @@ test('FLOW AC4/6: bare default ID labels preserve saved and live exact selection
     }
   }
 });
+
+
+test('FLOW AC4/6: shape-data labels and properties preserve saved and live source selection', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nA@{shape: rounded, label: "Earlier 😀"} --> B\nA@{label: "Final 😀"}\nM@{label: "First\n   second 😀"}\nP@{label: "Before"}\nP["Last 😀"]\n`;
+      await verifyNative(source, 'node:A', 'A@{label: "Final 😀"}', 'Final 😀', [
+        ['node:M', 'First\n   second 😀', 'node-label'],
+        ['node:P', 'P["Last 😀"]', 'node'],
+        ['node:P', 'Last 😀', 'node-label'],
+      ], 'rounded');
+      await verifyNative(source, 'node:A', 'A@{label: "Final 😀"}', 'Final 😀', [], 'Earlier 😀');
+    }
+  }
+});

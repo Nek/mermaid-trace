@@ -717,6 +717,37 @@ fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
                 );
             }
         }
+        for label in svg
+            .descendants()
+            .filter(|node| node.attribute("data-mt-label") == Some("true"))
+        {
+            let visible = label.descendants().any(|node| {
+                node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
+                    || [
+                        "path",
+                        "line",
+                        "rect",
+                        "circle",
+                        "ellipse",
+                        "polygon",
+                        "polyline",
+                        "image",
+                        "foreignObject",
+                    ]
+                    .iter()
+                    .any(|tag| node.has_tag_name(*tag))
+            });
+            if visible {
+                assert!(
+                    label
+                        .attribute("data-mt-role")
+                        .is_some_and(|role| role.ends_with("-label")),
+                    "unmapped visible native label: {} {:?}",
+                    file.display(),
+                    label.attribute("data-mt-key")
+                );
+            }
+        }
         let baseline = mermaid_trace_rs::render_with(&plain, "flow-inventory", &source).unwrap();
         assert_eq!(
             strip_trace(result["svg"].as_str().unwrap()),
@@ -807,5 +838,149 @@ fn flow_ac4_default_id_labels_keep_exact_first_creation_origins() {
                 strip_trace(baseline["svg"].as_str().unwrap())
             );
         }
+    }
+}
+
+#[test]
+fn flow_ac4_shape_data_labels_and_properties_keep_native_yaml_origins() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\nA@{{ shape: rounded, label: \"Payload 😀\" }} --> B\r\nA@{{label: \"Final 😀\"}}\r\nM@{{label: \"First\r\n   second 😀\"}}\r\nP@{{label: \"Earlier 😀\"}}\r\nP[\"Last 😀\"]\r\nB e1@--> A\r\ne1@{{animate: true, curve: linear}}\r\nsubgraph G[Group]\r\nC --> D\r\nend\r\nG@{{view: collapsed}}\r\n"
+            );
+            let result = mermaid_trace_rs::render("shape-data", &source).unwrap();
+            let utf16: Vec<_> = source.encode_utf16().collect();
+            let slice = |span: &Value| {
+                String::from_utf16(
+                    &utf16[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            for (id, label, definition) in [
+                ("A", "Final 😀", "A@{label: \"Final 😀\"}"),
+                ("P", "Last 😀", "P[\"Last 😀\"]"),
+                (
+                    "M",
+                    "First\r\n   second 😀",
+                    "M@{label: \"First\r\n   second 😀\"}",
+                ),
+            ] {
+                let key = format!("node:{id}");
+                let node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-role") == Some("node")
+                            && n.attribute("data-mt-key") == Some(&key)
+                    })
+                    .unwrap();
+                let label_node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-role") == Some("node-label")
+                            && n.ancestors()
+                                .any(|a| a.attribute("data-mt-key") == Some(&key))
+                    })
+                    .unwrap();
+                let span = |n: roxmltree::Node<'_, '_>| serde_json::json!({"start":n.attribute("data-mt-start").unwrap().parse::<usize>().unwrap(),"end":n.attribute("data-mt-end").unwrap().parse::<usize>().unwrap()});
+                assert_eq!(
+                    slice(&span(node)),
+                    definition,
+                    "complete shape-data statement"
+                );
+                assert_eq!(
+                    slice(&span(label_node)),
+                    label,
+                    "exact YAML payload before lexer normalization"
+                );
+                if id != "M" {
+                    let displayed: String = label_node
+                        .descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect();
+                    assert!(
+                        displayed.contains(label),
+                        "the renderer must display the effective label: {id} {displayed}"
+                    );
+                }
+            }
+            for (key, property, expected) in [
+                ("node:A", "shape", "rounded"),
+                ("node:A", "label", "Final 😀"),
+                ("edge:e1", "curve", "linear"),
+                ("flowchart:subgraph:G", "view", "collapsed"),
+            ] {
+                assert!(
+                    pieces.iter().any(|p| p["domId"] == key
+                        && p["relation"] == "shape-data-property"
+                        && p["property"] == property
+                        && slice(&p["span"]) == expected),
+                    "missing exact property {key} {property}"
+                );
+            }
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "shape-data", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn flow_ac4_shape_data_yaml_scalar_forms_and_empty_values_keep_exact_selections() {
+    for (body, expected) in [
+        (r#"label: "Escaped \u0061 😀""#, r#"Escaped \u0061 😀"#),
+        ("'label': 'Can''t 😀'", "Can''t 😀"),
+        ("label: 42", "42"),
+        ("label: true", "true"),
+        ("label: |\n  First\n  second 😀", "First\n  second 😀"),
+        ("label: >\n  First\n  second 😀", "First\n  second 😀"),
+        ("label: &caption \"Alias 😀\"", "Alias 😀"),
+        (
+            "caption: &caption \"Anchor 😀\", label: *caption",
+            "*caption",
+        ),
+    ] {
+        let source = format!("flowchart LR\nA@{{{body}}}\nA --> B\n");
+        let result = mermaid_trace_rs::render("yaml-labels", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let label = svg
+            .descendants()
+            .find(|n| {
+                n.attribute("data-mt-role") == Some("node-label")
+                    && n.ancestors()
+                        .any(|a| a.attribute("data-mt-key") == Some("node:A"))
+            })
+            .unwrap_or_else(|| panic!("missing label: {body}"));
+        let start = label
+            .attribute("data-mt-start")
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        let end = label
+            .attribute("data-mt-end")
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        assert_eq!(
+            String::from_utf16(&source.encode_utf16().collect::<Vec<_>>()[start..end]).unwrap(),
+            expected,
+            "{body}"
+        );
+    }
+    for body in ["label: \"\"", "label: ''"] {
+        let source = format!("flowchart LR\nA@{{{body}}}\nA --> B\n");
+        let result = mermaid_trace_rs::render("yaml-empty", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        assert!(!svg.descendants().any(|n| {
+            n.attribute("data-mt-role") == Some("node-label")
+                && n.ancestors()
+                    .any(|a| a.attribute("data-mt-key") == Some("node:A"))
+        }));
     }
 }

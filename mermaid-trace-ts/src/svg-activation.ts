@@ -44,8 +44,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
       ? span.start <= range.start && range.start < span.end
       : span.start < range.end && span.end > range.start;
     const matching = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)));
+    const matchingLabels = matching.filter(piece => piece.labelSpan && labelIds.has(piece.id) && ranges.filter(range => overlaps(piece.span, range))
+      .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end));
     // ponytail: quadratic containment check for bounded diagrams; use an interval index if large maps make it slow.
-    const pieces = matching.filter(piece => !ranges.filter(range => overlaps(piece.span, range)).every(range => matching.some(child =>
+    const pieces = matching.filter(piece => matchingLabels.includes(piece) || !ranges.filter(range => overlaps(piece.span, range)).every(range => matching.some(child =>
       child.span.start >= piece.span.start && child.span.end <= piece.span.end
       && (child.span.start > piece.span.start || child.span.end < piece.span.end)
       && range.start >= child.span.start && range.start < child.span.end && range.end <= child.span.end)))
@@ -53,8 +55,9 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
     set(svg, 'data-mt-selected', whole ? 'true' : null);
     const selected = new Set(whole ? [] : pieces.map(piece => piece.id));
-    const labelOnly = new Set(pieces.filter(piece => piece.labelSpan && labelIds.has(piece.id) && ranges.filter(range => overlaps(piece.span, range))
-      .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end))
+    const labelOnly = new Set(pieces.filter(piece => ranges.filter(range => overlaps(piece.span, range)).every(range => matchingLabels.some(label =>
+      label.kind === piece.kind && label.semanticId === piece.semanticId && label.domId === piece.domId
+      && range.start >= label.labelSpan!.start && range.start < label.labelSpan!.end && range.end <= label.labelSpan!.end)))
       .map(piece => piece.id));
     for (const element of elements) {
       const label = element.getAttribute('data-mt-role')!.endsWith('-label');

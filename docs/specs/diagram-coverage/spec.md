@@ -18,7 +18,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 
 | Registry entry | Element mapping status |
 |---|---|
-| `flowchart-v2` | Native nodes/references, connectors, labels, subgraph frames/titles and YAML titles mapped; effective repeated/default-ID labels, style relationships, static math and empty/collapsed groups implemented; shape-data/directive and full syntax/variant conformance pending |
+| `flowchart-v2` | Native nodes/references, connectors, labels, subgraph frames/titles and YAML titles mapped; effective repeated/default-ID labels, style relationships, static math and empty/collapsed groups implemented; shape-data statement/scalar-label/property provenance implemented; directive and full syntax/configuration/variant conformance pending |
 | `sequence` | Native participants/messages/labels/notes/activations/controls implemented; complete syntax/occurrence conformance pending |
 | `flowchart-elk` | Native ELK capability enabled; saved/live frame, node, connector and label selection verified; complete family conformance pending |
 | `classDiagram` | Missing |

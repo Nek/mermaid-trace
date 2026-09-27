@@ -246,9 +246,20 @@ index fe6e3b0e..fee9cbb1 100644
          &mut self.model
      }
 diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
-index a9aec31b..d1facf3c 100644
+index a9aec31b..0c9d1d1f 100644
 --- a/crates/merman-core/src/diagrams/flowchart.rs
 +++ b/crates/merman-core/src/diagrams/flowchart.rs
+@@ -96,8 +96,8 @@ use lexer::Lexer;
+ use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
+ use semantic::{FlowchartSemanticContext, apply_semantic_statements};
+ use shape_data::{
+-    apply_shape_data_value_to_node, pinned_shape_names, public_pinned_shape_names, value_to_bool,
+-    value_to_string,
++    ShapeDataToken, apply_shape_data_value_to_node, pinned_shape_names, public_pinned_shape_names,
++    value_to_bool, value_to_string,
+ };
+ use subgraph::SubgraphBuilder;
+ 
 @@ -123,6 +123,7 @@ pub(crate) struct FlowSubGraph {
  }
  
@@ -359,7 +370,32 @@ index a9aec31b..d1facf3c 100644
          keyword: ast.keyword,
          direction,
          acc_descr,
-@@ -1565,6 +1633,7 @@ impl FlowchartSemanticSource {
+@@ -446,7 +514,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+ fn prepare_flowchart_shape_data(
+     statements: &[Stmt],
+     control: &OperationControl,
+-) -> OperationControlResult<HashMap<String, std::result::Result<Value, String>>> {
++) -> OperationControlResult<HashMap<String, crate::yaml_config::YamlValueCapture>> {
+     let mut documents = HashMap::new();
+     let mut stack = vec![statements.iter()];
+     let mut visited = 0usize;
+@@ -497,12 +565,13 @@ fn prepare_flowchart_shape_data(
+ fn prepare_flowchart_shape_data_document(
+     source: &str,
+     control: &OperationControl,
+-    documents: &mut HashMap<String, std::result::Result<Value, String>>,
++    documents: &mut HashMap<String, crate::yaml_config::YamlValueCapture>,
+ ) -> OperationControlResult<()> {
+     if documents.contains_key(source) {
+         return control.checkpoint();
+     }
+-    let document = crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
++    let document =
++        crate::inline_config::parse_mermaid_inline_object_capture_controlled(source, control)?;
+     documents.insert(source.to_string(), document);
+     Ok(())
+ }
+@@ -1565,6 +1634,7 @@ impl FlowchartSemanticSource {
      ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
          control.checkpoint()?;
          let FlowchartSemanticSource {
@@ -367,7 +403,7 @@ index a9aec31b..d1facf3c 100644
              acc_descr,
              acc_title,
              class_defs,
-@@ -1649,12 +1718,13 @@ impl FlowchartSemanticSource {
+@@ -1649,12 +1719,13 @@ impl FlowchartSemanticSource {
              tooltips: render_tooltips,
              warning_facts,
          };
@@ -383,7 +419,7 @@ index a9aec31b..d1facf3c 100644
      }
  }
 diff --git a/crates/merman-core/src/diagrams/flowchart/ast.rs b/crates/merman-core/src/diagrams/flowchart/ast.rs
-index 64188dfa..c21a599a 100644
+index 64188dfa..85caf48f 100644
 --- a/crates/merman-core/src/diagrams/flowchart/ast.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/ast.rs
 @@ -117,6 +117,7 @@ pub(crate) struct FlowchartAst {
@@ -394,8 +430,16 @@ index 64188dfa..c21a599a 100644
      pub header: SubgraphHeader,
      pub statements: Vec<Stmt>,
  }
+@@ -138,6 +139,6 @@ pub(crate) enum Stmt {
+     ShapeData {
+         target: String,
+         target_span: Option<SourceSpan>,
+-        yaml: String,
++        yaml: super::ShapeDataToken,
+     },
+ }
 diff --git a/crates/merman-core/src/diagrams/flowchart/build.rs b/crates/merman-core/src/diagrams/flowchart/build.rs
-index 6837a47d..c8dab283 100644
+index 6837a47d..abbddf1d 100644
 --- a/crates/merman-core/src/diagrams/flowchart/build.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/build.rs
 @@ -3,6 +3,8 @@ use crate::{OperationControl, OperationControlResult};
@@ -416,7 +460,25 @@ index 6837a47d..c8dab283 100644
              nodes: Vec::new(),
              node_index: HashMap::new(),
              edges: Vec::new(),
-@@ -144,6 +148,27 @@ impl FlowchartBuildState {
+@@ -74,7 +78,7 @@ impl FlowchartBuildState {
+                 Stmt::ShapeData {
+                     target,
+                     target_span,
+-                    ..
++                    yaml,
+                 } => {
+                     // Reserve the structural node slot in source order. The semantic replay is
+                     // the sole owner of parsing and applying shapeData values.
+@@ -89,7 +93,7 @@ impl FlowchartBuildState {
+                             label_span: None,
+                             label_selection: None,
+                             shape: None,
+-                            shape_data: None,
++                            shape_data: Some(yaml.clone()),
+                             icon: None,
+                             form: None,
+                             pos: None,
+@@ -144,6 +148,30 @@ impl FlowchartBuildState {
      }
  
      fn upsert_node(&mut self, n: Node) {
@@ -425,7 +487,10 @@ index 6837a47d..c8dab283 100644
 +        {
 +            let span = crate::SourceSpan::new(
 +                id_span.start,
-+                n.label_span.map_or(id_span.end, |label| label.end),
++                n.shape_data.as_ref().map_or_else(
++                    || n.label_span.map_or(id_span.end, |label| label.end),
++                    |data| data.span.end,
++                ),
 +            );
 +            let mut piece = serde_json::json!({"kind":"node","semanticId":n.id,"domId":format!("node:{}",n.id),"span":span});
 +            if n.syntax == FlowNodeSyntax::ExplicitDefinition {
@@ -444,7 +509,7 @@ index 6837a47d..c8dab283 100644
          if let Some(&idx) = self.node_index.get(&n.id) {
              if matches!(n.provenance, FlowNodeProvenance::Authored) {
                  self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-@@ -212,6 +237,16 @@ impl FlowchartBuildState {
+@@ -212,6 +240,16 @@ impl FlowchartBuildState {
  
          self.edge_pair_counts.insert(key, existing + 1);
  
@@ -462,10 +527,87 @@ index 6837a47d..c8dab283 100644
          e.is_user_defined_id = is_user_defined_id;
          e.link.length = e.link.length.min(10);
 diff --git a/crates/merman-core/src/diagrams/flowchart/lexer.rs b/crates/merman-core/src/diagrams/flowchart/lexer.rs
-index 51d8d9e1..786f5785 100644
+index 51d8d9e1..4aefb9e2 100644
 --- a/crates/merman-core/src/diagrams/flowchart/lexer.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/lexer.rs
-@@ -850,6 +850,7 @@ impl<'input> Lexer<'input> {
+@@ -520,40 +520,46 @@ impl<'input> Lexer<'input> {
+         //
+         // We mimic that behavior here while returning a single `ShapeData` token.
+         let bytes = self.input.as_bytes();
+-        let mut out = String::new();
+-        let mut segment_start = self.pos;
++        let mut edits = Vec::new();
+         let mut in_string = false;
+ 
+         while self.pos < self.input.len() {
+             let b = bytes[self.pos];
+             if !in_string {
+                 if b == b'"' {
+-                    out.push_str(&self.input[segment_start..self.pos + 1]);
+                     self.pos += 1;
+-                    segment_start = self.pos;
+                     in_string = true;
+                     continue;
+                 }
+                 if b == b'}' {
+-                    out.push_str(&self.input[segment_start..self.pos]);
+                     self.pos += 1;
+-                    return Some(Ok((start, Tok::ShapeData(out), self.pos)));
++                    let mut source = crate::preprocess::PreprocessedSource::new(
++                        &self.input[start + 2..self.pos - 1],
++                    );
++                    source
++                        .apply_edits(edits, &crate::OperationControl::new())
++                        .expect("private lexical control");
++                    return Some(Ok((
++                        start,
++                        Tok::ShapeData(super::ShapeDataToken {
++                            span: SourceSpan::new(start, self.pos),
++                            source,
++                        }),
++                        self.pos,
++                    )));
+                 }
+                 self.pos += 1;
+                 continue;
+             }
+ 
+             if b == b'"' {
+-                out.push_str(&self.input[segment_start..self.pos + 1]);
+                 self.pos += 1;
+-                segment_start = self.pos;
+                 in_string = false;
+                 continue;
+             }
+ 
+             if b == b'\n' {
+-                out.push_str(&self.input[segment_start..self.pos]);
+-                out.push_str("<br/>");
++                let replacement_start = self.pos - start - 2;
+                 self.pos += 1;
+                 while self.pos < self.input.len() {
+                     match bytes[self.pos] {
+@@ -561,14 +567,17 @@ impl<'input> Lexer<'input> {
+                         _ => break,
+                     }
+                 }
+-                segment_start = self.pos;
++                edits.push(crate::preprocess::SourceEdit::replace(
++                    replacement_start..self.pos - start - 2,
++                    "<br/>",
++                    crate::preprocess::ReplacementMapping::Boundaries,
++                ));
+                 continue;
+             }
+ 
+             self.pos += 1;
+         }
+ 
+-        out.push_str(&self.input[segment_start..self.pos]);
+         let span = SourceSpan::new(start, self.pos);
+         let expected = super::shape_value_expected_span(self.input, start, self.pos)
+             .unwrap_or(SourceSpan::new(self.pos, self.pos));
+@@ -850,6 +859,7 @@ impl<'input> Lexer<'input> {
          let raw_id_end = self.pos;
          let raw_id = self.input[start..raw_id_end].to_string();
          let mut raw_title = raw_id.clone();
@@ -473,7 +615,7 @@ index 51d8d9e1..786f5785 100644
          let mut title_kind = TitleKind::Text;
          let mut id_equals_title = true;
  
-@@ -881,6 +882,7 @@ impl<'input> Lexer<'input> {
+@@ -881,6 +891,7 @@ impl<'input> Lexer<'input> {
                  self.pos += 1;
              }
              raw_title = self.input[title_start..self.pos].to_string();
@@ -481,7 +623,7 @@ index 51d8d9e1..786f5785 100644
              let parsed_title = match lex::parse_node_label_text(&raw_title) {
                  Ok(parsed) => parsed,
                  Err(error) => {
-@@ -907,6 +909,11 @@ impl<'input> Lexer<'input> {
+@@ -907,6 +918,11 @@ impl<'input> Lexer<'input> {
                  raw_id,
                  header_span: Some(SourceSpan::new(keyword_start, self.pos)),
                  raw_id_span: Some(SourceSpan::new(start, raw_id_end)),
@@ -493,7 +635,7 @@ index 51d8d9e1..786f5785 100644
                  raw_title,
                  title_kind,
                  id_equals_title,
-@@ -1173,6 +1180,7 @@ impl<'input> Lexer<'input> {
+@@ -1173,6 +1189,7 @@ impl<'input> Lexer<'input> {
                      Err(e) => return Some(Err(e)),
                  };
                  let arrow = ArrowToken {
@@ -501,7 +643,7 @@ index 51d8d9e1..786f5785 100644
                      link,
                      recovery_error: None,
                  };
-@@ -1304,7 +1312,8 @@ impl<'input> Lexer<'input> {
+@@ -1304,7 +1321,8 @@ impl<'input> Lexer<'input> {
          }
  
          let arrow_token =
@@ -511,7 +653,7 @@ index 51d8d9e1..786f5785 100644
                  link,
                  recovery_error,
              };
-@@ -1906,7 +1915,11 @@ fn labeled_text_with_spans(
+@@ -1906,7 +1924,11 @@ fn labeled_text_with_spans(
      content_span: SourceSpan,
  ) -> LabeledText {
      text.span = Some(token_span);
@@ -525,7 +667,7 @@ index 51d8d9e1..786f5785 100644
  }
  
 diff --git a/crates/merman-core/src/diagrams/flowchart/model.rs b/crates/merman-core/src/diagrams/flowchart/model.rs
-index 8d2244b6..f3c1acc1 100644
+index 8d2244b6..0e986404 100644
 --- a/crates/merman-core/src/diagrams/flowchart/model.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/model.rs
 @@ -191,6 +191,7 @@ impl FlowchartRenderStyleSources {
@@ -570,6 +712,15 @@ index 8d2244b6..f3c1acc1 100644
              .saturating_add(self.styles.retained_bytes())
              .saturating_add(
                  self.collapsed_subgraphs
+@@ -671,7 +681,7 @@ pub(crate) struct Node {
+     pub label_span: Option<SourceSpan>,
+     pub label_selection: Option<SourceSpan>,
+     pub shape: Option<String>,
+-    pub shape_data: Option<String>,
++    pub shape_data: Option<super::ShapeDataToken>,
+     pub icon: Option<String>,
+     pub form: Option<String>,
+     pub pos: Option<String>,
 @@ -694,6 +704,7 @@ pub(crate) enum FlowNodeSyntax {
  
  #[derive(Debug, Clone)]
@@ -595,7 +746,7 @@ index 8d2244b6..f3c1acc1 100644
              id_equals_title: true,
          }
 diff --git a/crates/merman-core/src/diagrams/flowchart/semantic.rs b/crates/merman-core/src/diagrams/flowchart/semantic.rs
-index 7d377ab1..0fe08a48 100644
+index 7d377ab1..f57bd75b 100644
 --- a/crates/merman-core/src/diagrams/flowchart/semantic.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/semantic.rs
 @@ -12,6 +12,7 @@ use super::{
@@ -606,7 +757,17 @@ index 7d377ab1..0fe08a48 100644
      pub(super) nodes: &'a mut Vec<Node>,
      pub(super) node_index: &'a mut HashMap<String, usize>,
      pub(super) edges: &'a mut Vec<Edge>,
-@@ -81,11 +82,37 @@ impl<'a> FlowchartSemanticContext<'a> {
+@@ -26,8 +27,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
+     pub(super) security_level_loose: bool,
+     pub(super) diagram_type: &'a str,
+     pub(super) config: &'a MermaidConfig,
+-    pub(super) shape_data_documents:
+-        &'a HashMap<String, std::result::Result<serde_json::Value, String>>,
++    pub(super) shape_data_documents: &'a HashMap<String, crate::yaml_config::YamlValueCapture>,
+     pub(super) control: &'a OperationControl,
+ }
+ 
+@@ -81,11 +81,37 @@ impl<'a> FlowchartSemanticContext<'a> {
                      stack.extend(sg.statements.iter().rev().map(ReplayItem::Statement));
                  }
                  Stmt::Style(s) => {
@@ -644,7 +805,7 @@ index 7d377ab1..0fe08a48 100644
                      vertex_css
                          .entry(s.target.clone())
                          .or_insert_with(FlowSubgraphVertexStyle::default)
-@@ -106,6 +133,9 @@ impl<'a> FlowchartSemanticContext<'a> {
+@@ -106,6 +132,9 @@ impl<'a> FlowchartSemanticContext<'a> {
                              self.warning_facts.push(warning);
                          }
                          let idx = self.ensure_authored_node(&s.target);
@@ -654,7 +815,264 @@ index 7d377ab1..0fe08a48 100644
                          self.nodes[idx].styles.extend(s.styles.iter().cloned());
                      }
                  }
-@@ -657,6 +687,7 @@ mod tests {
+@@ -233,7 +262,11 @@ impl<'a> FlowchartSemanticContext<'a> {
+                         }
+                     }
+                 }
+-                Stmt::ShapeData { target, yaml, .. } => {
++                Stmt::ShapeData {
++                    target,
++                    target_span,
++                    yaml,
++                } => {
+                     let value = match Self::shape_data_value(
+                         self.shape_data_documents,
+                         self.diagram_type,
+@@ -249,6 +282,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+                             self.apply_shape_data_to_subgraph(subgraph_index, target, value)
+                         });
+                     if routed_to_subgraph {
++                        self.trace_shape_data(target, *target_span, yaml, "control", None);
+                         // The parser first calls addVertex for the bare reference and then
+                         // calls it again with shapeData. A subgraph metadata call returns from
+                         // the second call, so retain only the preceding vertex call unless the
+@@ -263,6 +297,9 @@ impl<'a> FlowchartSemanticContext<'a> {
+ 
+                     if let Some(indices) = seen_edge_indices.get(target) {
+                         Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
++                        for &index in indices {
++                            self.trace_shape_data(target, *target_span, yaml, "edge", Some(index));
++                        }
+                         continue;
+                     }
+ 
+@@ -281,6 +318,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+                             error,
+                         )));
+                     }
++                    self.trace_shape_data(target, *target_span, yaml, "node", None);
+                 }
+                 Stmt::Chain {
+                     node_groups,
+@@ -370,7 +408,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+             if index % 128 == 0 {
+                 self.control.checkpoint()?;
+             }
+-            if let Some(yaml) = node.shape_data.as_deref()
++            if let Some(yaml) = node.shape_data.as_ref()
+                 && let Some(&subgraph_index) = active_subgraphs.get(&node.id)
+             {
+                 let value = match Self::shape_data_value(
+@@ -382,6 +420,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+                     Err(error) => return Ok(Err(error)),
+                 };
+                 if self.apply_shape_data_to_subgraph(subgraph_index, &node.id, value) {
++                    self.trace_shape_data(&node.id, node.id_span, yaml, "control", None);
+                     // The node production has already emitted one bare addVertex call before
+                     // its shapeData action. Preserve that call for DOM-id sequencing, while
+                     // avoiding it when an existing edge makes addVertex return early.
+@@ -397,7 +436,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+             }
+ 
+             if let Some(indices) = seen_edge_indices.get(&node.id) {
+-                if let Some(yaml) = node.shape_data.as_deref() {
++                if let Some(yaml) = node.shape_data.as_ref() {
+                     let value = match Self::shape_data_value(
+                         self.shape_data_documents,
+                         self.diagram_type,
+@@ -407,16 +446,32 @@ impl<'a> FlowchartSemanticContext<'a> {
+                         Err(error) => return Ok(Err(error)),
+                     };
+                     Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
++                    for &index in indices {
++                        self.trace_shape_data(&node.id, node.id_span, yaml, "edge", Some(index));
++                    }
+                 }
+                 continue;
+             }
+ 
++            // Replay explicit labels/shapes in authored order alongside shapeData updates.
++            // The structural builder reserves nodes ahead of this semantic pass.
++            if let Some(&index) = self.node_index.get(&node.id) {
++                if node.label.is_some() {
++                    self.nodes[index].label = node.label.clone();
++                    self.nodes[index].label_type = node.label_type.clone();
++                    self.nodes[index].label_span = node.label_span;
++                    self.nodes[index].label_selection = node.label_selection;
++                }
++                if node.shape.is_some() {
++                    self.nodes[index].shape = node.shape.clone();
++                }
++            }
+             self.vertex_calls.push(node.id.clone());
+             seen_vertex_ids.insert(node.id.clone());
+             let style = vertex_css.entry(node.id.clone()).or_default();
+             style.classes.extend(node.classes.iter().cloned());
+             style.styles.extend(node.styles.iter().cloned());
+-            if let Some(yaml) = node.shape_data.as_deref() {
++            if let Some(yaml) = node.shape_data.as_ref() {
+                 deferred_shape_data_calls.push(node.id.clone());
+                 let value = match Self::shape_data_value(
+                     self.shape_data_documents,
+@@ -433,6 +488,7 @@ impl<'a> FlowchartSemanticContext<'a> {
+                         error,
+                     )));
+                 }
++                self.trace_shape_data(&node.id, node.id_span, yaml, "node", None);
+             }
+         }
+         for (index, id) in deferred_shape_data_calls.into_iter().enumerate() {
+@@ -444,6 +500,132 @@ impl<'a> FlowchartSemanticContext<'a> {
+         Ok(Ok(()))
+     }
+ 
++    fn trace_shape_data(
++        &mut self,
++        target: &str,
++        target_span: Option<crate::SourceSpan>,
++        yaml: &super::ShapeDataToken,
++        kind: &str,
++        edge_index: Option<usize>,
++    ) {
++        if self
++            .config
++            .as_value()
++            .get("traceSource")
++            .and_then(serde_json::Value::as_bool)
++            != Some(true)
++        {
++            return;
++        }
++        let document = self
++            .shape_data_documents
++            .get(&**yaml)
++            .expect("prepared shape data");
++        let (semantic_id, dom_id) = if let Some(index) = edge_index {
++            let id = self.edges[index]
++                .id
++                .as_deref()
++                .expect("native assigned edge ID");
++            (id.to_string(), format!("edge:{id}"))
++        } else if kind == "control" {
++            (target.to_string(), format!("flowchart:subgraph:{target}"))
++        } else {
++            (target.to_string(), format!("node:{target}"))
++        };
++        let span = crate::SourceSpan::new(
++            target_span.map_or(yaml.span.start, |span| span.start),
++            yaml.span.end,
++        );
++        let mut piece = serde_json::json!({"kind":kind,"semanticId":semantic_id,"domId":dom_id,"relation":"shape-data","span":span});
++        if let Some(index) = edge_index {
++            piece["from"] = serde_json::json!(self.edges[index].from);
++            piece["to"] = serde_json::json!(self.edges[index].to);
++        }
++        if kind == "node" {
++            piece["declaration"] = serde_json::json!(true);
++            if document
++                .value
++                .as_ref()
++                .ok()
++                .and_then(|v| v.get("label"))
++                .and_then(value_to_string)
++                .is_some()
++            {
++                if let Some(label) = document
++                    .keys
++                    .iter()
++                    .rev()
++                    .find(|key| key.path.matches(&["label"]))
++                {
++                    let origin = label.value_span.as_ref().and_then(|span| {
++                        yaml.map_span(crate::SourceSpan::new(span.start, span.end))
++                    });
++                    let selection = label.value_selection.as_ref().and_then(|span| {
++                        yaml.map_span(crate::SourceSpan::new(span.start, span.end))
++                    });
++                    if let Some(&index) = self.node_index.get(target) {
++                        self.nodes[index].label_span = origin;
++                        self.nodes[index].label_selection = selection;
++                    }
++                    if let Some(origin) = origin {
++                        piece["labelOrigin"] = serde_json::json!(origin);
++                    }
++                    if let Some(selection) = selection.filter(|span| span.start < span.end) {
++                        piece["labelSpan"] = serde_json::json!(selection);
++                    }
++                }
++            }
++        }
++        self.source_occurrences.push(piece.clone());
++        for key in &document.keys {
++            let Some(property) = key
++                .path
++                .first()
++                .filter(|property| key.path.matches(&[property]))
++            else {
++                continue;
++            };
++            let Some(span) = key
++                .value_selection
++                .as_ref()
++                .and_then(|span| yaml.map_span(crate::SourceSpan::new(span.start, span.end)))
++                .filter(|span| span.start < span.end)
++            else {
++                continue;
++            };
++            let mut property_piece = piece.clone();
++            let fields = property_piece.as_object_mut().expect("native piece object");
++            for name in ["labelOrigin", "labelSpan", "declaration"] {
++                fields.remove(name);
++            }
++            property_piece["relation"] = serde_json::json!("shape-data-property");
++            property_piece["property"] = serde_json::json!(property);
++            property_piece["span"] = serde_json::json!(span);
++            let applied = match kind {
++                "edge" => matches!(property, "animate" | "animation" | "curve"),
++                "node" => matches!(
++                    property,
++                    "shape"
++                        | "label"
++                        | "labelType"
++                        | "icon"
++                        | "form"
++                        | "pos"
++                        | "img"
++                        | "constraint"
++                        | "w"
++                        | "h"
++                ),
++                _ => true,
++            };
++            if !applied {
++                property_piece["kind"] = serde_json::json!("nonvisual");
++                property_piece["classification"] = serde_json::json!("ignored-shape-data-property");
++            }
++            self.source_occurrences.push(property_piece);
++        }
++    }
++
+     fn add_class_to_target(
+         &mut self,
+         target: &str,
+@@ -515,13 +697,15 @@ impl<'a> FlowchartSemanticContext<'a> {
+     }
+ 
+     fn shape_data_value<'b>(
+-        documents: &'b HashMap<String, std::result::Result<serde_json::Value, String>>,
++        documents: &'b HashMap<String, crate::yaml_config::YamlValueCapture>,
+         diagram_type: &str,
+         yaml: &str,
+     ) -> Result<&'b serde_json::Value> {
+         match documents
+             .get(yaml)
+             .expect("flowchart shape data must be prepared before semantic construction")
++            .value
++            .as_ref()
+         {
+             Ok(document) => Ok(document),
+             Err(error) => Err(Error::diagram_parse_fallback(
+@@ -657,6 +841,7 @@ mod tests {
          let mut node_index = HashMap::new();
          let mut edges = (0..512)
              .map(|index| Edge {
@@ -662,7 +1080,7 @@ index 7d377ab1..0fe08a48 100644
                  from: format!("n{index}"),
                  to: format!("n{}", index + 1),
                  id: Some(format!("edge-{index}")),
-@@ -695,6 +726,7 @@ mod tests {
+@@ -695,6 +880,7 @@ mod tests {
          let control = OperationControl::new();
          control.cancel_after_checkpoints(3);
          let mut context = FlowchartSemanticContext {
@@ -670,6 +1088,39 @@ index 7d377ab1..0fe08a48 100644
              nodes: &mut nodes,
              node_index: &mut node_index,
              edges: &mut edges,
+diff --git a/crates/merman-core/src/diagrams/flowchart/shape_data.rs b/crates/merman-core/src/diagrams/flowchart/shape_data.rs
+index 9eb9d209..7b381dd9 100644
+--- a/crates/merman-core/src/diagrams/flowchart/shape_data.rs
++++ b/crates/merman-core/src/diagrams/flowchart/shape_data.rs
+@@ -1,3 +1,28 @@
++use crate::{SourceSpan, preprocess::PreprocessedSource};
++
++#[derive(Debug, Clone)]
++pub(crate) struct ShapeDataToken {
++    pub span: SourceSpan,
++    pub source: PreprocessedSource,
++}
++
++impl std::ops::Deref for ShapeDataToken {
++    type Target = str;
++    fn deref(&self) -> &str {
++        self.source.text()
++    }
++}
++
++impl ShapeDataToken {
++    pub fn map_span(&self, span: SourceSpan) -> Option<SourceSpan> {
++        let span = self.source.try_map_enclosing_span(span)?;
++        Some(SourceSpan::new(
++            self.span.start + 2 + span.start,
++            self.span.start + 2 + span.end,
++        ))
++    }
++}
++
+ use super::{Node, TitleKind};
+ use serde_json::Value;
+ 
 diff --git a/crates/merman-core/src/diagrams/flowchart/subgraph.rs b/crates/merman-core/src/diagrams/flowchart/subgraph.rs
 index d48a80e9..7eed5c20 100644
 --- a/crates/merman-core/src/diagrams/flowchart/subgraph.rs
@@ -708,10 +1159,16 @@ index d48a80e9..7eed5c20 100644
              id: id.clone(),
              nodes: retained_members,
 diff --git a/crates/merman-core/src/diagrams/flowchart/tokens.rs b/crates/merman-core/src/diagrams/flowchart/tokens.rs
-index 4490f80f..3a6a5885 100644
+index 4490f80f..241975bc 100644
 --- a/crates/merman-core/src/diagrams/flowchart/tokens.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/tokens.rs
-@@ -37,6 +37,7 @@ pub(crate) enum Tok {
+@@ -32,11 +32,12 @@ pub(crate) enum Tok {
+     LinkStyleStmt(LinkStyleStmt),
+ 
+     EdgeId(String),
+-    ShapeData(String),
++    ShapeData(super::ShapeDataToken),
+ }
  
  #[derive(Debug, Clone)]
  pub(crate) struct ArrowToken {
@@ -720,9 +1177,27 @@ index 4490f80f..3a6a5885 100644
      pub recovery_error: Option<LexError>,
  }
 diff --git a/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop b/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
-index 185ff516..f0303b1f 100644
+index 185ff516..68e4d46a 100644
 --- a/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
 +++ b/crates/merman-core/src/diagrams/flowchart_grammar.lalrpop
+@@ -5,7 +5,7 @@ grammar;
+ use crate::diagrams::flowchart::{
+   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+   FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+-  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
++  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok, ShapeDataToken
+ };
+ use crate::SourceSpan;
+ 
+@@ -40,7 +40,7 @@ extern {
+     LinkStyleStmt => Tok::LinkStyleStmt(<LinkStyleStmt>),
+ 
+     EdgeId => Tok::EdgeId(<String>),
+-    ShapeData => Tok::ShapeData(<String>),
++    ShapeData => Tok::ShapeData(<ShapeDataToken>),
+   }
+ }
+ 
 @@ -105,7 +105,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
      let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
  
@@ -2146,114 +2621,591 @@ index 280e3b85..348ab7c8 100644
  
  Block: Vec<Stmt> = {
 diff --git a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs b/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
-index 979d9b43..dba59929 100644
+index 979d9b43..52127c2e 100644
 --- a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
 +++ b/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
-@@ -1,5 +1,5 @@
+@@ -1,9 +1,9 @@
  // auto-generated: "lalrpop 0.23.1"
 -// sha3: 938bdc6e00e5abb93bebab99f9608fdbda94b7e900b8ab81a28516ec69aa20a2
-+// sha3: 6961ac509b05cb36bd783f06a866b6d4a4e0193e95fbffa43a368ce6c927c4c0
++// sha3: 49808ac94dc93ced8b0cd6ae895ceb882eb82ff00bc935524dd3aa2e7181a326
  use crate::diagrams::flowchart::{
    ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
    FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
-@@ -50,8 +50,8 @@ mod __parse__FlowchartAst {
-         Variant14(Vec<String>),
-         Variant15(Option<String>),
-         Variant16(Option<LabeledText>),
+-  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
++  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok, ShapeDataToken
+ };
+ use crate::SourceSpan;
+ #[allow(unused_extern_crates)]
+@@ -20,7 +20,7 @@ mod __parse__FlowchartAst {
+     use crate::diagrams::flowchart::{
+   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+   FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
+-  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
++  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok, ShapeDataToken
+ };
+     use crate::SourceSpan;
+     #[allow(unused_extern_crates)]
+@@ -45,23 +45,25 @@ mod __parse__FlowchartAst {
+         Variant9(ClassAssignStmt),
+         Variant10(ClickStmt),
+         Variant11(LinkStyleStmt),
+-        Variant12(usize),
+-        Variant13((Vec<Vec<Node>>, Vec<Vec<Edge>>)),
+-        Variant14(Vec<String>),
+-        Variant15(Option<String>),
+-        Variant16(Option<LabeledText>),
 -        Variant17((Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)),
 -        Variant18(alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>),
-+        Variant17((Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan)),
-+        Variant18(alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan)>),
-         Variant19(FlowchartAst),
-         Variant20((String, Option<String>, SourceSpan)),
-         Variant21(Vec<Node>),
-@@ -1406,7 +1406,7 @@ mod __parse__FlowchartAst {
-     fn __pop_Variant17<
+-        Variant19(FlowchartAst),
+-        Variant20((String, Option<String>, SourceSpan)),
+-        Variant21(Vec<Node>),
+-        Variant22(Node),
+-        Variant23(alloc::vec::Vec<Node>),
+-        Variant24(()),
+-        Variant25(Stmt),
+-        Variant26(Vec<Stmt>),
+-        Variant27(SubgraphBlock),
+-        Variant28(Option<SubgraphHeader>),
++        Variant12(ShapeDataToken),
++        Variant13(usize),
++        Variant14((Vec<Vec<Node>>, Vec<Vec<Edge>>)),
++        Variant15(Vec<String>),
++        Variant16(Option<String>),
++        Variant17(Option<LabeledText>),
++        Variant18((Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan)),
++        Variant19(alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan)>),
++        Variant20(FlowchartAst),
++        Variant21((String, Option<String>, SourceSpan)),
++        Variant22(Vec<Node>),
++        Variant23(Node),
++        Variant24(alloc::vec::Vec<Node>),
++        Variant25(()),
++        Variant26(Option<ShapeDataToken>),
++        Variant27(Stmt),
++        Variant28(Vec<Stmt>),
++        Variant29(SubgraphBlock),
++        Variant30(Option<SubgraphHeader>),
+     }
+     const __ACTION: &[i8] = &[
+         // State 0
+@@ -656,8 +658,8 @@ mod __parse__FlowchartAst {
+     {
+         #[allow(clippy::manual_range_patterns)]match __token_index {
+             0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 => __Symbol::Variant0(__token),
+-            9 | 11 | 21 | 22 => match __token {
+-                Tok::Direction(__tok0) | Tok::Id(__tok0) | Tok::EdgeId(__tok0) | Tok::ShapeData(__tok0) if true => __Symbol::Variant1(__tok0),
++            9 | 11 | 21 => match __token {
++                Tok::Direction(__tok0) | Tok::Id(__tok0) | Tok::EdgeId(__tok0) if true => __Symbol::Variant1(__tok0),
+                 _ => unreachable!(),
+             },
+             10 => match __token {
+@@ -700,6 +702,10 @@ mod __parse__FlowchartAst {
+                 Tok::LinkStyleStmt(__tok0) if true => __Symbol::Variant11(__tok0),
+                 _ => unreachable!(),
+             },
++            22 => match __token {
++                Tok::ShapeData(__tok0) if true => __Symbol::Variant12(__tok0),
++                _ => unreachable!(),
++            },
+             _ => unreachable!(),
+         }
+     }
+@@ -1374,7 +1380,7 @@ mod __parse__FlowchartAst {
+             }
+             65 => {
+                 // __FlowchartAst = FlowchartAst => ActionFn(0);
+-                let __sym0 = __pop_Variant19(__symbols);
++                let __sym0 = __pop_Variant20(__symbols);
+                 let __start = __sym0.0.clone();
+                 let __end = __sym0.2.clone();
+                 let __nt = super::__action0::<>(__sym0);
+@@ -1393,43 +1399,43 @@ mod __parse__FlowchartAst {
+     fn __symbol_type_mismatch() -> ! {
+         panic!("symbol type mismatch")
+     }
+-    fn __pop_Variant24<
++    fn __pop_Variant25<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, (), usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant24(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant25(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant17<
++    fn __pop_Variant18<
      >(
          __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
 -    ) -> (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>), usize)
 +    ) -> (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan), usize)
       {
          match __symbols.pop() {
-             Some((__l, __Symbol::Variant17(__v), __r)) => (__l, __v, __r),
-@@ -1656,7 +1656,7 @@ mod __parse__FlowchartAst {
-     fn __pop_Variant18<
+-            Some((__l, __Symbol::Variant17(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant18(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant20<
++    fn __pop_Variant21<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, (String, Option<String>, SourceSpan), usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant20(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant21(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant13<
++    fn __pop_Variant14<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, (Vec<Vec<Node>>, Vec<Vec<Edge>>), usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant13(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant14(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1483,13 +1489,13 @@ mod __parse__FlowchartAst {
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant19<
++    fn __pop_Variant20<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, FlowchartAst, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant19(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant20(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1513,13 +1519,13 @@ mod __parse__FlowchartAst {
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant22<
++    fn __pop_Variant23<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Node, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant22(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant23(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1533,43 +1539,63 @@ mod __parse__FlowchartAst {
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant16<
++    fn __pop_Variant17<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Option<LabeledText>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant16(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant17(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant15<
++    fn __pop_Variant26<
++    >(
++        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
++    ) -> (usize, Option<ShapeDataToken>, usize)
++     {
++        match __symbols.pop() {
++            Some((__l, __Symbol::Variant26(__v), __r)) => (__l, __v, __r),
++            _ => __symbol_type_mismatch()
++        }
++    }
++    fn __pop_Variant16<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Option<String>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant15(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant16(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant28<
++    fn __pop_Variant30<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Option<SubgraphHeader>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant28(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant30(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant25<
++    fn __pop_Variant12<
++    >(
++        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
++    ) -> (usize, ShapeDataToken, usize)
++     {
++        match __symbols.pop() {
++            Some((__l, __Symbol::Variant12(__v), __r)) => (__l, __v, __r),
++            _ => __symbol_type_mismatch()
++        }
++    }
++    fn __pop_Variant27<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Stmt, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant25(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant27(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1593,13 +1619,13 @@ mod __parse__FlowchartAst {
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant27<
++    fn __pop_Variant29<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, SubgraphBlock, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant27(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant29(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1623,63 +1649,63 @@ mod __parse__FlowchartAst {
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant21<
++    fn __pop_Variant22<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Vec<Node>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant21(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant22(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant26<
++    fn __pop_Variant28<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Vec<Stmt>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant26(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant28(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant14<
++    fn __pop_Variant15<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, Vec<String>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant14(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant15(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant18<
++    fn __pop_Variant19<
      >(
          __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
 -    ) -> (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize)
 +    ) -> (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>, SourceSpan)>, usize)
       {
          match __symbols.pop() {
-             Some((__l, __Symbol::Variant18(__v), __r)) => (__l, __v, __r),
-@@ -1853,7 +1853,7 @@ mod __parse__FlowchartAst {
+-            Some((__l, __Symbol::Variant18(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant19(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant23<
++    fn __pop_Variant24<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, alloc::vec::Vec<Node>, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant23(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant24(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+-    fn __pop_Variant12<
++    fn __pop_Variant13<
+     >(
+         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+     ) -> (usize, usize, usize)
+      {
+         match __symbols.pop() {
+-            Some((__l, __Symbol::Variant12(__v), __r)) => (__l, __v, __r),
++            Some((__l, __Symbol::Variant13(__v), __r)) => (__l, __v, __r),
+             _ => __symbol_type_mismatch()
+         }
+     }
+@@ -1694,7 +1720,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action54::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant12(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant13(__nt), __end));
+         (0, 0)
+     }
+     fn __reduce1<
+@@ -1708,7 +1734,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action51::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant12(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant13(__nt), __end));
+         (0, 1)
+     }
+     fn __reduce2<
+@@ -1720,12 +1746,12 @@ mod __parse__FlowchartAst {
+     {
+         // Chain = NodeGroup, EdgeSeg+ => ActionFn(23);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant18(__symbols);
+-        let __sym0 = __pop_Variant21(__symbols);
++        let __sym1 = __pop_Variant19(__symbols);
++        let __sym0 = __pop_Variant22(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action23::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant13(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant14(__nt), __end));
+         (2, 2)
+     }
+     fn __reduce3<
+@@ -1742,7 +1768,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action35::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant14(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
+         (2, 3)
+     }
+     fn __reduce4<
+@@ -1756,7 +1782,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action36::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant14(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
+         (0, 3)
+     }
+     fn __reduce5<
+@@ -1771,7 +1797,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action52::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
+         (1, 4)
+     }
+     fn __reduce6<
+@@ -1785,7 +1811,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action53::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
+         (0, 4)
+     }
+     fn __reduce7<
+@@ -1800,7 +1826,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action45::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
+         (1, 5)
+     }
+     fn __reduce8<
+@@ -1814,7 +1840,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action46::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
+         (0, 5)
+     }
+     fn __reduce9<
+@@ -1829,7 +1855,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action43::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
+         (1, 6)
+     }
+     fn __reduce10<
+@@ -1843,7 +1869,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action44::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant16(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
+         (0, 6)
+     }
+     fn __reduce11<
+@@ -1853,16 +1879,16 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // EdgeSeg = EdgeId, Arrow, EdgeLabel, NodeGroup => ActionFn(85);
 +        // EdgeSeg = EdgeId, Arrow, EdgeLabel, NodeGroup => ActionFn(87);
          assert!(__symbols.len() >= 4);
-         let __sym3 = __pop_Variant21(__symbols);
+-        let __sym3 = __pop_Variant21(__symbols);
++        let __sym3 = __pop_Variant22(__symbols);
          let __sym2 = __pop_Variant5(__symbols);
-@@ -1861,7 +1861,7 @@ mod __parse__FlowchartAst {
+         let __sym1 = __pop_Variant4(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym3.2.clone();
 -        let __nt = super::__action85::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
 +        let __nt = super::__action87::<>(__sym0, __sym1, __sym2, __sym3);
-         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
          (4, 7)
      }
-@@ -1872,14 +1872,14 @@ mod __parse__FlowchartAst {
+     fn __reduce12<
+@@ -1872,15 +1898,15 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // EdgeSeg = EdgeId, Arrow, NodeGroup => ActionFn(86);
 +        // EdgeSeg = EdgeId, Arrow, NodeGroup => ActionFn(88);
          assert!(__symbols.len() >= 3);
-         let __sym2 = __pop_Variant21(__symbols);
+-        let __sym2 = __pop_Variant21(__symbols);
++        let __sym2 = __pop_Variant22(__symbols);
          let __sym1 = __pop_Variant4(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym2.2.clone();
 -        let __nt = super::__action86::<>(__sym0, __sym1, __sym2);
+-        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
 +        let __nt = super::__action88::<>(__sym0, __sym1, __sym2);
-         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
          (3, 7)
      }
-@@ -1890,14 +1890,14 @@ mod __parse__FlowchartAst {
+     fn __reduce13<
+@@ -1890,15 +1916,15 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // EdgeSeg = Arrow, EdgeLabel, NodeGroup => ActionFn(87);
 +        // EdgeSeg = Arrow, EdgeLabel, NodeGroup => ActionFn(89);
          assert!(__symbols.len() >= 3);
-         let __sym2 = __pop_Variant21(__symbols);
+-        let __sym2 = __pop_Variant21(__symbols);
++        let __sym2 = __pop_Variant22(__symbols);
          let __sym1 = __pop_Variant5(__symbols);
          let __sym0 = __pop_Variant4(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym2.2.clone();
 -        let __nt = super::__action87::<>(__sym0, __sym1, __sym2);
+-        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
 +        let __nt = super::__action89::<>(__sym0, __sym1, __sym2);
-         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
          (3, 7)
      }
-@@ -1908,13 +1908,13 @@ mod __parse__FlowchartAst {
+     fn __reduce14<
+@@ -1908,14 +1934,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // EdgeSeg = Arrow, NodeGroup => ActionFn(88);
 +        // EdgeSeg = Arrow, NodeGroup => ActionFn(90);
          assert!(__symbols.len() >= 2);
-         let __sym1 = __pop_Variant21(__symbols);
+-        let __sym1 = __pop_Variant21(__symbols);
++        let __sym1 = __pop_Variant22(__symbols);
          let __sym0 = __pop_Variant4(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action88::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant17(__nt), __end));
 +        let __nt = super::__action90::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
          (2, 7)
      }
-@@ -1976,13 +1976,13 @@ mod __parse__FlowchartAst {
+     fn __reduce15<
+@@ -1926,11 +1952,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // EdgeSeg+ = EdgeSeg => ActionFn(49);
+-        let __sym0 = __pop_Variant17(__symbols);
++        let __sym0 = __pop_Variant18(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action49::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant19(__nt), __end));
+         (1, 8)
+     }
+     fn __reduce16<
+@@ -1942,12 +1968,12 @@ mod __parse__FlowchartAst {
+     {
+         // EdgeSeg+ = EdgeSeg+, EdgeSeg => ActionFn(50);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant17(__symbols);
+-        let __sym0 = __pop_Variant18(__symbols);
++        let __sym1 = __pop_Variant18(__symbols);
++        let __sym0 = __pop_Variant19(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action50::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant18(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant19(__nt), __end));
+         (2, 8)
+     }
+     fn __reduce17<
+@@ -1959,14 +1985,14 @@ mod __parse__FlowchartAst {
+     {
+         // FlowchartAst = Seps, Header, Seps, Statements => ActionFn(1);
+         assert!(__symbols.len() >= 4);
+-        let __sym3 = __pop_Variant26(__symbols);
+-        let __sym2 = __pop_Variant24(__symbols);
+-        let __sym1 = __pop_Variant20(__symbols);
+-        let __sym0 = __pop_Variant24(__symbols);
++        let __sym3 = __pop_Variant28(__symbols);
++        let __sym2 = __pop_Variant25(__symbols);
++        let __sym1 = __pop_Variant21(__symbols);
++        let __sym0 = __pop_Variant25(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym3.2.clone();
+         let __nt = super::__action1::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant19(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
+         (4, 9)
+     }
+     fn __reduce18<
+@@ -1976,14 +2002,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2265,11 +3217,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action75::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action77::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (2, 10)
      }
-@@ -1993,11 +1993,11 @@ mod __parse__FlowchartAst {
+     fn __reduce19<
+@@ -1993,12 +2019,12 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2279,11 +3233,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym0.2.clone();
 -        let __nt = super::__action76::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action78::<>(__sym0);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (1, 10)
      }
-@@ -2008,13 +2008,13 @@ mod __parse__FlowchartAst {
+     fn __reduce20<
+@@ -2008,14 +2034,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2295,11 +3251,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action77::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action79::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (2, 10)
      }
-@@ -2025,11 +2025,11 @@ mod __parse__FlowchartAst {
+     fn __reduce21<
+@@ -2025,12 +2051,12 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2309,11 +3267,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym0.2.clone();
 -        let __nt = super::__action78::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action80::<>(__sym0);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (1, 10)
      }
-@@ -2040,13 +2040,13 @@ mod __parse__FlowchartAst {
+     fn __reduce22<
+@@ -2040,14 +2066,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2325,11 +3285,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action79::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action81::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (2, 10)
      }
-@@ -2057,11 +2057,11 @@ mod __parse__FlowchartAst {
+     fn __reduce23<
+@@ -2057,12 +2083,12 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2339,11 +3301,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym0.2.clone();
 -        let __nt = super::__action80::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action82::<>(__sym0);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (1, 10)
      }
-@@ -2072,13 +2072,13 @@ mod __parse__FlowchartAst {
+     fn __reduce24<
+@@ -2072,14 +2098,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2355,11 +3319,13 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action81::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action83::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (2, 10)
      }
-@@ -2089,11 +2089,11 @@ mod __parse__FlowchartAst {
+     fn __reduce25<
+@@ -2089,12 +2115,12 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2369,176 +3335,526 @@ index 979d9b43..dba59929 100644
          let __start = __sym0.0.clone();
          let __end = __sym0.2.clone();
 -        let __nt = super::__action82::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant20(__nt), __end));
 +        let __nt = super::__action84::<>(__sym0);
-         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
          (1, 10)
      }
-@@ -2104,11 +2104,11 @@ mod __parse__FlowchartAst {
+     fn __reduce26<
+@@ -2104,12 +2130,12 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeGroup = NodeRefChain => ActionFn(89);
+-        let __sym0 = __pop_Variant22(__symbols);
 +        // NodeGroup = NodeRefChain => ActionFn(91);
-         let __sym0 = __pop_Variant22(__symbols);
++        let __sym0 = __pop_Variant23(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym0.2.clone();
 -        let __nt = super::__action89::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
 +        let __nt = super::__action91::<>(__sym0);
-         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
          (1, 11)
      }
-@@ -2119,13 +2119,13 @@ mod __parse__FlowchartAst {
+     fn __reduce27<
+@@ -2119,14 +2145,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeGroup = NodeRefChain, NodeGroupRest+ => ActionFn(90);
 +        // NodeGroup = NodeRefChain, NodeGroupRest+ => ActionFn(92);
          assert!(__symbols.len() >= 2);
-         let __sym1 = __pop_Variant23(__symbols);
-         let __sym0 = __pop_Variant22(__symbols);
+-        let __sym1 = __pop_Variant23(__symbols);
+-        let __sym0 = __pop_Variant22(__symbols);
++        let __sym1 = __pop_Variant24(__symbols);
++        let __sym0 = __pop_Variant23(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action90::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
 +        let __nt = super::__action92::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
          (2, 11)
      }
-@@ -2231,7 +2231,7 @@ mod __parse__FlowchartAst {
+     fn __reduce28<
+@@ -2138,12 +2164,12 @@ mod __parse__FlowchartAst {
+     {
+         // NodeGroupOnly = NodeRefChain, NodeGroupRest+ => ActionFn(28);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant23(__symbols);
+-        let __sym0 = __pop_Variant22(__symbols);
++        let __sym1 = __pop_Variant24(__symbols);
++        let __sym0 = __pop_Variant23(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action28::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant21(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
+         (2, 12)
+     }
+     fn __reduce29<
+@@ -2155,12 +2181,12 @@ mod __parse__FlowchartAst {
+     {
+         // NodeGroupRest = Amp, NodeRefChain => ActionFn(29);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant22(__symbols);
++        let __sym1 = __pop_Variant23(__symbols);
+         let __sym0 = __pop_Variant0(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action29::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
+         (2, 13)
+     }
+     fn __reduce30<
+@@ -2174,7 +2200,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action41::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
+         (0, 14)
+     }
+     fn __reduce31<
+@@ -2185,11 +2211,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // NodeGroupRest* = NodeGroupRest+ => ActionFn(42);
+-        let __sym0 = __pop_Variant23(__symbols);
++        let __sym0 = __pop_Variant24(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action42::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
+         (1, 14)
+     }
+     fn __reduce32<
+@@ -2200,11 +2226,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // NodeGroupRest+ = NodeGroupRest => ActionFn(39);
+-        let __sym0 = __pop_Variant22(__symbols);
++        let __sym0 = __pop_Variant23(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action39::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
+         (1, 15)
+     }
+     fn __reduce33<
+@@ -2216,12 +2242,12 @@ mod __parse__FlowchartAst {
+     {
+         // NodeGroupRest+ = NodeGroupRest+, NodeGroupRest => ActionFn(40);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant22(__symbols);
+-        let __sym0 = __pop_Variant23(__symbols);
++        let __sym1 = __pop_Variant23(__symbols);
++        let __sym0 = __pop_Variant24(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action40::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
+         (2, 15)
+     }
+     fn __reduce34<
+@@ -2231,16 +2257,16 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRef = Id, NodeLabel, ShapeData, ClassOpt => ActionFn(91);
 +        // NodeRef = Id, NodeLabel, ShapeData, ClassOpt => ActionFn(93);
          assert!(__symbols.len() >= 4);
-         let __sym3 = __pop_Variant14(__symbols);
-         let __sym2 = __pop_Variant1(__symbols);
-@@ -2239,7 +2239,7 @@ mod __parse__FlowchartAst {
+-        let __sym3 = __pop_Variant14(__symbols);
+-        let __sym2 = __pop_Variant1(__symbols);
++        let __sym3 = __pop_Variant15(__symbols);
++        let __sym2 = __pop_Variant12(__symbols);
+         let __sym1 = __pop_Variant3(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym3.2.clone();
 -        let __nt = super::__action91::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action93::<>(__sym0, __sym1, __sym2, __sym3);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (4, 16)
      }
-@@ -2250,14 +2250,14 @@ mod __parse__FlowchartAst {
+     fn __reduce35<
+@@ -2250,15 +2276,15 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRef = Id, NodeLabel, ClassOpt => ActionFn(92);
 +        // NodeRef = Id, NodeLabel, ClassOpt => ActionFn(94);
          assert!(__symbols.len() >= 3);
-         let __sym2 = __pop_Variant14(__symbols);
+-        let __sym2 = __pop_Variant14(__symbols);
++        let __sym2 = __pop_Variant15(__symbols);
          let __sym1 = __pop_Variant3(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym2.2.clone();
 -        let __nt = super::__action92::<>(__sym0, __sym1, __sym2);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action94::<>(__sym0, __sym1, __sym2);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (3, 16)
      }
-@@ -2268,13 +2268,13 @@ mod __parse__FlowchartAst {
+     fn __reduce36<
+@@ -2268,14 +2294,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRef = Id, ClassOpt => ActionFn(70);
 +        // NodeRef = Id, ClassOpt => ActionFn(71);
          assert!(__symbols.len() >= 2);
-         let __sym1 = __pop_Variant14(__symbols);
+-        let __sym1 = __pop_Variant14(__symbols);
++        let __sym1 = __pop_Variant15(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action70::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action71::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (2, 16)
      }
-@@ -2285,7 +2285,7 @@ mod __parse__FlowchartAst {
+     fn __reduce37<
+@@ -2285,16 +2311,16 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRefChain = Id, NodeLabel, ShapeData, ClassOpt => ActionFn(93);
 +        // NodeRefChain = Id, NodeLabel, ShapeData, ClassOpt => ActionFn(95);
          assert!(__symbols.len() >= 4);
-         let __sym3 = __pop_Variant14(__symbols);
-         let __sym2 = __pop_Variant1(__symbols);
-@@ -2293,7 +2293,7 @@ mod __parse__FlowchartAst {
+-        let __sym3 = __pop_Variant14(__symbols);
+-        let __sym2 = __pop_Variant1(__symbols);
++        let __sym3 = __pop_Variant15(__symbols);
++        let __sym2 = __pop_Variant12(__symbols);
+         let __sym1 = __pop_Variant3(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym3.2.clone();
 -        let __nt = super::__action93::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action95::<>(__sym0, __sym1, __sym2, __sym3);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (4, 17)
      }
-@@ -2304,14 +2304,14 @@ mod __parse__FlowchartAst {
+     fn __reduce38<
+@@ -2304,15 +2330,15 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRefChain = Id, NodeLabel, ClassOpt => ActionFn(94);
 +        // NodeRefChain = Id, NodeLabel, ClassOpt => ActionFn(96);
          assert!(__symbols.len() >= 3);
-         let __sym2 = __pop_Variant14(__symbols);
+-        let __sym2 = __pop_Variant14(__symbols);
++        let __sym2 = __pop_Variant15(__symbols);
          let __sym1 = __pop_Variant3(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym2.2.clone();
 -        let __nt = super::__action94::<>(__sym0, __sym1, __sym2);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action96::<>(__sym0, __sym1, __sym2);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (3, 17)
      }
-@@ -2322,14 +2322,14 @@ mod __parse__FlowchartAst {
+     fn __reduce39<
+@@ -2322,15 +2348,15 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRefChain = Id, ShapeData, ClassOpt => ActionFn(72);
 +        // NodeRefChain = Id, ShapeData, ClassOpt => ActionFn(73);
          assert!(__symbols.len() >= 3);
-         let __sym2 = __pop_Variant14(__symbols);
-         let __sym1 = __pop_Variant1(__symbols);
+-        let __sym2 = __pop_Variant14(__symbols);
+-        let __sym1 = __pop_Variant1(__symbols);
++        let __sym2 = __pop_Variant15(__symbols);
++        let __sym1 = __pop_Variant12(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym2.2.clone();
 -        let __nt = super::__action72::<>(__sym0, __sym1, __sym2);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action73::<>(__sym0, __sym1, __sym2);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (3, 17)
      }
-@@ -2340,13 +2340,13 @@ mod __parse__FlowchartAst {
+     fn __reduce40<
+@@ -2340,14 +2366,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // NodeRefChain = Id, ClassOpt => ActionFn(73);
 +        // NodeRefChain = Id, ClassOpt => ActionFn(74);
          assert!(__symbols.len() >= 2);
-         let __sym1 = __pop_Variant14(__symbols);
+-        let __sym1 = __pop_Variant14(__symbols);
++        let __sym1 = __pop_Variant15(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action73::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant22(__nt), __end));
 +        let __nt = super::__action74::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant23(__nt), __end));
          (2, 17)
      }
-@@ -2449,13 +2449,13 @@ mod __parse__FlowchartAst {
+     fn __reduce41<
+@@ -2361,7 +2387,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action10::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
+         (0, 18)
+     }
+     fn __reduce42<
+@@ -2373,12 +2399,12 @@ mod __parse__FlowchartAst {
+     {
+         // Seps = Sep, Seps => ActionFn(11);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant24(__symbols);
++        let __sym1 = __pop_Variant25(__symbols);
+         let __sym0 = __pop_Variant0(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action11::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
+         (2, 18)
+     }
+     fn __reduce43<
+@@ -2390,12 +2416,12 @@ mod __parse__FlowchartAst {
+     {
+         // Seps1 = Sep, Seps => ActionFn(24);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant24(__symbols);
++        let __sym1 = __pop_Variant25(__symbols);
+         let __sym0 = __pop_Variant0(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action24::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant24(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
+         (2, 19)
+     }
+     fn __reduce44<
+@@ -2406,11 +2432,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // ShapeData? = ShapeData => ActionFn(37);
+-        let __sym0 = __pop_Variant1(__symbols);
++        let __sym0 = __pop_Variant12(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action37::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
+         (1, 20)
+     }
+     fn __reduce45<
+@@ -2424,7 +2450,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action38::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant15(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
+         (0, 20)
+     }
+     fn __reduce46<
+@@ -2435,11 +2461,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // Statement = Chain => ActionFn(12);
+-        let __sym0 = __pop_Variant13(__symbols);
++        let __sym0 = __pop_Variant14(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action12::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce47<
+@@ -2449,14 +2475,14 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
 -        // Statement = Id, ShapeData => ActionFn(74);
 +        // Statement = Id, ShapeData => ActionFn(75);
          assert!(__symbols.len() >= 2);
-         let __sym1 = __pop_Variant1(__symbols);
+-        let __sym1 = __pop_Variant1(__symbols);
++        let __sym1 = __pop_Variant12(__symbols);
          let __sym0 = __pop_Variant1(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym1.2.clone();
 -        let __nt = super::__action74::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
 +        let __nt = super::__action75::<>(__sym0, __sym1);
-         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
          (2, 21)
      }
-@@ -2666,7 +2666,7 @@ mod __parse__FlowchartAst {
+     fn __reduce48<
+@@ -2467,11 +2493,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // Statement = NodeGroupOnly => ActionFn(14);
+-        let __sym0 = __pop_Variant21(__symbols);
++        let __sym0 = __pop_Variant22(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action14::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce49<
+@@ -2482,11 +2508,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // Statement = NodeRef => ActionFn(15);
+-        let __sym0 = __pop_Variant22(__symbols);
++        let __sym0 = __pop_Variant23(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action15::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce50<
+@@ -2497,11 +2523,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // Statement = SubgraphBlock => ActionFn(16);
+-        let __sym0 = __pop_Variant27(__symbols);
++        let __sym0 = __pop_Variant29(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action16::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce51<
+@@ -2516,7 +2542,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action17::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce52<
+@@ -2531,7 +2557,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action18::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce53<
+@@ -2546,7 +2572,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action19::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce54<
+@@ -2561,7 +2587,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action20::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce55<
+@@ -2576,7 +2602,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action21::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce56<
+@@ -2591,7 +2617,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action22::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant25(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
+         (1, 21)
+     }
+     fn __reduce57<
+@@ -2603,14 +2629,14 @@ mod __parse__FlowchartAst {
+     {
+         // StatementRest = Sep, Seps, Statement, StatementRest => ActionFn(8);
+         assert!(__symbols.len() >= 4);
+-        let __sym3 = __pop_Variant26(__symbols);
+-        let __sym2 = __pop_Variant25(__symbols);
+-        let __sym1 = __pop_Variant24(__symbols);
++        let __sym3 = __pop_Variant28(__symbols);
++        let __sym2 = __pop_Variant27(__symbols);
++        let __sym1 = __pop_Variant25(__symbols);
+         let __sym0 = __pop_Variant0(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym3.2.clone();
+         let __nt = super::__action8::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
+         (4, 22)
+     }
+     fn __reduce58<
+@@ -2621,11 +2647,11 @@ mod __parse__FlowchartAst {
+     ) -> (usize, usize)
+     {
+         // StatementRest = Seps => ActionFn(9);
+-        let __sym0 = __pop_Variant24(__symbols);
++        let __sym0 = __pop_Variant25(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action9::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
+         (1, 22)
+     }
+     fn __reduce59<
+@@ -2639,7 +2665,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action6::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
+         (0, 23)
+     }
+     fn __reduce60<
+@@ -2651,12 +2677,12 @@ mod __parse__FlowchartAst {
+     {
+         // Statements = Statement, StatementRest => ActionFn(7);
+         assert!(__symbols.len() >= 2);
+-        let __sym1 = __pop_Variant26(__symbols);
+-        let __sym0 = __pop_Variant25(__symbols);
++        let __sym1 = __pop_Variant28(__symbols);
++        let __sym0 = __pop_Variant27(__symbols);
+         let __start = __sym0.0.clone();
+         let __end = __sym1.2.clone();
+         let __nt = super::__action7::<>(__sym0, __sym1);
+-        __symbols.push((__start, __Symbol::Variant26(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
+         (2, 23)
+     }
+     fn __reduce61<
+@@ -2666,17 +2692,17 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2546,17 +3862,22 @@ index 979d9b43..dba59929 100644
 +        // SubgraphBlock = "subgraph", SubgraphHeader, Seps1, Statements, "end" => ActionFn(97);
          assert!(__symbols.len() >= 5);
          let __sym4 = __pop_Variant0(__symbols);
-         let __sym3 = __pop_Variant26(__symbols);
-@@ -2675,7 +2675,7 @@ mod __parse__FlowchartAst {
+-        let __sym3 = __pop_Variant26(__symbols);
+-        let __sym2 = __pop_Variant24(__symbols);
++        let __sym3 = __pop_Variant28(__symbols);
++        let __sym2 = __pop_Variant25(__symbols);
+         let __sym1 = __pop_Variant6(__symbols);
          let __sym0 = __pop_Variant0(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym4.2.clone();
 -        let __nt = super::__action95::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
+-        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
 +        let __nt = super::__action97::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant29(__nt), __end));
          (5, 24)
      }
-@@ -2686,7 +2686,7 @@ mod __parse__FlowchartAst {
+     fn __reduce62<
+@@ -2686,16 +2712,16 @@ mod __parse__FlowchartAst {
          _: core::marker::PhantomData<()>,
      ) -> (usize, usize)
      {
@@ -2564,17 +3885,48 @@ index 979d9b43..dba59929 100644
 +        // SubgraphBlock = "subgraph", Seps1, Statements, "end" => ActionFn(98);
          assert!(__symbols.len() >= 4);
          let __sym3 = __pop_Variant0(__symbols);
-         let __sym2 = __pop_Variant26(__symbols);
-@@ -2694,7 +2694,7 @@ mod __parse__FlowchartAst {
+-        let __sym2 = __pop_Variant26(__symbols);
+-        let __sym1 = __pop_Variant24(__symbols);
++        let __sym2 = __pop_Variant28(__symbols);
++        let __sym1 = __pop_Variant25(__symbols);
          let __sym0 = __pop_Variant0(__symbols);
          let __start = __sym0.0.clone();
          let __end = __sym3.2.clone();
 -        let __nt = super::__action96::<>(__sym0, __sym1, __sym2, __sym3);
+-        __symbols.push((__start, __Symbol::Variant27(__nt), __end));
 +        let __nt = super::__action98::<>(__sym0, __sym1, __sym2, __sym3);
-         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant29(__nt), __end));
          (4, 24)
      }
-@@ -2980,7 +2980,7 @@ fn __action22<
+     fn __reduce63<
+@@ -2710,7 +2736,7 @@ mod __parse__FlowchartAst {
+         let __start = __sym0.0.clone();
+         let __end = __sym0.2.clone();
+         let __nt = super::__action47::<>(__sym0);
+-        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant30(__nt), __end));
+         (1, 25)
+     }
+     fn __reduce64<
+@@ -2724,7 +2750,7 @@ mod __parse__FlowchartAst {
+         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
+         let __end = __start;
+         let __nt = super::__action48::<>(&__start, &__end);
+-        __symbols.push((__start, __Symbol::Variant28(__nt), __end));
++        __symbols.push((__start, __Symbol::Variant30(__nt), __end));
+         (0, 25)
+     }
+ }
+@@ -2885,7 +2911,7 @@ fn __action13<
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+     (_, r, _): (usize, usize, usize),
+-    (_, sd, _): (usize, String, usize),
++    (_, sd, _): (usize, ShapeDataToken, usize),
+ ) -> Stmt
+ {
+     Stmt::ShapeData {
+@@ -2980,7 +3006,7 @@ fn __action22<
  fn __action23<
  >(
      (_, start, _): (usize, Vec<Node>, usize),
@@ -2583,7 +3935,7 @@ index 979d9b43..dba59929 100644
  ) -> (Vec<Vec<Node>>, Vec<Vec<Edge>>)
  {
      {
-@@ -2988,7 +2988,7 @@ fn __action23<
+@@ -2988,7 +3014,7 @@ fn __action23<
      let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
  
      let mut prev_group = start;
@@ -2592,7 +3944,7 @@ index 979d9b43..dba59929 100644
        let mut segment_edges: Vec<Edge> = Vec::new();
        for from in &prev_group {
          for to in &next_group {
-@@ -3004,6 +3004,7 @@ fn __action23<
+@@ -3004,6 +3030,7 @@ fn __action23<
            let label_span = label.as_ref().and_then(|l| l.span);
            let label_selection = label.as_ref().and_then(|l| l.selection);
            segment_edges.push(Edge {
@@ -2600,7 +3952,7 @@ index 979d9b43..dba59929 100644
              from: from.id.clone(),
              to: to.id.clone(),
              id: edge_id,
-@@ -3042,14 +3043,16 @@ fn __action24<
+@@ -3042,14 +3069,16 @@ fn __action24<
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
  fn __action25<
  >(
@@ -2618,7 +3970,7 @@ index 979d9b43..dba59929 100644
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-@@ -3059,9 +3062,12 @@ fn __action26<
+@@ -3059,9 +3088,12 @@ fn __action26<
      (_, a, _): (usize, ArrowToken, usize),
      (_, l, _): (usize, Option<LabeledText>, usize),
      (_, n, _): (usize, Vec<Node>, usize),
@@ -2633,7 +3985,54 @@ index 979d9b43..dba59929 100644
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-@@ -3437,8 +3443,8 @@ fn __action48<
+@@ -3109,7 +3141,7 @@ fn __action30<
+     (_, id, _): (usize, String, usize),
+     (_, r, _): (usize, usize, usize),
+     (_, nl, _): (usize, NodeLabelToken, usize),
+-    (_, sd, _): (usize, Option<String>, usize),
++    (_, sd, _): (usize, Option<ShapeDataToken>, usize),
+     (_, cls, _): (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3190,7 +3222,7 @@ fn __action32<
+     (_, id, _): (usize, String, usize),
+     (_, r, _): (usize, usize, usize),
+     (_, nl, _): (usize, NodeLabelToken, usize),
+-    (_, sd, _): (usize, Option<String>, usize),
++    (_, sd, _): (usize, Option<ShapeDataToken>, usize),
+     (_, cls, _): (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3231,7 +3263,7 @@ fn __action33<
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+     (_, r, _): (usize, usize, usize),
+-    (_, sd, _): (usize, String, usize),
++    (_, sd, _): (usize, ShapeDataToken, usize),
+     (_, cls, _): (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3323,8 +3355,8 @@ fn __action36<
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+ fn __action37<
+ >(
+-    (_, __0, _): (usize, String, usize),
+-) -> Option<String>
++    (_, __0, _): (usize, ShapeDataToken, usize),
++) -> Option<ShapeDataToken>
+ {
+     Some(__0)
+ }
+@@ -3334,7 +3366,7 @@ fn __action38<
+ >(
+     __lookbehind: &usize,
+     __lookahead: &usize,
+-) -> Option<String>
++) -> Option<ShapeDataToken>
+ {
+     None
+ }
+@@ -3437,8 +3469,8 @@ fn __action48<
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
  fn __action49<
  >(
@@ -2644,7 +4043,7 @@ index 979d9b43..dba59929 100644
  {
      alloc::vec![__0]
  }
-@@ -3446,9 +3452,9 @@ fn __action49<
+@@ -3446,9 +3478,9 @@ fn __action49<
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
  fn __action50<
  >(
@@ -2657,7 +4056,43 @@ index 979d9b43..dba59929 100644
  {
      { let mut v = v; v.push(e); v }
  }
-@@ -3745,6 +3751,36 @@ fn __action64<
+@@ -3595,7 +3627,7 @@ fn __action59<
+     __0: (usize, String, usize),
+     __1: (usize, usize, usize),
+     __2: (usize, NodeLabelToken, usize),
+-    __3: (usize, Option<String>, usize),
++    __3: (usize, Option<ShapeDataToken>, usize),
+     __4: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3647,7 +3679,7 @@ fn __action61<
+     __0: (usize, String, usize),
+     __1: (usize, usize, usize),
+     __2: (usize, NodeLabelToken, usize),
+-    __3: (usize, Option<String>, usize),
++    __3: (usize, Option<ShapeDataToken>, usize),
+     __4: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3674,7 +3706,7 @@ fn __action62<
+ >(
+     __0: (usize, String, usize),
+     __1: (usize, usize, usize),
+-    __2: (usize, String, usize),
++    __2: (usize, ShapeDataToken, usize),
+     __3: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3724,7 +3756,7 @@ fn __action64<
+ >(
+     __0: (usize, String, usize),
+     __1: (usize, usize, usize),
+-    __2: (usize, String, usize),
++    __2: (usize, ShapeDataToken, usize),
+ ) -> Stmt
+ {
+     let __start0 = __0.0;
+@@ -3745,6 +3777,36 @@ fn __action64<
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
  fn __action65<
@@ -2694,7 +4129,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3766,7 +3802,7 @@ fn __action65<
+@@ -3766,7 +3828,7 @@ fn __action65<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2703,7 +4138,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3788,7 +3824,7 @@ fn __action66<
+@@ -3788,7 +3850,7 @@ fn __action66<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2712,7 +4147,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3810,7 +3846,7 @@ fn __action67<
+@@ -3810,7 +3872,7 @@ fn __action67<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2721,7 +4156,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, Option<String>, usize),
-@@ -3832,7 +3868,7 @@ fn __action68<
+@@ -3832,11 +3894,11 @@ fn __action68<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2730,7 +4165,12 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -3858,7 +3894,7 @@ fn __action69<
+-    __2: (usize, Option<String>, usize),
++    __2: (usize, Option<ShapeDataToken>, usize),
+     __3: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3858,7 +3920,7 @@ fn __action69<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2739,7 +4179,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, Vec<String>, usize),
-@@ -3880,7 +3916,7 @@ fn __action70<
+@@ -3880,11 +3942,11 @@ fn __action70<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2748,7 +4188,12 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -3906,7 +3942,7 @@ fn __action71<
+-    __2: (usize, Option<String>, usize),
++    __2: (usize, Option<ShapeDataToken>, usize),
+     __3: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3906,10 +3968,10 @@ fn __action71<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2756,8 +4201,12 @@ index 979d9b43..dba59929 100644
 +fn __action73<
  >(
      __0: (usize, String, usize),
-     __1: (usize, String, usize),
-@@ -3930,7 +3966,7 @@ fn __action72<
+-    __1: (usize, String, usize),
++    __1: (usize, ShapeDataToken, usize),
+     __2: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -3930,7 +3992,7 @@ fn __action72<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2766,7 +4215,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, Vec<String>, usize),
-@@ -3952,7 +3988,7 @@ fn __action73<
+@@ -3952,10 +4014,10 @@ fn __action73<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2774,8 +4223,12 @@ index 979d9b43..dba59929 100644
 +fn __action75<
  >(
      __0: (usize, String, usize),
-     __1: (usize, String, usize),
-@@ -3974,7 +4010,35 @@ fn __action74<
+-    __1: (usize, String, usize),
++    __1: (usize, ShapeDataToken, usize),
+ ) -> Stmt
+ {
+     let __start0 = __0.2;
+@@ -3974,7 +4036,35 @@ fn __action74<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2812,7 +4265,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -3986,7 +4050,7 @@ fn __action75<
+@@ -3986,7 +4076,7 @@ fn __action75<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2821,7 +4274,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -3994,7 +4058,7 @@ fn __action75<
+@@ -3994,7 +4084,7 @@ fn __action75<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2830,7 +4283,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
  ) -> (String, Option<String>, SourceSpan)
-@@ -4006,7 +4070,7 @@ fn __action76<
+@@ -4006,7 +4096,7 @@ fn __action76<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2839,7 +4292,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4014,7 +4078,7 @@ fn __action76<
+@@ -4014,7 +4104,7 @@ fn __action76<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2848,7 +4301,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4026,7 +4090,7 @@ fn __action77<
+@@ -4026,7 +4116,7 @@ fn __action77<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2857,7 +4310,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4034,7 +4098,7 @@ fn __action77<
+@@ -4034,7 +4124,7 @@ fn __action77<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2866,7 +4319,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
  ) -> (String, Option<String>, SourceSpan)
-@@ -4046,7 +4110,7 @@ fn __action78<
+@@ -4046,7 +4136,7 @@ fn __action78<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2875,7 +4328,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4054,7 +4118,7 @@ fn __action78<
+@@ -4054,7 +4144,7 @@ fn __action78<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2884,7 +4337,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4066,7 +4130,7 @@ fn __action79<
+@@ -4066,7 +4156,7 @@ fn __action79<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2893,7 +4346,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4074,7 +4138,7 @@ fn __action79<
+@@ -4074,7 +4164,7 @@ fn __action79<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2902,7 +4355,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
  ) -> (String, Option<String>, SourceSpan)
-@@ -4086,7 +4150,7 @@ fn __action80<
+@@ -4086,7 +4176,7 @@ fn __action80<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2911,7 +4364,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4094,7 +4158,7 @@ fn __action80<
+@@ -4094,7 +4184,7 @@ fn __action80<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2920,7 +4373,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, String, usize),
-@@ -4106,7 +4170,7 @@ fn __action81<
+@@ -4106,7 +4196,7 @@ fn __action81<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2929,7 +4382,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4114,7 +4178,7 @@ fn __action81<
+@@ -4114,7 +4204,7 @@ fn __action81<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2938,7 +4391,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
  ) -> (String, Option<String>, SourceSpan)
-@@ -4126,7 +4190,7 @@ fn __action82<
+@@ -4126,7 +4216,7 @@ fn __action82<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -2947,7 +4400,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
      )
-@@ -4134,13 +4198,13 @@ fn __action82<
+@@ -4134,13 +4224,13 @@ fn __action82<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2963,7 +4416,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __0.0;
      let __end0 = __0.2;
-@@ -4158,12 +4222,12 @@ fn __action83<
+@@ -4158,12 +4248,12 @@ fn __action83<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2978,7 +4431,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __0.0;
      let __end0 = __0.0;
-@@ -4182,13 +4246,13 @@ fn __action84<
+@@ -4182,13 +4272,13 @@ fn __action84<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -2994,7 +4447,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __2.0;
      let __end0 = __2.2;
-@@ -4196,7 +4260,7 @@ fn __action85<
+@@ -4196,7 +4286,7 @@ fn __action85<
          __2,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3003,7 +4456,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4206,12 +4270,12 @@ fn __action85<
+@@ -4206,12 +4296,12 @@ fn __action85<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3018,7 +4471,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __1.2;
      let __end0 = __2.0;
-@@ -4220,7 +4284,7 @@ fn __action86<
+@@ -4220,7 +4310,7 @@ fn __action86<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3027,7 +4480,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4230,12 +4294,12 @@ fn __action86<
+@@ -4230,12 +4320,12 @@ fn __action86<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3042,7 +4495,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __1.0;
      let __end0 = __1.2;
-@@ -4243,7 +4307,7 @@ fn __action87<
+@@ -4243,7 +4333,7 @@ fn __action87<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3051,7 +4504,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
          __2,
-@@ -4252,11 +4316,11 @@ fn __action87<
+@@ -4252,11 +4342,11 @@ fn __action87<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3065,7 +4518,7 @@ index 979d9b43..dba59929 100644
  {
      let __start0 = __0.2;
      let __end0 = __1.0;
-@@ -4265,7 +4329,7 @@ fn __action88<
+@@ -4265,7 +4355,7 @@ fn __action88<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3074,7 +4527,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
          __1,
-@@ -4274,7 +4338,7 @@ fn __action88<
+@@ -4274,7 +4364,7 @@ fn __action88<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3083,7 +4536,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Node, usize),
  ) -> Vec<Node>
-@@ -4294,7 +4358,7 @@ fn __action89<
+@@ -4294,7 +4384,7 @@ fn __action89<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3092,7 +4545,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Node, usize),
      __1: (usize, alloc::vec::Vec<Node>, usize),
-@@ -4314,7 +4378,7 @@ fn __action90<
+@@ -4314,11 +4404,11 @@ fn __action90<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3101,7 +4554,12 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -4328,7 +4392,7 @@ fn __action91<
+-    __2: (usize, String, usize),
++    __2: (usize, ShapeDataToken, usize),
+     __3: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -4328,7 +4418,7 @@ fn __action91<
          __2,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3110,7 +4568,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4338,7 +4402,7 @@ fn __action91<
+@@ -4338,7 +4428,7 @@ fn __action91<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3119,7 +4577,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -4352,7 +4416,7 @@ fn __action92<
+@@ -4352,7 +4442,7 @@ fn __action92<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3128,7 +4586,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4362,7 +4426,7 @@ fn __action92<
+@@ -4362,11 +4452,11 @@ fn __action92<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3137,7 +4595,12 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -4376,7 +4440,7 @@ fn __action93<
+-    __2: (usize, String, usize),
++    __2: (usize, ShapeDataToken, usize),
+     __3: (usize, Vec<String>, usize),
+ ) -> Node
+ {
+@@ -4376,7 +4466,7 @@ fn __action93<
          __2,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3146,7 +4609,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4386,7 +4450,7 @@ fn __action93<
+@@ -4386,7 +4476,7 @@ fn __action93<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3155,7 +4618,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, String, usize),
      __1: (usize, NodeLabelToken, usize),
-@@ -4400,7 +4464,7 @@ fn __action94<
+@@ -4400,7 +4490,7 @@ fn __action94<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3164,7 +4627,7 @@ index 979d9b43..dba59929 100644
          __0,
          __1,
          __temp0,
-@@ -4410,7 +4474,7 @@ fn __action94<
+@@ -4410,7 +4500,7 @@ fn __action94<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3173,7 +4636,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, SubgraphHeader, usize),
-@@ -4425,7 +4489,7 @@ fn __action95<
+@@ -4425,7 +4515,7 @@ fn __action95<
          __1,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -3182,7 +4645,7 @@ index 979d9b43..dba59929 100644
          __0,
          __temp0,
          __2,
-@@ -4436,7 +4500,7 @@ fn __action95<
+@@ -4436,7 +4526,7 @@ fn __action95<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -3191,7 +4654,7 @@ index 979d9b43..dba59929 100644
  >(
      __0: (usize, Tok, usize),
      __1: (usize, (), usize),
-@@ -4451,7 +4515,7 @@ fn __action96<
+@@ -4451,7 +4541,7 @@ fn __action96<
          &__end0,
      );
      let __temp0 = (__start0, __temp0, __end0);
@@ -11442,6 +12905,45 @@ index f5d64403..e8faf9a7 100644
      )
  }
  
+diff --git a/crates/merman-core/src/inline_config.rs b/crates/merman-core/src/inline_config.rs
+index fe8d8293..be3798b6 100644
+--- a/crates/merman-core/src/inline_config.rs
++++ b/crates/merman-core/src/inline_config.rs
+@@ -16,6 +16,34 @@ pub(crate) fn parse_mermaid_inline_object_controlled(
+     )
+ }
+ 
++pub(crate) fn parse_mermaid_inline_object_capture_controlled(
++    input: &str,
++    control: &crate::OperationControl,
++) -> crate::OperationControlResult<crate::yaml_config::YamlValueCapture> {
++    let (yaml, prefix) = if input.contains('\n') {
++        (format!("{input}\n"), 0)
++    } else {
++        (format!("{{\n{input}\n}}"), 2)
++    };
++    let mut capture = crate::yaml_config::parse_yaml_value_capture_controlled(
++        &yaml,
++        crate::MAX_DIAGRAM_NESTING_DEPTH,
++        control,
++    )?;
++    for key in &mut capture.keys {
++        for span in [&mut key.span, &mut key.value_span, &mut key.value_selection] {
++            *span = span.take().and_then(|range| {
++                let start = range.start.checked_sub(prefix)?;
++                let end = range.end.checked_sub(prefix)?;
++                // A block scalar can include the synthetic final newline added for YAML parsing.
++                (start <= input.len() && end <= input.len() + 1)
++                    .then_some(start..end.min(input.len()))
++            });
++        }
++    }
++    Ok(capture)
++}
++
+ pub(crate) fn value_to_string(v: &Value) -> Option<String> {
+     match v {
+         Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
 index f4d33957..75332de3 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
@@ -11536,9 +13038,18 @@ index f4d33957..75332de3 100644
              output
                  .model_mut()
 diff --git a/crates/merman-core/src/preprocess/mod.rs b/crates/merman-core/src/preprocess/mod.rs
-index f34006a4..11cc87c1 100644
+index f34006a4..823e552a 100644
 --- a/crates/merman-core/src/preprocess/mod.rs
 +++ b/crates/merman-core/src/preprocess/mod.rs
+@@ -13,7 +13,7 @@ use crate::{
+     OperationControlResult, Result, SourceSpan, diagram::CapturedPanic, editor::line_content_end,
+ };
+ use serde_json::{Map, Value};
+-use source_edit_map::{ReplacementMapping, SourceEdit};
++pub(crate) use source_edit_map::{ReplacementMapping, SourceEdit};
+ use std::borrow::Cow;
+ #[cfg(test)]
+ use std::cell::Cell;
 @@ -81,6 +81,8 @@ impl SourceConfigCaptureMode {
  struct LocalConfigKeyEvidence {
      path: SourceConfigPath,
@@ -11657,9 +13168,34 @@ index b8af3454..c16ea401 100644
          self.origin
      }
 diff --git a/crates/merman-core/src/preprocess/source_edit_map.rs b/crates/merman-core/src/preprocess/source_edit_map.rs
-index 9d3f459c..ba84cf12 100644
+index 9d3f459c..d751cf8b 100644
 --- a/crates/merman-core/src/preprocess/source_edit_map.rs
 +++ b/crates/merman-core/src/preprocess/source_edit_map.rs
+@@ -8,13 +8,13 @@ const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
+ const CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS: usize = 128;
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub(super) enum ReplacementMapping {
++pub(crate) enum ReplacementMapping {
+     ExactBytes,
+     Boundaries,
+ }
+ 
+ #[derive(Debug, Clone)]
+-pub(super) struct SourceEdit {
++pub(crate) struct SourceEdit {
+     range: Range<usize>,
+     replacement: String,
+     mapping: ReplacementMapping,
+@@ -29,7 +29,7 @@ impl SourceEdit {
+         }
+     }
+ 
+-    pub(super) fn replace(
++    pub(crate) fn replace(
+         range: Range<usize>,
+         replacement: impl Into<String>,
+         mapping: ReplacementMapping,
 @@ -96,7 +96,7 @@ impl PreprocessedSource {
          self.edit_map.try_map_span(span)
      }
@@ -11669,6 +13205,15 @@ index 9d3f459c..ba84cf12 100644
          if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
              return None;
          }
+@@ -141,7 +141,7 @@ impl PreprocessedSource {
+         self.text
+     }
+ 
+-    pub(super) fn apply_edits(
++    pub(crate) fn apply_edits(
+         &mut self,
+         edits: Vec<SourceEdit>,
+         control: &OperationControl,
 diff --git a/crates/merman-core/src/resources.rs b/crates/merman-core/src/resources.rs
 index 757532f5..9ba70e61 100644
 --- a/crates/merman-core/src/resources.rs
@@ -13960,10 +15505,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..739c43d9
+index 00000000..d35365b3
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,127 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -14030,6 +15575,66 @@ index 00000000..739c43d9
 +        !plain.svg().contains("data-mt-"),
 +        "provenance must remain opt-in"
 +    );
++}
++
++#[test]
++fn native_shape_data_provenance_retains_yaml_bytes_and_authored_label_order() {
++    let source = "flowchart LR\r\n%% 😀\r\nA@{label: \"Earlier 😀\"}\r\nA[\"Last 😀\"]\r\nM@{shape: rounded, label: \"First\r\n   second 😀\", unused: ignored}\r\n";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let map: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|node| node.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let slice = |span: &Value| {
++        &source[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
++    };
++    let effective_a = map
++        .iter()
++        .find(|p| p["domId"] == "node:A" && p["effective"] == true)
++        .unwrap();
++    assert_eq!(slice(&effective_a["labelSpan"]), "Last 😀");
++    let effective_m = map
++        .iter()
++        .find(|p| p["domId"] == "node:M" && p["effective"] == true)
++        .unwrap();
++    assert_eq!(
++        slice(&effective_m["span"]),
++        "M@{shape: rounded, label: \"First\r\n   second 😀\", unused: ignored}"
++    );
++    assert_eq!(slice(&effective_m["labelSpan"]), "First\r\n   second 😀");
++    assert!(
++        map.iter()
++            .any(|p| p["property"] == "shape" && slice(&p["span"]) == "rounded")
++    );
++    assert!(map.iter().any(|p| p["kind"] == "nonvisual"
++        && p["classification"] == "ignored-shape-data-property"
++        && slice(&p["span"]) == "ignored"));
++    let a = svg
++        .descendants()
++        .find(|n| n.attribute("data-mt-key") == Some("node:A"))
++        .unwrap();
++    let displayed: String = a
++        .descendants()
++        .filter(|n| n.is_text())
++        .filter_map(|n| n.text())
++        .collect();
++    assert!(displayed.contains("Last 😀"));
++    assert!(!displayed.contains("Earlier 😀"));
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs
 new file mode 100644
