@@ -28156,6 +28156,36 @@ index c8ebca79..5176a8ee 100644
                  actor: p.to_string(),
                  pos,
                  color,
+diff --git a/crates/merman-render/src/journey/config.rs b/crates/merman-render/src/journey/config.rs
+index 6f096465..a2bbd954 100644
+--- a/crates/merman-render/src/journey/config.rs
++++ b/crates/merman-render/src/journey/config.rs
+@@ -77,6 +77,16 @@ impl<'a> JourneyConfigView<'a> {
+     pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
+         JourneyRenderSettings {
+             task_text_style: self.task_text_style(),
++            text_placement: config_string(self.journey_config, &["textPlacement"])
++                .unwrap_or_else(|| "fo".to_string()),
++            section_colours: {
++                let colours = config_string_vec(self.journey_config, &["sectionColours"]);
++                if colours.is_empty() {
++                    vec!["#fff".to_string()]
++                } else {
++                    colours
++                }
++            },
+             title_font_size: config_string(self.journey_config, &["titleFontSize"])
+                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
+             title_font_family: config_string(self.journey_config, &["titleFontFamily"])
+@@ -157,6 +167,8 @@ pub(crate) struct JourneyLayoutSettings {
+ #[derive(Debug, Clone)]
+ pub(crate) struct JourneyRenderSettings {
+     pub(crate) task_text_style: TextStyle,
++    pub(crate) text_placement: String,
++    pub(crate) section_colours: Vec<String>,
+     pub(crate) title_font_size: String,
+     pub(crate) title_font_family: String,
+     pub(crate) title_color: String,
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
@@ -29514,10 +29544,18 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..aaff5861 100644
+index 61faa868..50f2580d 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
-@@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -255,6 +255,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+     struct JourneyTextStyle<'a> {
+         task_font_size: f64,
+         task_font_family: &'a str,
++        text_placement: &'a str,
+     }
+ 
+     fn write_text_candidate(
+@@ -264,6 +265,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          text_box: JourneyTextBox,
          style: JourneyTextStyle<'_>,
          text_fill: &str,
@@ -29525,16 +29563,102 @@ index 61faa868..aaff5861 100644
      ) {
          let JourneyTextBox {
              x,
-@@ -282,7 +283,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -274,6 +276,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+         let JourneyTextStyle {
+             task_font_size,
+             task_font_family,
++            text_placement,
+         } = style;
+         let content_esc = escape_xml(content);
+         let class_esc = escape_attr(class);
+@@ -282,33 +285,59 @@ pub(crate) fn render_journey_diagram_svg_model(
          let cx = x + width / 2.0;
          let cy = y + height / 2.0;
  
 -        out.push_str("<switch>");
-+        let _ = write!(out, "<switch{trace}>");
-         let _ = write!(
-             out,
-             r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
-@@ -379,6 +380,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+-        let _ = write!(
+-            out,
+-            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
+-            x = fmt(x),
+-            y = fmt(y),
+-            w = fmt(width),
+-            h = fmt(height),
+-        );
+-        let _ = write!(
+-            out,
+-            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">{text}</div></div>"#,
+-            class = class_esc,
+-            text = content_esc
+-        );
+-        out.push_str("</foreignObject>");
++        if text_placement == "old" {
++            let _ = write!(
++                out,
++                r#"<text{trace} x="{x}" y="{y}" class="{class}" style="text-anchor: middle;">{text}</text>"#,
++                x = fmt(cx),
++                y = fmt(cy + 5.0),
++                class = class_esc,
++                text = content_esc
++            );
++            return;
++        }
++        let foreign_object = text_placement == "fo";
++        if foreign_object {
++            let _ = write!(out, "<switch{trace}>");
++            let _ = write!(
++                out,
++                r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
++                x = fmt(x),
++                y = fmt(y),
++                w = fmt(width),
++                h = fmt(height),
++            );
++            let _ = write!(
++                out,
++                r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">{text}</div></div>"#,
++                class = class_esc,
++                text = content_esc
++            );
++            out.push_str("</foreignObject>");
++        } else {
++            let _ = write!(out, "<g{trace}>");
++        }
+ 
+         let lines = split_html_br_lines(content);
+         let n = lines.len().max(1) as f64;
+         for (i, line) in lines.into_iter().enumerate() {
+             let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
++            let fill = if foreign_object {
++                format!(" fill: {fill_esc};")
++            } else {
++                String::new()
++            };
++            let fill_attr = if foreign_object {
++                String::new()
++            } else {
++                format!(r#" fill="{fill_esc}""#)
++            };
+             let _ = write!(
+                 out,
+-                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff}; fill: {fill};"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
++                r#"<text{fill_attr} x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};{fill}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+                 x = fmt(cx),
+                 y = fmt(cy),
+-                fill = fill_esc,
++                fill = fill,
+                 class = class_esc,
+                 fs = fmt(task_font_size),
+                 ff = font_family_esc,
+@@ -317,7 +346,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+             );
+         }
+ 
+-        out.push_str("</switch>");
++        out.push_str(if foreign_object { "</switch>" } else { "</g>" });
+     }
+ 
+     let mut out = String::new();
+@@ -379,6 +408,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          );
      }
  
@@ -29542,7 +29666,7 @@ index 61faa868..aaff5861 100644
      let theme = PresentationTheme::new(effective_config).journey();
      let css = journey_css(diagram_id, effective_config, &theme);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-@@ -395,7 +397,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -395,7 +425,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      for item in &layout.actor_legend {
          let _ = write!(
              &mut out,
@@ -29556,7 +29680,7 @@ index 61faa868..aaff5861 100644
              cx = fmt(item.circle_cx),
              cy = fmt(item.circle_cy),
              pos = item.pos,
-@@ -405,7 +412,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -405,7 +440,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for line in &item.label_lines {
              let _ = write!(
                  &mut out,
@@ -29570,11 +29694,13 @@ index 61faa868..aaff5861 100644
                  x = fmt(line.x),
                  y = fmt(line.y),
                  tx = fmt(line.tspan_x),
-@@ -415,16 +427,23 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -415,16 +455,28 @@ pub(crate) fn render_journey_diagram_svg_model(
      }
  
      let mut section_iter = layout.sections.iter();
 -    let mut last_section: Option<&str> = None;
++    let mut section_number = 0usize;
++    let mut text_colour = "black";
 +    // Match native layout and Mermaid drawTasks: initial tasks have no section.
 +    let mut last_section: Option<&str> = Some("");
      for task in &layout.tasks {
@@ -29582,6 +29708,9 @@ index 61faa868..aaff5861 100644
              let Some(section) = section_iter.next() else {
                  break;
              };
++            text_colour = &render_settings.section_colours
++                [section_number % render_settings.section_colours.len()];
++            section_number += 1;
 +            let section_key = section
 +                .source_index
 +                .map(|index| format!("journey:section:{index}"));
@@ -29596,17 +29725,25 @@ index 61faa868..aaff5861 100644
                  x = fmt(section.x),
                  y = fmt(section.y),
                  fill = escape_attr(&section.fill),
-@@ -447,6 +466,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -445,8 +497,16 @@ pub(crate) fn render_journey_diagram_svg_model(
+                 JourneyTextStyle {
+                     task_font_size,
                      task_font_family,
++                    text_placement: &render_settings.text_placement,
++                },
++                if render_settings.text_placement == "fo" {
++                    &theme.text_color
++                } else {
++                    text_colour
                  },
-                 &theme.text_color,
+-                &theme.text_color,
 +                &section_key.as_deref().map_or_else(String::new, |key| {
 +                    crate::svg::parity::source_attrs(&model.source_occurrences, key, true)
 +                }),
              );
              out.push_str("</g>");
          }
-@@ -455,7 +477,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -455,7 +515,12 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29620,7 +29757,7 @@ index 61faa868..aaff5861 100644
              id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
              x1 = fmt(task.line_x1),
              y1 = fmt(task.line_y1),
-@@ -466,12 +493,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -466,12 +531,25 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29648,7 +29785,7 @@ index 61faa868..aaff5861 100644
          let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
          let eye_r = 1.5;
          let _ = write!(
-@@ -534,7 +574,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -534,7 +612,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for c in &task.actor_circles {
              let _ = write!(
                  &mut out,
@@ -29662,10 +29799,18 @@ index 61faa868..aaff5861 100644
                  cx = fmt(c.cx),
                  cy = fmt(c.cy),
                  pos = c.pos,
-@@ -559,6 +604,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -557,8 +640,18 @@ pub(crate) fn render_journey_diagram_svg_model(
+             JourneyTextStyle {
+                 task_font_size,
                  task_font_family,
++                text_placement: &render_settings.text_placement,
++            },
++            if render_settings.text_placement == "fo" {
++                &theme.text_color
++            } else {
++                text_colour
              },
-             &theme.text_color,
+-            &theme.text_color,
 +            &crate::svg::parity::source_attrs(
 +                &model.source_occurrences,
 +                &format!("journey:task:{}", task.index),
@@ -29674,7 +29819,7 @@ index 61faa868..aaff5861 100644
          );
  
          out.push_str("</g>");
-@@ -567,7 +617,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +660,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
@@ -29688,7 +29833,7 @@ index 61faa868..aaff5861 100644
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
-@@ -668,6 +723,7 @@ mod tests {
+@@ -668,6 +766,7 @@ mod tests {
              title_y: 25.0,
              actor_legend: Vec::new(),
              sections: vec![JourneySectionLayout {
@@ -30600,6 +30745,52 @@ index be0592cb..56cc21a0 100644
 +    }
 +    out
 +}
+diff --git a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs b/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
+index d42bad8f..3c9bd090 100644
+--- a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
++++ b/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
+@@ -174,9 +174,16 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
+ 
+         if let Some((switch_start, switch_close_start, switch_close_end)) = switch_wrapper {
+             // This foreignObject is part of a <switch> element with native SVG fallback text.
+-            // Unwrap the <switch>: remove <switch> + <foreignObject>, keep sibling <text>
+-            // fallback elements.
++            // Replace the switch with a group: retain its identity/style and every
++            // native fallback line after removing the foreignObject.
+             out.push_str(&svg[cursor..switch_start]);
++            let switch_tag = &svg[switch_start..start];
++            // The structural scanner has verified the wrapper; copy its attributes verbatim.
++            if let Some(switch_open_end) = find_tag_end_with_checkpoints(switch_tag, 0, checkpoint)?
++            {
++                out.push_str("<g");
++                out.push_str(&switch_tag["<switch".len()..=switch_open_end]);
++            }
+             if !fo_tag.trim_end().ends_with("/>") {
+                 let fo_close_start = open_end + 1;
+                 if let Some(fo_close_rel) =
+@@ -186,6 +193,7 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
+                     out.push_str(&svg[after_fo..switch_close_start]);
+                 }
+             }
++            out.push_str("</g>");
+             cursor = switch_close_end;
+             continue;
+         }
+@@ -673,9 +681,12 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn strip_foreign_objects_unwraps_switch_with_attrs() {
+-        let svg = r##"<svg><switch data-renderer="future"><foreignObject x="10" y="20" width="100" height="50"><div xmlns="http://www.w3.org/1999/xhtml">Make tea</div></foreignObject><text x="60" y="45">Make tea</text></switch></svg>"##;
++    fn strip_foreign_objects_preserves_switch_attributes_on_replacement_group() {
++        let svg = r##"<svg><switch data-renderer="future" data-mt-key="journey:task:0" data-mt-label="true"><foreignObject x="10" y="20" width="100" height="50"><div xmlns="http://www.w3.org/1999/xhtml">Make tea</div></foreignObject><text x="60" y="45">Make tea</text></switch></svg>"##;
+         let out = strip_foreign_objects(svg);
++        assert!(out.contains(
++            r#"<g data-renderer="future" data-mt-key="journey:task:0" data-mt-label="true">"#
++        ));
+ 
+         assert!(
+             !out.contains("<foreignObject"),
 diff --git a/crates/merman/tests/configuration_source_provenance.rs b/crates/merman/tests/configuration_source_provenance.rs
 new file mode 100644
 index 00000000..afd37acc

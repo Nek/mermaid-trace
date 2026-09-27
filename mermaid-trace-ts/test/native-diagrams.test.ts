@@ -170,7 +170,7 @@ test('OWN-STATE-ENDPOINT: saved and live references select their transition owne
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = [], reversePrimaryKey = key) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -243,6 +243,18 @@ async function verifyNative(source: string, key: string, expected: string, label
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     const labelSpan = event.span;
+    if (expectedTextColour !== undefined) {
+      const labelGroup = first.locator(labelSelector).first();
+      assert.equal(await labelGroup.evaluate(element => element.querySelectorAll('text').length || Number(element.tagName === 'text')), source.includes('textPlacement: old') ? 1 : 2);
+      const lines = labelGroup.locator('text');
+      for (const line of await lines.all()) {
+        assert.equal(await line.evaluate(element => getComputedStyle(element).fill), expectedTextColour);
+        await line.click();
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), labelSpan, 'every rendered line owns the same authored label');
+        assert.equal(await labelGroup.getAttribute('data-mt-selected'), 'true');
+        assert.equal(await line.getAttribute('tabindex'), null, 'lines must not create competing keyboard targets');
+      }
+    }
     const sharedLabelSpan = nodeSpan.start === labelSpan.start && nodeSpan.end === labelSpan.end;
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
     assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), sharedLabelSpan ? 1 : 0, 'equal-span node and label form one selection; distinct labels remain separate');
@@ -331,6 +343,14 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
+    if (expectedTextColour !== undefined) {
+      const labelGroup = page.locator(labelSelector).first();
+      for (const line of await labelGroup.locator('text').all()) {
+        await line.click();
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(label));
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(labelSpan.start), end: toMarkdownEnd(labelSpan.end) }));
+      }
+    }
     const start = toMarkdown(labelSpan.start);
     const end = toMarkdownEnd(labelSpan.end);
     await page.locator(labelSelector).first().focus();
@@ -625,7 +645,11 @@ test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owne
             range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
             doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
           }, { start: span.start + 'section '.length, end: span.end });
-          await (index === owner ? label.first() : frame).locator(':scope[data-mt-selected=true]').waitFor();
+          await page.waitForFunction(({ key, isOwner }) => {
+            const svg = document.querySelector('svg[data-mt-map]')!;
+            return svg.querySelector(`[data-mt-key="${key}"][data-mt-role=control]`)?.getAttribute('data-mt-selected') === (isOwner ? null : 'true')
+              && svg.querySelector(`[data-mt-key="${key}"][data-mt-role=control-label]`)?.getAttribute('data-mt-selected') === (isOwner ? 'true' : null);
+          }, { key, isOwner: index === owner });
           assert.equal(await frame.getAttribute('data-mt-selected'), index === owner ? null : 'true');
           assert.equal(await label.first().getAttribute('data-mt-selected'), index === owner ? 'true' : null);
         }
@@ -644,6 +668,17 @@ test('JOURNEY-2-TITLE: YAML titles keep saved and live source ownership and body
   }
   await verifyNative('---\ntitle: >-\n  First 😀\n  Second\n---\njourney\nTask : 5 : Alice\n', 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', 'First 😀\n  Second', 'control-label']]);
   await verifyNative('---\ntitle: >-\n  First 😀\n  Second\nconfig:\n  htmlLabels: false\n---\njourney\nTask : 5 : Alice\n', 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', 'First 😀\n  Second\n', 'control-label']]);
+});
+
+test('JOURNEY-2-TEXT: every label line remains one saved and live source target across text modes', { timeout: 300_000 }, async () => {
+  for (const br of ['<br>', '<BR>', '<br/>', '<br />']) for (const mode of ['fo', 'old', 'tspan', 'other']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  journey:\n    textPlacement: ${mode}\n    taskFontSize: 18\n---\njourney\n%% 😀\nsection Day${br}Line\nTask${br}Line :5: Alice\n`;
+    await verifyNative(source, 'journey:task:0', `Task${br}Line :5: Alice`, `Task${br}Line`, [['journey:section:0', `Day${br}Line`, 'control-label']], undefined, [], 'journey:task:0', mode === 'fo' || mode === 'old' ? 'rgb(51, 51, 51)' : 'rgb(255, 255, 255)');
+  }
+  for (const mode of ['tspan', 'other']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  journey:\n    textPlacement: ${mode}\n    taskFontSize: 18\n    sectionColours: ['#123456']\n---\njourney\nsection First\nBefore :5: Alice\nsection Second\nTask<br>Line :5: Alice\n`;
+    await verifyNative(source, 'journey:task:1', 'Task<br>Line :5: Alice', 'Task<br>Line', [['journey:section:1', 'Second', 'control-label']], undefined, [], 'journey:task:1', 'rgb(18, 52, 86)');
+  }
 });
 
 test('JOURNEY-2-OCCURRENCES: saved and live titles retain effective ownership through replacement and clearing', { timeout: 180_000 }, async () => {

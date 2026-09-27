@@ -1,4 +1,5 @@
 mod support;
+use merman::{OperationControl, RenderOutput, RenderRequest, SvgRequest};
 use serde_json::{Value, json};
 
 fn selected(source: &str, span: &Value) -> String {
@@ -7,6 +8,153 @@ fn selected(source: &str, span: &Value) -> String {
         &text[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
     )
     .unwrap()
+}
+
+#[test]
+fn journey_2_text_modes_preserve_label_groups_and_native_palette_cycles() {
+    for mode in ["fo", "old", "tspan", "other"] {
+        for br in ["<br>", "<BR>", "<br/>", "<br />"] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for html in [false, true] {
+                    let config = |trace| {
+                        merman::MermaidConfig::from_value(
+                            json!({"traceSource":trace,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace","journey":{"sectionColours":["#123456","#abcdef"]}}),
+                        )
+                    };
+                    let mapped = merman::Renderer::new()
+                        .with_engine(merman::Engine::new().with_site_config(config(true)));
+                    let plain = merman::Renderer::new()
+                        .with_engine(merman::Engine::new().with_site_config(config(false)));
+                    let source = format!(
+                        "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  journey:\r\n    textPlacement: {mode}\r\n    taskFontSize: 18\r\n    sectionColours: ['#fedcba']\r\n    sectionFills: ['#fedcba']\r\n---\r\njourney\r\n%% 😀\r\nBefore :5: Alice\r\nsection Unused\r\nsection Day{br}Line\r\nTask{br}Line :5: Alice\r\nsection Night\r\nOther :3: Bob\r\nsection Day{br}Line\r\nAgain :4: Bob\r\nsection End\r\nFinal :4: Alice\r\n"
+                    );
+                    let RenderOutput::Svg(Some(output)) = mapped
+                        .render(RenderRequest::svg(
+                            &source,
+                            OperationControl::new(),
+                            SvgRequest::default(),
+                        ))
+                        .unwrap()
+                    else {
+                        panic!("no native SVG")
+                    };
+                    let raw = roxmltree::Document::parse(output.svg()).unwrap();
+                    if mode != "fo" && mode != "old" {
+                        for (section, colour) in
+                            ["#fff", "#123456", "#abcdef", "#fedcba"].iter().enumerate()
+                        {
+                            let key = format!("journey:section:{}", section + 1);
+                            let label = raw
+                                .descendants()
+                                .find(|node| {
+                                    node.attribute("data-mt-key") == Some(key.as_str())
+                                        && node.attribute("data-mt-label") == Some("true")
+                                })
+                                .unwrap();
+                            assert!(
+                                label
+                                    .descendants()
+                                    .filter(|node| node.has_tag_name("text"))
+                                    .all(|text| text.attribute("fill") == Some(*colour)),
+                                "section run text palette: {section}/{mode}"
+                            );
+                        }
+                    }
+                    for (task, colour) in ["black", "#fff", "#123456", "#abcdef", "#fedcba"]
+                        .iter()
+                        .enumerate()
+                    {
+                        let key = format!("journey:task:{task}");
+                        let labels: Vec<_> = raw
+                            .descendants()
+                            .filter(|node| {
+                                node.attribute("data-mt-key") == Some(key.as_str())
+                                    && node.attribute("data-mt-label") == Some("true")
+                            })
+                            .collect();
+                        assert_eq!(
+                            labels.len(),
+                            1,
+                            "one native label identity: {mode}/{look}/{html}"
+                        );
+                        let label = labels[0];
+                        assert!(
+                            label.has_tag_name(if mode == "fo" {
+                                "switch"
+                            } else if mode == "old" {
+                                "text"
+                            } else {
+                                "g"
+                            }),
+                            "native text placement {mode}"
+                        );
+                        let texts: Vec<_> = label
+                            .descendants()
+                            .filter(|node| node.has_tag_name("text"))
+                            .collect();
+                        assert_eq!(texts.len(), if task == 1 && mode != "old" { 2 } else { 1 });
+                        if mode == "old" {
+                            assert!(!label.descendants().any(|node| node.has_tag_name("tspan")));
+                            if task == 1 {
+                                assert_eq!(label.text(), Some(format!("Task{br}Line ").as_str()));
+                            }
+                        } else if mode != "fo" {
+                            assert!(
+                                texts
+                                    .iter()
+                                    .all(|text| text.attribute("fill") == Some(*colour)),
+                                "palette index must follow section runs: {task}/{mode}"
+                            );
+                            if task == 1 {
+                                assert_eq!(
+                                    texts
+                                        .iter()
+                                        .map(|text| text
+                                            .children()
+                                            .find(|node| node.has_tag_name("tspan"))
+                                            .unwrap()
+                                            .attribute("dy")
+                                            .unwrap())
+                                        .collect::<Vec<_>>(),
+                                    ["-9", "9"]
+                                );
+                            }
+                        }
+                    }
+                    let result =
+                        mermaid_trace_rs::render_with(&mapped, "journey-text", &source).unwrap();
+                    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    assert_eq!(
+                        svg.descendants()
+                            .filter(
+                                |node| node.attribute("data-mt-key") == Some("journey:task:1")
+                                    && node.attribute("data-mt-role") == Some("node-label")
+                            )
+                            .count(),
+                        1,
+                        "portable label: {mode}/{look}/{html}: {}",
+                        result["svg"]
+                    );
+                    let task = result["mapping"]["pieces"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|piece| piece["domId"] == "journey:task:1")
+                        .unwrap();
+                    assert_eq!(
+                        selected(&source, &task["labelSpan"]),
+                        format!("Task{br}Line")
+                    );
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "journey-text", &source).unwrap();
+                    assert_eq!(
+                        support::strip_trace(result["svg"].as_str().unwrap()),
+                        support::strip_trace(baseline["svg"].as_str().unwrap())
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
