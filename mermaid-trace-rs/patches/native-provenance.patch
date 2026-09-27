@@ -12961,7 +12961,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..ba5f0ac7 100644
+index 68bde024..21c511bc 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -10,7 +10,7 @@ use crate::{
@@ -12997,18 +12997,66 @@ index 68bde024..ba5f0ac7 100644
      let mut editor_facts = EditorSemanticFacts::new();
      let mut lines = LineCursor::new(code);
      let mut header_seen = false;
-@@ -443,6 +453,10 @@ fn parse_journey_semantic_source(
+@@ -442,6 +452,13 @@ fn parse_journey_semantic_source(
+         if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
              editor_facts.push_directive_prefix("title");
              let value = spanned_keyword_value(line, line_start, "title");
-             if let Some(value) = value {
-+                if trace_source {
-+                    source_occurrences.retain(|p: &Value| p["domId"] != "journey:title");
-+                    source_occurrences.push(json!({"kind":"control","semanticId":"title","domId":"journey:title","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(value.start,value.end)}));
++            if trace_source {
++                let mut piece = json!({"kind":"control","semanticId":"title","domId":"journey:title","origin":"body","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len())});
++                if let Some(value) = value.as_ref() {
++                    piece["labelSpan"] = json!(SourceSpan::new(value.start, value.end));
 +                }
++                source_occurrences.push(piece);
++            }
+             if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-                     value,
-@@ -508,11 +522,20 @@ fn parse_journey_semantic_source(
+@@ -456,6 +473,13 @@ fn parse_journey_semantic_source(
+         if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
+             editor_facts.push_directive_prefix("accTitle");
+             let value = spanned_colon_value(line, line_start, "accTitle");
++            if trace_source {
++                let mut piece = json!({"kind":"nonvisual","classification":"accessibility","semanticId":"accTitle","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len())});
++                if let Some(value) = value.as_ref() {
++                    piece["labelSpan"] = json!(SourceSpan::new(value.start, value.end));
++                }
++                source_occurrences.push(piece);
++            }
+             if let Some(value) = value {
+                 push_journey_payload_fact(
+                     &mut editor_facts,
+@@ -470,6 +494,13 @@ fn parse_journey_semantic_source(
+         if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
+             editor_facts.push_directive_prefix("accDescr");
+             let value = spanned_colon_value(line, line_start, "accDescr");
++            if trace_source {
++                let mut piece = json!({"kind":"nonvisual","classification":"accessibility","semanticId":"accDescr","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len())});
++                if let Some(value) = value.as_ref() {
++                    piece["labelSpan"] = json!(SourceSpan::new(value.start, value.end));
++                }
++                source_occurrences.push(piece);
++            }
+             if let Some(value) = value {
+                 push_journey_payload_fact(
+                     &mut editor_facts,
+@@ -482,6 +513,16 @@ fn parse_journey_semantic_source(
+             continue;
+         }
+         if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
++            if trace_source {
++                let mut piece = json!({"kind":"nonvisual","classification":"accessibility","semanticId":"accDescr","span":SourceSpan::new(line_start+leading_whitespace_len(stripped),v.closing.map_or(v.span.end, |closing| closing.end))});
++                let payload = &code[v.span.start..v.span.end];
++                let text = payload.trim();
++                if !text.is_empty() {
++                    let start = v.span.start + payload.len() - payload.trim_start().len();
++                    piece["labelSpan"] = json!(SourceSpan::new(start, start + text.len()));
++                }
++                source_occurrences.push(piece);
++            }
+             editor_facts.push_directive_prefix("accDescr");
+             push_journey_payload_fact_spanned(
+                 &mut editor_facts,
+@@ -508,11 +549,20 @@ fn parse_journey_semantic_source(
          }
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
              let v = v.split(':').next().unwrap_or("").to_string();
@@ -13029,7 +13077,7 @@ index 68bde024..ba5f0ac7 100644
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,6 +600,10 @@ fn parse_journey_semantic_source(
+@@ -577,6 +627,10 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13040,7 +13088,7 @@ index 68bde024..ba5f0ac7 100644
          let rest_source = &stripped[colon + ':'.len_utf8()..];
          let rest = rest_source.trim_start();
          let rest_start =
-@@ -591,6 +618,9 @@ fn parse_journey_semantic_source(
+@@ -591,6 +645,9 @@ fn parse_journey_semantic_source(
          let score_text = rest[..score_end].trim();
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
@@ -13050,7 +13098,7 @@ index 68bde024..ba5f0ac7 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +635,32 @@ fn parse_journey_semantic_source(
+@@ -605,13 +662,32 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
@@ -13084,7 +13132,7 @@ index 68bde024..ba5f0ac7 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +688,38 @@ fn parse_journey_semantic_source(
+@@ -639,9 +715,72 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13103,7 +13151,41 @@ index 68bde024..ba5f0ac7 100644
 +                owners.insert(authored, owner);
 +            }
 +        }
-+        for piece in &mut source_occurrences {
++        let last_title = source_occurrences
++            .iter()
++            .rposition(|piece| piece["origin"] == "body" && piece["semanticId"] == "title");
++        let last_acc_title = source_occurrences.iter().rposition(|piece| {
++            piece["classification"] == "accessibility" && piece["semanticId"] == "accTitle"
++        });
++        let last_acc_descr = source_occurrences.iter().rposition(|piece| {
++            piece["classification"] == "accessibility" && piece["semanticId"] == "accDescr"
++        });
++        for (occurrence, piece) in source_occurrences.iter_mut().enumerate() {
++            if piece["origin"] == "body" && piece["semanticId"] == "title" {
++                piece["effective"] = json!(Some(occurrence) == last_title);
++                if db.title.trim().is_empty() {
++                    piece["kind"] = json!("nonvisual");
++                    piece["classification"] = json!(if Some(occurrence) == last_title {
++                        "empty-title"
++                    } else {
++                        "superseded-title"
++                    });
++                    piece
++                        .as_object_mut()
++                        .expect("source occurrence")
++                        .remove("domId");
++                }
++            }
++            if piece["classification"] == "accessibility" {
++                piece["effective"] = json!(
++                    Some(occurrence)
++                        == if piece["semanticId"] == "accTitle" {
++                            last_acc_title
++                        } else {
++                            last_acc_descr
++                        }
++                );
++            }
 +            if let Some(index) = piece["sectionIndex"].as_u64().map(|index| index as usize) {
 +                if let Some(owner) = owners.get(&index) {
 +                    piece["semanticId"] = json!(format!("section:{owner}"));
@@ -13123,6 +13205,24 @@ index 68bde024..ba5f0ac7 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
+@@ -674,7 +813,7 @@ fn spanned_keyword_value<'a>(
+     if value.is_empty() {
+         return None;
+     }
+-    let value_rel = line.find(value)?;
++    let value_rel = line.len() - after[ws.len_utf8()..].trim_start().len();
+     Some(EditorPayloadSpan {
+         text: value,
+         start: line_start + value_rel,
+@@ -697,7 +836,7 @@ fn spanned_colon_value<'a>(
+     if value.is_empty() {
+         return None;
+     }
+-    let value_rel = line.find(value)?;
++    let value_rel = line.len() - rest.trim_start().len();
+     Some(EditorPayloadSpan {
+         text: value,
+         start: line_start + value_rel,
 diff --git a/crates/merman-core/src/diagrams/kanban.rs b/crates/merman-core/src/diagrams/kanban.rs
 index 7a93d54b..3672e52f 100644
 --- a/crates/merman-core/src/diagrams/kanban.rs
@@ -31130,10 +31230,10 @@ index 00000000..56b40c23
 +}
 diff --git a/crates/merman/tests/journey_source_provenance.rs b/crates/merman/tests/journey_source_provenance.rs
 new file mode 100644
-index 00000000..ea22ba2e
+index 00000000..5c422601
 --- /dev/null
 +++ b/crates/merman/tests/journey_source_provenance.rs
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,240 @@
 +#![cfg(feature = "svg")]
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
@@ -31308,6 +31408,69 @@ index 00000000..ea22ba2e
 +        assert_eq!(
 +            title.attribute("data-mt-label"),
 +            if body.is_empty() { Some("true") } else { None }
++        );
++    }
++}
++
++#[test]
++fn journey_replacement_clearing_and_accessibility_keep_all_native_origins() {
++    let renderer = Renderer::new().with_engine(
++        Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":true}))),
++    );
++    for last in ["title title", "title "] {
++        let source = format!(
++            "---\r\ntitle: Configured\r\n---\r\njourney\r\ntitle First\r\n{last}\r\naccTitle: Earlier\r\naccTitle: accTitle\r\naccDescr {{ accDescr }}\r\naccDescr: Final 😀\r\nTask :5: Alice\r\n"
++        );
++        let RenderOutput::Svg(Some(output)) = renderer
++            .render(RenderRequest::svg(
++                &source,
++                OperationControl::new(),
++                SvgRequest::default(),
++            ))
++            .unwrap()
++        else {
++            panic!("no SVG")
++        };
++        let svg = roxmltree::Document::parse(output.svg()).unwrap();
++        let pieces: Vec<Value> = serde_json::from_str(
++            svg.descendants()
++                .find_map(|node| node.attribute("data-mt-native"))
++                .unwrap(),
++        )
++        .unwrap();
++        let titles: Vec<_> = pieces
++            .iter()
++            .filter(|piece| piece["origin"] == "body")
++            .collect();
++        assert_eq!(titles.len(), 2);
++        assert_eq!(titles[0]["effective"], false);
++        assert_eq!(titles[1]["effective"], true);
++        assert_eq!(
++            titles[1]["kind"],
++            if last == "title " {
++                "nonvisual"
++            } else {
++                "control"
++            }
++        );
++        let accessibility: Vec<_> = pieces
++            .iter()
++            .filter(|piece| piece["classification"] == "accessibility")
++            .collect();
++        assert_eq!(accessibility.len(), 4);
++        for (index, piece) in accessibility.iter().enumerate() {
++            assert_eq!(piece["kind"], "nonvisual");
++            assert_eq!(piece["effective"], index % 2 == 1);
++        }
++        let span = &accessibility[1]["labelSpan"];
++        assert_eq!(
++            &source
++                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
++            "accTitle"
++        );
++        assert_eq!(
++            span["start"].as_u64().unwrap() as usize,
++            source.find("accTitle: accTitle").unwrap() + "accTitle: ".len()
 +        );
 +    }
 +}

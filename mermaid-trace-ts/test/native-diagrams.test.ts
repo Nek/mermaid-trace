@@ -646,6 +646,16 @@ test('JOURNEY-2-TITLE: YAML titles keep saved and live source ownership and body
   await verifyNative('---\ntitle: >-\n  First 😀\n  Second\nconfig:\n  htmlLabels: false\n---\njourney\nTask : 5 : Alice\n', 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', 'First 😀\n  Second\n', 'control-label']]);
 });
 
+test('JOURNEY-2-OCCURRENCES: saved and live titles retain effective ownership through replacement and clearing', { timeout: 180_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    for (const finalTitle of ['title Last 😀', 'title title', 'title ']) {
+      const cleared = finalTitle === 'title ';
+      const source = `---\ntitle: 'Configured 😀'\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\ntitle First 😀\n${finalTitle}\naccTitle: Earlier\naccTitle: accTitle\naccDescr: Earlier\naccDescr {\n  First 😀\n  second\n}\nTask : 5 : Alice\n`;
+      await verifyNative(source, 'journey:task:0', 'Task : 5 : Alice', 'Task', [['journey:title', cleared ? 'Configured 😀' : finalTitle, cleared ? 'control-label' : 'control']], cleared ? undefined : 'title First 😀', [], 'journey:title');
+    }
+  }
+});
+
 
 test('STATE STRUCT-AC2/3: saved native SVG and original Markdown state selection', { timeout: 60_000 }, async () => {
   const block = 'state Group {\nstate "Same 😀" as A\nstate "Same 😀" as B\nA --> B : review\nB --> A\nnote right of A : Annotation\n}';

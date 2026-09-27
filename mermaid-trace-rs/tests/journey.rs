@@ -10,6 +10,201 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_occurrences_keep_title_replacement_fallback_and_accessibility_origins() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for final_title in ["title Last 😀", "title title", "title ", "title   "] {
+                let source = format!(
+                    "---\r\ntitle: Configured 😀\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\n  title First 😀  \r\n{final_title}\r\naccTitle: Earlier\r\naccTitle: accTitle\r\naccDescr: Earlier\r\naccDescr {{\r\n  First 😀\r\n  second\r\n}}\r\nTask : 5 : Alice\r\n"
+                );
+                let result = mermaid_trace_rs::render("journey-occurrences", &source).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let native: Vec<Value> = serde_json::from_str(
+                    svg.descendants()
+                        .find_map(|node| node.attribute("data-mt-native"))
+                        .unwrap(),
+                )
+                .unwrap();
+                let slice = |span: &Value| {
+                    &source[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize]
+                };
+                let titles: Vec<_> = native
+                    .iter()
+                    .filter(|piece| piece["semanticId"] == "title" && piece["origin"] == "body")
+                    .collect();
+                assert_eq!(titles.len(), 2, "retain both body declarations");
+                assert_eq!(slice(&titles[0]["span"]), "title First 😀");
+                assert_eq!(slice(&titles[1]["span"]), final_title.trim_end());
+                assert_eq!(titles[0]["effective"], false);
+                assert_eq!(titles[1]["effective"], true);
+                let empty = final_title.trim() == "title";
+                for piece in &titles {
+                    assert_eq!(piece["kind"], if empty { "nonvisual" } else { "control" });
+                }
+                let primary = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|piece| piece["domId"] == "journey:title")
+                    .find(|piece| piece["effective"] == true || piece["origin"] != "body");
+                let binding = svg.descendants().find(|node| {
+                    node.attribute("data-mt-key") == Some("journey:title")
+                        && node.has_attribute("data-mt-role")
+                });
+                if final_title == "title   " {
+                    assert!(
+                        primary.is_none(),
+                        "native whitespace title suppresses YAML fallback"
+                    );
+                    assert!(
+                        !svg.descendants()
+                            .any(|node| node.attribute("data-mt-key") == Some("journey:title"))
+                    );
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "journey-occurrences", &source)
+                            .unwrap();
+                    assert_eq!(
+                        support::strip_trace(result["svg"].as_str().unwrap()),
+                        support::strip_trace(baseline["svg"].as_str().unwrap())
+                    );
+                    continue;
+                }
+                let primary = primary.expect("visible title owner");
+                assert_eq!(
+                    selected(&source, &primary["labelSpan"]),
+                    if empty {
+                        "Configured 😀"
+                    } else if final_title == "title title" {
+                        "title"
+                    } else {
+                        "Last 😀"
+                    }
+                );
+                let binding = binding.expect("visible title binding");
+                let start: usize = binding.attribute("data-mt-start").unwrap().parse().unwrap();
+                let end: usize = binding.attribute("data-mt-end").unwrap().parse().unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                assert_eq!(
+                    String::from_utf16(&utf16[start..end]).unwrap(),
+                    if empty {
+                        "Configured 😀"
+                    } else {
+                        final_title
+                    }
+                );
+                let accessibility: Vec<_> = native
+                    .iter()
+                    .filter(|piece| piece["classification"] == "accessibility")
+                    .collect();
+                assert_eq!(accessibility.len(), 4);
+                for (index, (statement, payload)) in [
+                    ("accTitle: Earlier", "Earlier"),
+                    ("accTitle: accTitle", "accTitle"),
+                    ("accDescr: Earlier", "Earlier"),
+                    (
+                        "accDescr {\r\n  First 😀\r\n  second\r\n}",
+                        "First 😀\r\n  second",
+                    ),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    assert_eq!(slice(&accessibility[index]["span"]), *statement);
+                    assert_eq!(slice(&accessibility[index]["labelSpan"]), *payload);
+                    assert_eq!(accessibility[index]["effective"], index % 2 == 1);
+                    assert_eq!(accessibility[index]["kind"], "nonvisual");
+                }
+                assert_eq!(
+                    svg.descendants()
+                        .find(|node| node.has_tag_name("title"))
+                        .and_then(|node| node.text()),
+                    Some("accTitle")
+                );
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-occurrences", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn journey_2_empty_and_inline_accessibility_statements_remain_exact_nonvisual_occurrences() {
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\n%% 😀\r\ntitle First\r\ntitle \r\naccTitle: accTitle\r\naccTitle:\r\naccDescr {{ accDescr }}\r\naccDescr {{}}\r\nTask :5: Alice\r\n"
+            );
+            let result = mermaid_trace_rs::render("journey-empty", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|node| node.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let slice = |span: &Value| {
+                &source[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize]
+            };
+            let records: Vec<_> = native
+                .iter()
+                .filter(|piece| {
+                    piece["origin"] == "body" || piece["classification"] == "accessibility"
+                })
+                .collect();
+            assert_eq!(records.len(), 6);
+            for (index, statement) in [
+                "title First",
+                "title",
+                "accTitle: accTitle",
+                "accTitle:",
+                "accDescr { accDescr }",
+                "accDescr {}",
+            ]
+            .iter()
+            .enumerate()
+            {
+                assert_eq!(slice(&records[index]["span"]), *statement);
+                assert_eq!(records[index]["kind"], "nonvisual");
+                assert_eq!(records[index]["effective"], index % 2 == 1);
+                if index % 2 == 1 {
+                    assert!(records[index].get("labelSpan").is_none());
+                }
+            }
+            assert_eq!(slice(&records[2]["labelSpan"]), "accTitle");
+            assert_eq!(slice(&records[4]["labelSpan"]), "accDescr");
+            assert!(
+                result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|piece| piece["domId"] != "journey:title" && piece["kind"] != "nonvisual")
+            );
+            assert!(
+                !svg.descendants()
+                    .any(|node| node.attribute("data-mt-key") == Some("journey:title"))
+            );
+        }
+    }
+    for source in [
+        "journey\naccDescr {",
+        "journey\naccDescr {\n  No closing 😀",
+        "journey\r\naccDescr {\r\n  No closing 😀\r\n",
+    ] {
+        assert!(
+            mermaid_trace_rs::render("journey-invalid", source).is_err(),
+            "unterminated accessibility block must remain an explicit error"
+        );
+    }
+}
+
+#[test]
 fn journey_2_pinned_corpus_preserves_independent_task_labels_and_static_output() {
     let directory =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/merman/fixtures/journey");
