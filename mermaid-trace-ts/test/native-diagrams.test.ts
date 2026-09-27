@@ -282,11 +282,29 @@ async function verifyNative(source: string, key: string, expected: string, label
       } else {
         const shape = await background.count() ? background.first() : target;
         const centered = role === 'node' && await shape.evaluate(element => element.tagName === 'path');
-        await shape.click(await background.count() && !centered ? { position: { x: 1, y: (await shape.boundingBox())!.height / 2 } } : {});
+        await shape.click(controlKey.startsWith('journey:score:') ? { position: { x: 15, y: 3 } } : await background.count() && !centered ? { position: { x: 1, y: (await shape.boundingBox())!.height / 2 } } : {});
       }
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
+      if (controlKey.startsWith('journey:score:')) {
+        const bindings = first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`);
+        assert.equal(await bindings.count(), 2, 'face and expression retain their native bindings');
+        const assertScoreGroup = async () => {
+          assert.equal(await bindings.locator(':scope[data-mt-selected=true]').count(), 2, 'the whole score visual is selected');
+          assert.equal(await bindings.locator(':scope[tabindex="0"]').count(), 1, 'one score keyboard stop');
+          for (const binding of await bindings.all()) assert.equal(await binding.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'score focus must not add a competing rectangle');
+          assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), control.span);
+        };
+        await assertScoreGroup();
+        await bindings.nth(1).locator('circle').first().click();
+        await assertScoreGroup();
+        await bindings.locator(':scope[tabindex="0"]').focus();
+        await page.keyboard.press('Enter');
+        await assertScoreGroup();
+        await page.evaluate(span => (window as any).handles[0].highlight([span]), control.span);
+        assert.equal(await bindings.locator(':scope[data-mt-selected=true]').count(), 2);
+      }
       if (controlKey.startsWith('state:note:')) {
         const body = first.locator(`[data-mt-role=control][data-mt-start="${control.span.start}"][data-mt-end="${control.span.end}"]`);
         assert.equal(await body.getAttribute('data-mt-selected'), 'true', 'connector click selects the whole note');
@@ -334,7 +352,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       if (reversePrimaryKey === key) {
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
       } else {
-        assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its owning object');
+        assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`).count(), reversePrimaryKey.startsWith('journey:score:') ? 2 : 1, 'source occurrence selects every binding of its owning object');
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'an owning object must not select a merely referenced node');
       }
       assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
@@ -420,10 +438,25 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
         assert.equal(await page.locator('svg[data-mt-map]').getAttribute('data-mt-selected'), null);
       }
+      if (controlKey.startsWith('journey:score:')) {
+        const bindings = page.locator(`svg[data-mt-map] [data-mt-key="${controlKey}"][data-mt-role=control]`);
+        for (const [partIndex, part] of [bindings.first(), bindings.nth(1).locator('circle').first()].entries()) {
+          await part.click(partIndex === 0 ? { position: { x: 15, y: 3 } } : {});
+          assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(text));
+          assert.equal(await bindings.locator(':scope[data-mt-selected=true]').count(), 2, 'live score parts select the complete group');
+          assert.equal(await bindings.locator(':scope[tabindex="0"]').count(), 1);
+          const span = controlSpans[index]!;
+          await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) }));
+        }
+      }
       const before = await page.evaluate(() => navigator.clipboard.readText());
       await target.focus();
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before, 'focus must not copy');
       await target.press(index % 2 ? 'Space' : 'Enter');
+      if (controlKey.startsWith('journey:score:')) {
+        assert.equal(await page.locator(`svg[data-mt-map] [data-mt-key="${controlKey}"][data-mt-role=control][data-mt-selected=true]`).count(), 2, 'live keyboard selects the complete score group');
+        assert.equal(await target.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
+      }
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
       const span = controlSpans[index]!;
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) }));
@@ -690,6 +723,22 @@ test('JOURNEY-2-TEXT: every label line remains one saved and live source target 
   for (const mode of ['tspan', 'other']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
     const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  journey:\n    textPlacement: ${mode}\n    taskFontSize: 18\n    sectionColours: ['#123456']\n---\njourney\nsection First\nBefore :5: Alice\nsection Second\nTask<br>Line :5: Alice\n`;
     await verifyNative(source, 'journey:task:1', 'Task<br>Line :5: Alice', 'Task<br>Line', [['journey:section:1', 'Second', 'control-label']], undefined, [], 'journey:task:1', 'rgb(18, 52, 86)');
+  }
+});
+
+test('JOURNEY-2-SCORE-NUMBERS: numeric score parts share saved/live selection and unrenderable arithmetic selects the task', { timeout: 300_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    for (const score of ['3.5', '0x5', '0X05', '0b11', '0B11', '0o3', '0O3', '3e-1', '+3.5', '3.00000001', '-0', '.5', '5.', '0003', '\ufeff3.5\ufeff']) {
+      const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\nTask 😀 : ${score} : Alice\n`;
+      const text = score.trim();
+      const start = source.indexOf('Task 😀 : ') + 'Task 😀 : '.length + score.indexOf(text);
+      await verifyNative(source, 'journey:task:0', `Task 😀 : ${score} : Alice`, 'Task 😀', [['journey:score:0', text]], { start, end: start + text.length }, [], 'journey:score:0');
+    }
+    for (const score of ['1e307', '1.7976931348623157e308', '+Infinity', 'inf', '-0x5', '\u00853\u0085']) {
+      const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\nTask 😀 : ${score} : Alice\n`;
+      const start = source.indexOf('Task 😀 : ') + 'Task 😀 : '.length;
+      await verifyNative(source, 'journey:task:0', `Task 😀 : ${score} : Alice`, 'Task 😀', [], { start, end: start + score.length }, [], 'journey:task:0', undefined, true);
+    }
   }
 });
 

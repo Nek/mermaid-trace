@@ -11,6 +11,188 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_number_boundary_corpus_preserves_models_layout_and_safe_artifacts() {
+    use merman::{Engine, ParseOptions, RenderSemanticModel};
+    let corpus: Value =
+        serde_json::from_str(include_str!("fixtures/journey-score-numbers.json")).unwrap();
+    let engine = Engine::new();
+    let renderer = mermaid_trace_rs::renderer();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for case in corpus["cases"].as_array().unwrap() {
+        let score = case["source"].as_str().unwrap();
+        let source = format!("journey\r\n%% 😀\r\nTask : {score} : Alice\r\n");
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Journey(model) = parsed.model() else {
+            panic!("journey model")
+        };
+        let task = &model.tasks[0];
+        let is_nan = case["value"] == "NaN";
+        assert_eq!(task.score_is_nan, is_nan, "NaN semantics for {score:?}");
+        if !is_nan {
+            let expected = u64::from_str_radix(case["bits"].as_str().unwrap(), 16).unwrap();
+            assert_eq!(
+                task.score.to_bits(),
+                expected,
+                "Number semantics for {score:?}"
+            );
+        }
+        let wire = serde_json::to_string(task).unwrap();
+        let round_trip: merman::diagrams::journey::JourneyRenderTask =
+            serde_json::from_str(&wire).unwrap();
+        assert_eq!(
+            round_trip.score.to_bits(),
+            task.score.to_bits(),
+            "typed score round trip {score:?}: {wire}"
+        );
+        assert_eq!(round_trip.score_is_nan, is_nan);
+        if score == "3e-1" {
+            assert_eq!(serde_json::to_value(task).unwrap()["score"], json!(0.3));
+        }
+        if score == "0x5" {
+            assert_eq!(serde_json::to_value(task).unwrap()["score"], json!(5));
+        }
+        let RenderOutput::LayoutJson(Some(layout)) = renderer
+            .render(RenderRequest::layout_json(
+                &source,
+                OperationControl::new(),
+                SvgRequest::default(),
+            ))
+            .unwrap()
+        else {
+            panic!("layout")
+        };
+        assert_eq!(
+            layout.layout()["layout"]["JourneyDiagram"]["tasks"][0]["mouth"],
+            case["mouth"],
+            "mouth {score:?}"
+        );
+        let layout_score = &layout.layout()["layout"]["JourneyDiagram"]["tasks"][0]["score"];
+        assert_eq!(
+            layout_score,
+            &serde_json::to_value(task).unwrap()["score"],
+            "layout retains score {score:?}"
+        );
+        let result = mermaid_trace_rs::render("journey-score", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "journey-score", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap()),
+            "numeric static parity {score:?}"
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let face = svg
+            .descendants()
+            .find(|n| n.attribute("class") == Some("face"));
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|n| n.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let property = native.iter().find(|p| p["property"] == "score");
+        let owned = case["ownedSource"].as_str().unwrap();
+        if owned.is_empty() {
+            assert!(
+                property.is_none(),
+                "no invented empty-score occurrence {score:?}"
+            );
+        } else {
+            let span = &property.expect("authored score")["span"];
+            assert_eq!(
+                &source[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize],
+                owned,
+                "exact lexical score {score:?}"
+            );
+        }
+        if case["faceY"].is_null() {
+            assert!(face.is_none(), "no unrenderable face {score:?}");
+            assert!(
+                !svg.descendants()
+                    .any(|n| n.attribute("data-mt-key") == Some("journey:score:0")
+                        && n.has_attribute("data-mt-role")),
+                "no phantom score control {score:?}"
+            );
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let property = native
+                .iter()
+                .find(|p| p["property"] == "score")
+                .expect("score provenance");
+            assert_eq!(property["classification"], "unrenderable-score");
+            assert_eq!(property["ownerDomId"], "journey:task:0");
+        } else {
+            let actual: f64 = face
+                .expect("finite face")
+                .attribute("cy")
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert_eq!(
+                format!("{:016x}", actual.to_bits()),
+                case["faceBits"].as_str().unwrap(),
+                "face arithmetic for {score:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn journey_2_scores_preserve_number_semantics_and_exact_visual_ownership() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for (score, expected_y) in [
+                ("3.5", 345.0),
+                ("0x5", 300.0),
+                ("0b11", 360.0),
+                ("0o3", 360.0),
+                ("3e-1", 441.0),
+                ("-0.5", 465.0),
+                ("+3.5", 345.0),
+                ("3.00000001", 359.9999997),
+            ] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\nTask 😀 : {score} : Alice\r\n"
+                );
+                let result = mermaid_trace_rs::render("journey-score", &source).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let face = svg
+                    .descendants()
+                    .find(|n| n.attribute("class") == Some("face"))
+                    .expect("renderable face");
+                let actual_y: f64 = face.attribute("cy").unwrap().parse().unwrap();
+                assert!(
+                    (actual_y - expected_y).abs() < 1e-10,
+                    "score {score}/{look}/{html}: {actual_y} != {expected_y}"
+                );
+                assert_eq!(face.attribute("data-mt-key"), Some("journey:score:0"));
+                let property = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "journey:score:0")
+                    .unwrap();
+                assert_eq!(selected(&source, &property["span"]), score);
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-score", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_unrenderable_scores_preserve_task_ownership_without_phantom_geometry() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
     for look in ["classic", "neo", "handDrawn"] {

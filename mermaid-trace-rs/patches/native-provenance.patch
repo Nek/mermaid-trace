@@ -10804,6 +10804,63 @@ index db80f232..c9313654 100644
      );
      let migration = diagnostics
          .iter()
+diff --git a/crates/merman-ascii/src/journey.rs b/crates/merman-ascii/src/journey.rs
+index 5ef9c3d8..b0c118b6 100644
+--- a/crates/merman-ascii/src/journey.rs
++++ b/crates/merman-ascii/src/journey.rs
+@@ -344,6 +344,12 @@ fn push_task(
+         line.push_str(" score=")?;
+         if task.score_is_nan {
+             line.push_str("NaN")?;
++        } else if task.score.is_infinite() {
++            line.push_str(if task.score.is_sign_positive() {
++                "Infinity"
++            } else {
++                "-Infinity"
++            })?;
+         } else {
+             line.write_fmt(format_args!("{}", task.score))?;
+         }
+@@ -364,7 +370,7 @@ mod tests {
+ 
+     fn actor_tasks() -> Vec<JourneyRenderTask> {
+         vec![JourneyRenderTask {
+-            score: 0,
++            score: 0.0,
+             score_is_nan: false,
+             people: vec!["Bob".to_string(), "Alice".to_string(), "Bob".to_string()],
+             section: String::new(),
+diff --git a/crates/merman-ascii/src/sectioned_text.rs b/crates/merman-ascii/src/sectioned_text.rs
+index 3daff713..82b777b0 100644
+--- a/crates/merman-ascii/src/sectioned_text.rs
++++ b/crates/merman-ascii/src/sectioned_text.rs
+@@ -252,7 +252,7 @@ mod tests {
+         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
+         let tasks = vec![
+             JourneyRenderTask {
+-                score: 5,
++                score: 5.0,
+                 score_is_nan: false,
+                 people: Vec::new(),
+                 section: "Repeated".to_string(),
+@@ -261,7 +261,7 @@ mod tests {
+                 task: "First".to_string(),
+             },
+             JourneyRenderTask {
+-                score: 3,
++                score: 3.0,
+                 score_is_nan: false,
+                 people: Vec::new(),
+                 section: "Repeated".to_string(),
+@@ -280,7 +280,7 @@ mod tests {
+         const PRIOR_CELLS: usize = 2;
+         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
+         let tasks = vec![JourneyRenderTask {
+-            score: 5,
++            score: 5.0,
+             score_is_nan: false,
+             people: Vec::new(),
+             section: "Repeated".to_string(),
 diff --git a/crates/merman-ascii/src/state/adapter.rs b/crates/merman-ascii/src/state/adapter.rs
 index 7612e640..e6e2db62 100644
 --- a/crates/merman-ascii/src/state/adapter.rs
@@ -10872,6 +10929,48 @@ index 7612e640..e6e2db62 100644
              direction: "TB".to_string(),
              nodes,
              ..StateDiagramRenderModel::default()
+diff --git a/crates/merman-ascii/tests/new_family_models/journey.rs b/crates/merman-ascii/tests/new_family_models/journey.rs
+index bda52799..2c27e2c8 100644
+--- a/crates/merman-ascii/tests/new_family_models/journey.rs
++++ b/crates/merman-ascii/tests/new_family_models/journey.rs
+@@ -9,7 +9,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
+     model.sections = vec!["Discovery".to_string()];
+     model.tasks = vec![
+         JourneyRenderTask {
+-            score: 5,
++            score: 5.0,
+             score_is_nan: false,
+             people: vec!["Alice".to_string(), "Bob".to_string()],
+             section: "Discovery".to_string(),
+@@ -18,7 +18,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
+             task: "Research".to_string(),
+         },
+         JourneyRenderTask {
+-            score: 3,
++            score: 3.0,
+             score_is_nan: false,
+             people: vec!["Bob".to_string()],
+             section: "Discovery".to_string(),
+@@ -57,3 +57,19 @@ fn journey_structured_text_framing_distinguishes_actor_list_items() {
+         "one authored actor containing a comma must differ from two actor values",
+     );
+ }
++
++#[test]
++fn journey_numeric_scores_keep_fraction_radix_infinity_and_nan_meaning_in_ascii() {
++    let output = render_parsed(
++        "journey\nFraction: 3.5\nHex: 0x5\nPositive: Infinity\nNegative: -Infinity\nInvalid: inf\n",
++    );
++    for expected in [
++        "Fraction\" score=3.5",
++        "Hex\" score=5",
++        "Positive\" score=Infinity",
++        "Negative\" score=-Infinity",
++        "Invalid\" score=NaN",
++    ] {
++        assert!(output.contains(expected), "missing {expected}: {output}");
++    }
++}
 diff --git a/crates/merman-ascii/tests/new_family_models/kanban.rs b/crates/merman-ascii/tests/new_family_models/kanban.rs
 index fc4325ea..5c37835f 100644
 --- a/crates/merman-ascii/tests/new_family_models/kanban.rs
@@ -10944,6 +11043,19 @@ index 3705e569..c2186538 100644
          nodes: vec![
              KanbanRenderNode::new("first", "First"),
              KanbanRenderNode::new("second", "Second"),
+diff --git a/crates/merman-ascii/tests/sectioned_structured_text.rs b/crates/merman-ascii/tests/sectioned_structured_text.rs
+index 0bba7fce..56cb4e7f 100644
+--- a/crates/merman-ascii/tests/sectioned_structured_text.rs
++++ b/crates/merman-ascii/tests/sectioned_structured_text.rs
+@@ -20,7 +20,7 @@ fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> Tim
+ 
+ fn journey_task(section: &str, section_index: Option<usize>, task: &str) -> JourneyRenderTask {
+     JourneyRenderTask {
+-        score: 3,
++        score: 3.0,
+         score_is_nan: false,
+         people: Vec::new(),
+         section: section.to_string(),
 diff --git a/crates/merman-ascii/tests/sequence_model.rs b/crates/merman-ascii/tests/sequence_model.rs
 index 7d5d02b6..5fb38f79 100644
 --- a/crates/merman-ascii/tests/sequence_model.rs
@@ -12961,7 +13073,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..02048098 100644
+index 68bde024..cb2ff117 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -10,7 +10,7 @@ use crate::{
@@ -12973,8 +13085,143 @@ index 68bde024..02048098 100644
  
  #[cfg(test)]
  thread_local! {
-@@ -56,6 +56,8 @@ pub struct JourneyRenderTask {
+@@ -33,7 +33,11 @@ fn is_false(v: &bool) -> bool {
  
+ #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+ pub struct JourneyRenderTask {
+-    pub score: i64,
++    #[serde(
++        serialize_with = "serialize_score",
++        deserialize_with = "deserialize_score"
++    )]
++    pub score: f64,
+     #[serde(default, rename = "scoreIsNaN", skip_serializing_if = "is_false")]
+     pub score_is_nan: bool,
+     #[serde(default)]
+@@ -54,8 +58,130 @@ pub struct JourneyRenderTask {
+     pub task: String,
+ }
+ 
++/// Keep integer JSON fixtures stable and retain infinity through typed model/layout round trips.
++pub fn serialize_score<S: serde::Serializer>(
++    value: &f64,
++    serializer: S,
++) -> std::result::Result<S::Ok, S::Error> {
++    if value.is_infinite() {
++        serializer.serialize_str(if value.is_sign_positive() {
++            "Infinity"
++        } else {
++            "-Infinity"
++        })
++    } else if value.fract() == 0.0
++        && !(value.is_sign_negative() && *value == 0.0)
++        && *value >= i64::MIN as f64
++        && *value < -(i64::MIN as f64)
++    {
++        serializer.serialize_i64(*value as i64)
++    } else {
++        serializer.serialize_f64(*value)
++    }
++}
++
++pub fn deserialize_score<'de, D: serde::Deserializer<'de>>(
++    deserializer: D,
++) -> std::result::Result<f64, D::Error> {
++    let value = <Value as serde::Deserialize>::deserialize(deserializer)?;
++    match value {
++        Value::Number(number) => number
++            .as_f64()
++            .ok_or_else(|| serde::de::Error::custom("invalid journey score")),
++        Value::String(text) if text == "Infinity" => Ok(f64::INFINITY),
++        Value::String(text) if text == "-Infinity" => Ok(f64::NEG_INFINITY),
++        _ => Err(serde::de::Error::custom(
++            "expected numeric journey score or signed Infinity",
++        )),
++    }
++}
++
++fn is_score_whitespace(c: char) -> bool {
++    // ECMAScript WhiteSpace and LineTerminator, not Rust's broader Unicode whitespace.
++    matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
++}
++
++fn number_score(text: &str) -> f64 {
++    let text = text.trim_matches(is_score_whitespace);
++    if text.is_empty() {
++        return 0.0;
++    }
++    match text {
++        "Infinity" | "+Infinity" => return f64::INFINITY,
++        "-Infinity" => return f64::NEG_INFINITY,
++        _ => {}
++    }
++    if let Some(digits) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
++        return radix_score(digits, 4);
++    }
++    if let Some(digits) = text.strip_prefix("0o").or_else(|| text.strip_prefix("0O")) {
++        return radix_score(digits, 3);
++    }
++    if let Some(digits) = text.strip_prefix("0b").or_else(|| text.strip_prefix("0B")) {
++        return radix_score(digits, 1);
++    }
++    // Rust also accepts inf/NaN spellings that JS Number rejects. Decimal grammar consists
++    // only of these ASCII characters; Rust validates their order and rounds the value.
++    if !text
++        .bytes()
++        .all(|b| b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.' | b'e' | b'E'))
++    {
++        return f64::NAN;
++    }
++    text.parse().unwrap_or(f64::NAN)
++}
++
++fn radix_score(digits: &str, digit_bits: u32) -> f64 {
++    if digits.is_empty() {
++        return f64::NAN;
++    }
++    let mut significand = 0_u64;
++    let mut bits = 0_usize;
++    let mut guard = false;
++    let mut sticky = false;
++    for byte in digits.bytes() {
++        let digit = match byte {
++            b'0'..=b'9' => u32::from(byte - b'0'),
++            b'a'..=b'f' => u32::from(byte - b'a') + 10,
++            b'A'..=b'F' => u32::from(byte - b'A') + 10,
++            _ => return f64::NAN,
++        };
++        if digit >= 1 << digit_bits {
++            return f64::NAN;
++        }
++        for shift in (0..digit_bits).rev() {
++            let bit = (digit >> shift) & 1;
++            if bits == 0 && bit == 0 {
++                continue;
++            }
++            bits += 1;
++            if bits <= 53 {
++                significand = (significand << 1) | u64::from(bit);
++            } else if bits == 54 {
++                guard = bit != 0;
++            } else {
++                sticky |= bit != 0;
++            }
++        }
++    }
++    if bits > 1024 {
++        return f64::INFINITY;
++    }
++    if bits <= 53 {
++        return significand as f64;
++    }
++    // One IEEE round-to-nearest, ties-to-even after the complete integer, avoiding
++    // repeated multiply/add rounding or a bounded integer accumulator.
++    if guard && (sticky || significand & 1 != 0) {
++        significand += 1;
++    }
++    significand as f64 * 2_f64.powi((bits - 53) as i32)
++}
++
  #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
  pub struct JourneyDiagramRenderModel {
 +    #[serde(skip)]
@@ -12982,7 +13229,33 @@ index 68bde024..02048098 100644
      pub title: Option<String>,
      #[serde(rename = "accTitle")]
      pub acc_title: Option<String>,
-@@ -394,6 +396,14 @@ fn parse_journey_semantic_source(
+@@ -121,21 +247,10 @@ impl JourneyDb {
+         let pieces: Vec<&str> = rest.split(':').collect();
+ 
+         let score_str = pieces.first().copied().unwrap_or("");
+-        // Mermaid upstream uses JS `Number(...)` for parsing task scores. This means:
+-        // - whitespace-only => 0
+-        // - invalid strings => NaN (and Mermaid happily renders an SVG containing `NaN`)
+-        //
+-        // JSON snapshots cannot represent NaN, so we model it as `score=0` + `scoreIsNaN=true`,
+-        // and let the SVG renderer re-emit `NaN` for the relevant face/mouth coordinates.
+-        let score_trim = score_str.trim();
+-        let (score, score_is_nan) = if score_trim.is_empty() {
+-            (0_i64, false)
+-        } else {
+-            match score_trim.parse::<f64>() {
+-                Ok(v) if v.is_finite() => (v as i64, false),
+-                _ => (0_i64, true),
+-            }
+-        };
++        let value = number_score(score_str);
++        // Retain the existing JSON NaN representation while preserving all numeric values.
++        let score_is_nan = value.is_nan();
++        let score = if score_is_nan { 0.0 } else { value };
+ 
+         let people = if pieces.len() == 1 {
+             Vec::new()
+@@ -394,6 +509,14 @@ fn parse_journey_semantic_source(
      control.checkpoint()?;
      let mut db = JourneyDb::default();
      db.clear();
@@ -12997,7 +13270,7 @@ index 68bde024..02048098 100644
      let mut editor_facts = EditorSemanticFacts::new();
      let mut lines = LineCursor::new(code);
      let mut header_seen = false;
-@@ -442,6 +452,13 @@ fn parse_journey_semantic_source(
+@@ -442,6 +565,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
              editor_facts.push_directive_prefix("title");
              let value = spanned_keyword_value(line, line_start, "title");
@@ -13011,7 +13284,7 @@ index 68bde024..02048098 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -456,6 +473,13 @@ fn parse_journey_semantic_source(
+@@ -456,6 +586,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
              editor_facts.push_directive_prefix("accTitle");
              let value = spanned_colon_value(line, line_start, "accTitle");
@@ -13025,7 +13298,7 @@ index 68bde024..02048098 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -470,6 +494,13 @@ fn parse_journey_semantic_source(
+@@ -470,6 +607,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
              editor_facts.push_directive_prefix("accDescr");
              let value = spanned_colon_value(line, line_start, "accDescr");
@@ -13039,7 +13312,7 @@ index 68bde024..02048098 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -482,6 +513,16 @@ fn parse_journey_semantic_source(
+@@ -482,6 +626,16 @@ fn parse_journey_semantic_source(
              continue;
          }
          if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
@@ -13056,7 +13329,7 @@ index 68bde024..02048098 100644
              editor_facts.push_directive_prefix("accDescr");
              push_journey_payload_fact_spanned(
                  &mut editor_facts,
-@@ -508,11 +549,20 @@ fn parse_journey_semantic_source(
+@@ -508,11 +662,20 @@ fn parse_journey_semantic_source(
          }
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
              let v = v.split(':').next().unwrap_or("").to_string();
@@ -13077,7 +13350,7 @@ index 68bde024..02048098 100644
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,6 +627,10 @@ fn parse_journey_semantic_source(
+@@ -577,8 +740,12 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13086,10 +13359,17 @@ index 68bde024..02048098 100644
 +            source_occurrences.push(json!({"kind":"node","semanticId":format!("task:{task_id}"),"domId":format!("journey:task:{task_id}"),"span":SourceSpan::new(task_start,line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(task_start,task_end)}));
 +        }
          let rest_source = &stripped[colon + ':'.len_utf8()..];
-         let rest = rest_source.trim_start();
+-        let rest = rest_source.trim_start();
++        let rest = rest_source.trim_start_matches(is_score_whitespace);
          let rest_start =
-@@ -591,6 +645,9 @@ fn parse_journey_semantic_source(
-         let score_text = rest[..score_end].trim();
+             line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
+         if rest.is_empty() {
+@@ -588,9 +755,12 @@ fn parse_journey_semantic_source(
+             continue;
+         }
+         let score_end = rest.find(':').unwrap_or(rest.len());
+-        let score_text = rest[..score_end].trim();
++        let score_text = rest[..score_end].trim_matches(is_score_whitespace);
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
 +            if trace_source {
@@ -13098,7 +13378,7 @@ index 68bde024..02048098 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +662,32 @@ fn parse_journey_semantic_source(
+@@ -605,13 +775,32 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
@@ -13132,7 +13412,7 @@ index 68bde024..02048098 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +715,86 @@ fn parse_journey_semantic_source(
+@@ -639,9 +828,86 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13219,7 +13499,7 @@ index 68bde024..02048098 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-@@ -674,7 +827,7 @@ fn spanned_keyword_value<'a>(
+@@ -674,7 +940,7 @@ fn spanned_keyword_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13228,7 +13508,7 @@ index 68bde024..02048098 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -697,7 +850,7 @@ fn spanned_colon_value<'a>(
+@@ -697,7 +963,7 @@ fn spanned_colon_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13237,6 +13517,15 @@ index 68bde024..02048098 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
+@@ -1210,7 +1476,7 @@ R task: 5:\n",
+                 .iter()
+                 .map(|t| {
+                     json!({
+-                        "score": t.score,
++                        "score": serde_json::to_value(t).unwrap()["score"],
+                         "people": t.people,
+                         "section": t.section,
+                         "task": t.task,
 diff --git a/crates/merman-core/src/diagrams/kanban.rs b/crates/merman-core/src/diagrams/kanban.rs
 index 7a93d54b..3672e52f 100644
 --- a/crates/merman-core/src/diagrams/kanban.rs
@@ -27954,6 +28243,19 @@ index 757532f5..9ba70e61 100644
              nodes: ["section", "lane", "card"]
                  .into_iter()
                  .enumerate()
+diff --git a/crates/merman-core/src/tests/misc.rs b/crates/merman-core/src/tests/misc.rs
+index e1304daa..47790b8d 100644
+--- a/crates/merman-core/src/tests/misc.rs
++++ b/crates/merman-core/src/tests/misc.rs
+@@ -2764,7 +2764,7 @@ Drive: bad-score: Dad, Mum
+             assert_eq!(model.sections.as_slice(), ["Shopping"]);
+             assert_eq!(model.actors.as_slice(), ["Dad", "Mum"]);
+             assert_eq!(model.tasks.len(), 2);
+-            assert_eq!(model.tasks[0].score, 5);
++            assert_eq!(model.tasks[0].score, 5.0);
+             assert!(!model.tasks[0].score_is_nan);
+             assert_eq!(model.tasks[0].people.as_slice(), ["Dad"]);
+             assert_eq!(model.tasks[1].task, "Drive");
 diff --git a/crates/merman-core/src/yaml_config.rs b/crates/merman-core/src/yaml_config.rs
 index 17ec4d62..e8b1115a 100644
 --- a/crates/merman-core/src/yaml_config.rs
@@ -28145,7 +28447,7 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
-index c8ebca79..5176a8ee 100644
+index c8ebca79..3d646d8a 100644
 --- a/crates/merman-render/src/journey.rs
 +++ b/crates/merman-render/src/journey.rs
 @@ -250,6 +250,7 @@ pub(crate) fn layout_journey_diagram_typed(
@@ -28156,7 +28458,27 @@ index c8ebca79..5176a8ee 100644
                  section: task.section.to_string(),
                  num: current_num,
                  x,
-@@ -286,11 +287,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -269,16 +270,13 @@ pub(crate) fn layout_journey_diagram_typed(
+         let face_cy = if task.score_is_nan {
+             None
+         } else {
+-            Some(
+-                JOURNEY_FACE_BASE_Y_PX
+-                    + (5_i64.saturating_sub(task.score) as f64) * JOURNEY_FACE_SCORE_STEP_Y_PX,
+-            )
++            Some(JOURNEY_FACE_BASE_Y_PX + (5.0 - task.score) * JOURNEY_FACE_SCORE_STEP_Y_PX)
+         };
+         let mouth = if task.score_is_nan {
+             JourneyMouthKind::Ambivalent
+-        } else if task.score > 3 {
++        } else if task.score > 3.0 {
+             JourneyMouthKind::Smile
+-        } else if task.score < 3 {
++        } else if task.score < 3.0 {
+             JourneyMouthKind::Sad
+         } else {
+             JourneyMouthKind::Ambivalent
+@@ -286,11 +284,12 @@ pub(crate) fn layout_journey_diagram_typed(
  
          let mut actor_circles = Vec::new();
          let mut cx = x + 14.0;
@@ -28170,6 +28492,64 @@ index c8ebca79..5176a8ee 100644
                  actor: p.to_string(),
                  pos,
                  color,
+@@ -389,6 +388,57 @@ mod tests {
+     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+     use serde_json::json;
+ 
++    #[test]
++    fn journey_fractional_and_infinite_scores_round_trip_through_typed_layout() {
++        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
++        let engine = Engine::new();
++        for score in [
++            "3.5",
++            "0x5",
++            "-0",
++            "3e-1",
++            "Infinity",
++            "-Infinity",
++            "NaN",
++            "1e307",
++        ] {
++            let source = format!("journey\nTask : {score} : Alice\n");
++            let parsed = engine
++                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
++                .unwrap()
++                .unwrap();
++            let RenderSemanticModel::Journey(model) = parsed.model() else {
++                panic!("journey")
++            };
++            let layout = super::layout_journey_diagram_typed(
++                model,
++                &json!({}),
++                &DeterministicTextMeasurer::default(),
++            )
++            .unwrap();
++            let wire = serde_json::to_string(&layout).unwrap();
++            let round_trip: crate::model::JourneyDiagramLayout =
++                serde_json::from_str(&wire).unwrap();
++            assert_eq!(
++                round_trip.tasks[0].score.to_bits(),
++                layout.tasks[0].score.to_bits(),
++                "score {score}"
++            );
++            assert_eq!(
++                round_trip.tasks[0].score.to_bits(),
++                model.tasks[0].score.to_bits()
++            );
++            if let Some(y) = layout.tasks[0].face_cy.filter(|y| y.is_finite()) {
++                assert_eq!(round_trip.tasks[0].face_cy.unwrap().to_bits(), y.to_bits());
++            } else {
++                assert!(
++                    round_trip.tasks[0].face_cy.is_none(),
++                    "unrenderable geometry is not a JSON coordinate"
++                );
++            }
++        }
++    }
++
+     #[test]
+     fn journey_layout_carries_use_max_width_config() {
+         let model = JourneyDiagramRenderModel::default();
 diff --git a/crates/merman-render/src/journey/config.rs b/crates/merman-render/src/journey/config.rs
 index 6f096465..a2bbd954 100644
 --- a/crates/merman-render/src/journey/config.rs
@@ -28270,7 +28650,7 @@ index 027dfe7d..adf538ae 100644
          };
          let measurer = DeterministicTextMeasurer {
 diff --git a/crates/merman-render/src/model.rs b/crates/merman-render/src/model.rs
-index b2f2c2e3..30e5ab19 100644
+index b2f2c2e3..21ce812e 100644
 --- a/crates/merman-render/src/model.rs
 +++ b/crates/merman-render/src/model.rs
 @@ -941,6 +941,9 @@ pub enum JourneyMouthKind {
@@ -28283,7 +28663,20 @@ index b2f2c2e3..30e5ab19 100644
      pub actor: String,
      pub pos: i64,
      pub color: String,
-@@ -975,6 +978,9 @@ pub struct JourneyTaskLayout {
+@@ -954,7 +957,11 @@ pub struct JourneyTaskLayout {
+     pub index: i64,
+     pub section: String,
+     pub task: String,
+-    pub score: i64,
++    #[serde(
++        serialize_with = "merman_core::diagrams::journey::serialize_score",
++        deserialize_with = "merman_core::diagrams::journey::deserialize_score"
++    )]
++    pub score: f64,
+     pub x: f64,
+     pub y: f64,
+     pub width: f64,
+@@ -975,6 +982,9 @@ pub struct JourneyTaskLayout {
  
  #[derive(Debug, Clone, Serialize, Deserialize)]
  pub struct JourneySectionLayout {
@@ -29558,10 +29951,25 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..50f2580d 100644
+index 61faa868..4aa7da13 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
-@@ -255,6 +255,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -7,8 +7,12 @@ use crate::journey::{
+ use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+ 
+ fn fmt_task_face_y(v: Option<f64>) -> String {
+-    v.map(|x| fmt(x).to_string())
+-        .unwrap_or_else(|| "NaN".to_string())
++    match v {
++        None => "NaN".to_string(),
++        Some(x) if x == f64::INFINITY => "Infinity".to_string(),
++        Some(x) if x == f64::NEG_INFINITY => "-Infinity".to_string(),
++        Some(x) => x.to_string(),
++    }
+ }
+ 
+ fn journey_css(
+@@ -255,6 +259,7 @@ pub(crate) fn render_journey_diagram_svg_model(
      struct JourneyTextStyle<'a> {
          task_font_size: f64,
          task_font_family: &'a str,
@@ -29569,7 +29977,7 @@ index 61faa868..50f2580d 100644
      }
  
      fn write_text_candidate(
-@@ -264,6 +265,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -264,6 +269,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          text_box: JourneyTextBox,
          style: JourneyTextStyle<'_>,
          text_fill: &str,
@@ -29577,7 +29985,7 @@ index 61faa868..50f2580d 100644
      ) {
          let JourneyTextBox {
              x,
-@@ -274,6 +276,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -274,6 +280,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          let JourneyTextStyle {
              task_font_size,
              task_font_family,
@@ -29585,7 +29993,7 @@ index 61faa868..50f2580d 100644
          } = style;
          let content_esc = escape_xml(content);
          let class_esc = escape_attr(class);
-@@ -282,33 +285,59 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -282,33 +289,59 @@ pub(crate) fn render_journey_diagram_svg_model(
          let cx = x + width / 2.0;
          let cy = y + height / 2.0;
  
@@ -29663,52 +30071,75 @@ index 61faa868..50f2580d 100644
                  class = class_esc,
                  fs = fmt(task_font_size),
                  ff = font_family_esc,
-@@ -317,7 +346,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -317,7 +350,30 @@ pub(crate) fn render_journey_diagram_svg_model(
              );
          }
  
 -        out.push_str("</switch>");
 +        out.push_str(if foreign_object { "</switch>" } else { "</g>" });
++    }
++
++    // Only native layout knows whether a numeric property's derived geometry can render.
++    let unrenderable_tasks: std::collections::BTreeSet<_> = layout
++        .tasks
++        .iter()
++        .filter(|task| task.face_cy.is_none_or(|y| !y.is_finite()))
++        .map(|task| task.index)
++        .collect();
++    let mut source_occurrences = model.source_occurrences.clone();
++    for piece in &mut source_occurrences {
++        if piece["property"] == "score"
++            && piece["taskIndex"]
++                .as_i64()
++                .is_some_and(|index| unrenderable_tasks.contains(&index))
++        {
++            piece["kind"] = serde_json::json!("nonvisual");
++            piece["classification"] = serde_json::json!("unrenderable-score");
++            piece
++                .as_object_mut()
++                .expect("source occurrence")
++                .remove("domId");
++        }
      }
  
      let mut out = String::new();
-@@ -379,6 +408,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -379,6 +435,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          );
      }
  
-+    crate::svg::parity::write_source_metadata(&mut out, &model.source_occurrences);
++    crate::svg::parity::write_source_metadata(&mut out, &source_occurrences);
      let theme = PresentationTheme::new(effective_config).journey();
      let css = journey_css(diagram_id, effective_config, &theme);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-@@ -395,7 +425,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -395,7 +452,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      for item in &layout.actor_legend {
          let _ = write!(
              &mut out,
 -            r##"<circle cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"/>"##,
 +            r##"<circle{trace} cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"/>"##,
 +            trace = crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                &format!("journey:actor:{}", item.actor),
 +                false
 +            ),
              cx = fmt(item.circle_cx),
              cy = fmt(item.circle_cy),
              pos = item.pos,
-@@ -405,7 +440,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -405,7 +467,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for line in &item.label_lines {
              let _ = write!(
                  &mut out,
 -                r#"<text x="{x}" y="{y}" class="legend"><tspan x="{tx}">{text}</tspan></text>"#,
 +                r#"<text{trace} x="{x}" y="{y}" class="legend"><tspan x="{tx}">{text}</tspan></text>"#,
 +                trace = crate::svg::parity::source_attrs(
-+                    &model.source_occurrences,
++                    &source_occurrences,
 +                    &format!("journey:actor:{}", item.actor),
 +                    false
 +                ),
                  x = fmt(line.x),
                  y = fmt(line.y),
                  tx = fmt(line.tspan_x),
-@@ -415,16 +455,28 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -415,16 +482,28 @@ pub(crate) fn render_journey_diagram_svg_model(
      }
  
      let mut section_iter = layout.sections.iter();
@@ -29734,51 +30165,51 @@ index 61faa868..50f2580d 100644
 -                r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
 +                r##"<g{trace}><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
 +                trace = section_key.as_deref().map_or_else(String::new, |key| {
-+                    crate::svg::parity::source_attrs(&model.source_occurrences, key, false)
++                    crate::svg::parity::source_attrs(&source_occurrences, key, false)
 +                }),
                  x = fmt(section.x),
                  y = fmt(section.y),
                  fill = escape_attr(&section.fill),
-@@ -445,8 +497,16 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -445,8 +524,16 @@ pub(crate) fn render_journey_diagram_svg_model(
                  JourneyTextStyle {
                      task_font_size,
                      task_font_family,
 +                    text_placement: &render_settings.text_placement,
-+                },
+                 },
+-                &theme.text_color,
 +                if render_settings.text_placement == "fo" {
 +                    &theme.text_color
 +                } else {
 +                    text_colour
-                 },
--                &theme.text_color,
++                },
 +                &section_key.as_deref().map_or_else(String::new, |key| {
-+                    crate::svg::parity::source_attrs(&model.source_occurrences, key, true)
++                    crate::svg::parity::source_attrs(&source_occurrences, key, true)
 +                }),
              );
              out.push_str("</g>");
          }
-@@ -455,7 +515,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -455,7 +542,12 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
 -            r##"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
 +            r##"<g{trace}><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
 +            trace = crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                &format!("journey:task:{}", task.index),
 +                false
 +            ),
              id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
              x1 = fmt(task.line_x1),
              y1 = fmt(task.line_y1),
-@@ -466,12 +531,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -466,12 +558,25 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
 -            r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
 +            r#"<circle{trace} cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
 +            trace = crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                &format!("journey:score:{}", task.index),
 +                false
 +            ),
@@ -29791,7 +30222,7 @@ index 61faa868..50f2580d 100644
 +            out,
 +            "<g{}>",
 +            crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                &format!("journey:score:{}", task.index),
 +                false
 +            )
@@ -29799,21 +30230,21 @@ index 61faa868..50f2580d 100644
          let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
          let eye_r = 1.5;
          let _ = write!(
-@@ -534,7 +612,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -534,7 +639,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for c in &task.actor_circles {
              let _ = write!(
                  &mut out,
 -                r##"<circle cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"><title>{title}</title></circle>"##,
 +                r##"<circle{trace} cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"><title>{title}</title></circle>"##,
 +                trace = crate::svg::parity::source_attrs(
-+                    &model.source_occurrences,
++                    &source_occurrences,
 +                    &format!("journey:actor:{}:{}", task.index, c.source_index),
 +                    false
 +                ),
                  cx = fmt(c.cx),
                  cy = fmt(c.cy),
                  pos = c.pos,
-@@ -557,8 +640,18 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -557,8 +667,18 @@ pub(crate) fn render_journey_diagram_svg_model(
              JourneyTextStyle {
                  task_font_size,
                  task_font_family,
@@ -29826,28 +30257,28 @@ index 61faa868..50f2580d 100644
              },
 -            &theme.text_color,
 +            &crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                &format!("journey:task:{}", task.index),
 +                true,
 +            ),
          );
  
          out.push_str("</g>");
-@@ -567,7 +660,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +687,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
 -            r#"<text x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
 +            r#"<text{trace} x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
 +            trace = crate::svg::parity::source_attrs(
-+                &model.source_occurrences,
++                &source_occurrences,
 +                "journey:title",
 +                title_from_meta
 +            ),
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
-@@ -668,6 +766,7 @@ mod tests {
+@@ -668,6 +793,7 @@ mod tests {
              title_y: 25.0,
              actor_legend: Vec::new(),
              sections: vec![JourneySectionLayout {
@@ -29855,6 +30286,15 @@ index 61faa868..50f2580d 100644
                  section: "A".to_string(),
                  num: 0,
                  x: 150.0,
+@@ -681,7 +807,7 @@ mod tests {
+                 index: 0,
+                 section: "A".to_string(),
+                 task: "Hello".to_string(),
+-                score: 5,
++                score: 5.0,
+                 x: 150.0,
+                 y: 110.0,
+                 width: 150.0,
 diff --git a/crates/merman-render/src/svg/parity/kanban/render.rs b/crates/merman-render/src/svg/parity/kanban/render.rs
 index 60b4b0f6..1b600e22 100644
 --- a/crates/merman-render/src/svg/parity/kanban/render.rs

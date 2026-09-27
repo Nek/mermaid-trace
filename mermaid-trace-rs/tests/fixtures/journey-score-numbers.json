@@ -1,0 +1,1697 @@
+{
+  "reference": "Mermaid 11.17.2 addTask Number(...) and drawTasks face arithmetic; Node 24.19.0 Number; ECMAScript StringToNumber",
+  "cases": [
+    {
+      "source": "3.5",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "0x5",
+      "value": 5,
+      "bits": "4014000000000000",
+      "faceY": 300,
+      "faceBits": "4072c00000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x5"
+    },
+    {
+      "source": "0b11",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0b11"
+    },
+    {
+      "source": "0o3",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0o3"
+    },
+    {
+      "source": "3e-1",
+      "value": 0.3,
+      "bits": "3fd3333333333333",
+      "faceY": 441,
+      "faceBits": "407b900000000000",
+      "mouth": "Sad",
+      "ownedSource": "3e-1"
+    },
+    {
+      "source": "-0.5",
+      "value": -0.5,
+      "bits": "bfe0000000000000",
+      "faceY": 465,
+      "faceBits": "407d100000000000",
+      "mouth": "Sad",
+      "ownedSource": "-0.5"
+    },
+    {
+      "source": "+3.5",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "+3.5"
+    },
+    {
+      "source": "3.00000001",
+      "value": 3.00000001,
+      "bits": "40080000015798ee",
+      "faceY": 359.9999997,
+      "faceBits": "40767fffffaf7828",
+      "mouth": "Smile",
+      "ownedSource": "3.00000001"
+    },
+    {
+      "source": "",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "0",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "0"
+    },
+    {
+      "source": "-0",
+      "value": 0,
+      "bits": "8000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "-0"
+    },
+    {
+      "source": "+0",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "+0"
+    },
+    {
+      "source": ".5",
+      "value": 0.5,
+      "bits": "3fe0000000000000",
+      "faceY": 435,
+      "faceBits": "407b300000000000",
+      "mouth": "Sad",
+      "ownedSource": ".5"
+    },
+    {
+      "source": "5.",
+      "value": 5,
+      "bits": "4014000000000000",
+      "faceY": 300,
+      "faceBits": "4072c00000000000",
+      "mouth": "Smile",
+      "ownedSource": "5."
+    },
+    {
+      "source": "0003",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0003"
+    },
+    {
+      "source": "3E+0",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "3E+0"
+    },
+    {
+      "source": "0X05",
+      "value": 5,
+      "bits": "4014000000000000",
+      "faceY": 300,
+      "faceBits": "4072c00000000000",
+      "mouth": "Smile",
+      "ownedSource": "0X05"
+    },
+    {
+      "source": "0B11",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0B11"
+    },
+    {
+      "source": "0O3",
+      "value": 3,
+      "bits": "4008000000000000",
+      "faceY": 360,
+      "faceBits": "4076800000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0O3"
+    },
+    {
+      "source": "0x0",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "0x0"
+    },
+    {
+      "source": "0b0",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "0b0"
+    },
+    {
+      "source": "0o0",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "0o0"
+    },
+    {
+      "source": "9007199254740993",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "9007199254740993"
+    },
+    {
+      "source": "9007199254740995",
+      "value": 9007199254740996,
+      "bits": "4340000000000002",
+      "faceY": -270215977642229440,
+      "faceBits": "c38dfffffffffff6",
+      "mouth": "Smile",
+      "ownedSource": "9007199254740995"
+    },
+    {
+      "source": "1e20",
+      "value": 100000000000000000000,
+      "bits": "4415af1d78b58c40",
+      "faceY": -3e+21,
+      "faceBits": "c464542ba12a337c",
+      "mouth": "Smile",
+      "ownedSource": "1e20"
+    },
+    {
+      "source": "1e-324",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "1e-324"
+    },
+    {
+      "source": "-1e-324",
+      "value": 0,
+      "bits": "8000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "-1e-324"
+    },
+    {
+      "source": "5e-324",
+      "value": 5e-324,
+      "bits": "0000000000000001",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": "5e-324"
+    },
+    {
+      "source": "1.7976931348623157e308",
+      "value": 1.7976931348623157e+308,
+      "bits": "7fefffffffffffff",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "1.7976931348623157e308"
+    },
+    {
+      "source": "1e307",
+      "value": 1e+307,
+      "bits": "7fac7b1f3cac7433",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "1e307"
+    },
+    {
+      "source": "1e309",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "1e309"
+    },
+    {
+      "source": "-1e309",
+      "value": "-Infinity",
+      "bits": "fff0000000000000",
+      "faceY": null,
+      "faceBits": "7ff0000000000000",
+      "mouth": "Sad",
+      "ownedSource": "-1e309"
+    },
+    {
+      "source": "Infinity",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "Infinity"
+    },
+    {
+      "source": "+Infinity",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "+Infinity"
+    },
+    {
+      "source": "-Infinity",
+      "value": "-Infinity",
+      "bits": "fff0000000000000",
+      "faceY": null,
+      "faceBits": "7ff0000000000000",
+      "mouth": "Sad",
+      "ownedSource": "-Infinity"
+    },
+    {
+      "source": "NaN",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "NaN"
+    },
+    {
+      "source": "bad 😀",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "bad 😀"
+    },
+    {
+      "source": "inf",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "inf"
+    },
+    {
+      "source": "infinity",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "infinity"
+    },
+    {
+      "source": "INFINITY",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "INFINITY"
+    },
+    {
+      "source": "null",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "null"
+    },
+    {
+      "source": "true",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "true"
+    },
+    {
+      "source": "5n",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "5n"
+    },
+    {
+      "source": "1_0",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "1_0"
+    },
+    {
+      "source": "3e",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "3e"
+    },
+    {
+      "source": "0x",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0x"
+    },
+    {
+      "source": "0b2",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0b2"
+    },
+    {
+      "source": "0o8",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0o8"
+    },
+    {
+      "source": "-0x5",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "-0x5"
+    },
+    {
+      "source": "+0b1",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "+0b1"
+    },
+    {
+      "source": "0x1p2",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "0x1p2"
+    },
+    {
+      "source": "3 4",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "3 4"
+    },
+    {
+      "source": "3",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "3"
+    },
+    {
+      "source": "᠎3᠎",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "᠎3᠎"
+    },
+    {
+      "source": "​3​",
+      "value": "NaN",
+      "bits": "7ff8000000000000",
+      "faceY": null,
+      "faceBits": "7ff8000000000000",
+      "mouth": "Ambivalent",
+      "ownedSource": "​3​"
+    },
+    {
+      "source": "\t3.5\t",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "\t",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "\u000b3.5\u000b",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "\u000b",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "\f3.5\f",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "\f",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": " 3.5 ",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": " ",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "　3.5　",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "　",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "﻿3.5﻿",
+      "value": 3.5,
+      "bits": "400c000000000000",
+      "faceY": 345,
+      "faceBits": "4075900000000000",
+      "mouth": "Smile",
+      "ownedSource": "3.5"
+    },
+    {
+      "source": "﻿",
+      "value": 0,
+      "bits": "0000000000000000",
+      "faceY": 450,
+      "faceBits": "407c200000000000",
+      "mouth": "Sad",
+      "ownedSource": ""
+    },
+    {
+      "source": "0x1fffffffffffff",
+      "value": 9007199254740991,
+      "bits": "433fffffffffffff",
+      "faceY": -270215977642229280,
+      "faceBits": "c38dfffffffffff1",
+      "mouth": "Smile",
+      "ownedSource": "0x1fffffffffffff"
+    },
+    {
+      "source": "0o377777777777777777",
+      "value": 9007199254740991,
+      "bits": "433fffffffffffff",
+      "faceY": -270215977642229280,
+      "faceBits": "c38dfffffffffff1",
+      "mouth": "Smile",
+      "ownedSource": "0o377777777777777777"
+    },
+    {
+      "source": "0b11111111111111111111111111111111111111111111111111111",
+      "value": 9007199254740991,
+      "bits": "433fffffffffffff",
+      "faceY": -270215977642229280,
+      "faceBits": "c38dfffffffffff1",
+      "mouth": "Smile",
+      "ownedSource": "0b11111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x20000000000000",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000000"
+    },
+    {
+      "source": "0o400000000000000000",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000000"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x20000000000001",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000001"
+    },
+    {
+      "source": "0o400000000000000001",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000001"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000001",
+      "value": 9007199254740992,
+      "bits": "4340000000000000",
+      "faceY": -270215977642229300,
+      "faceBits": "c38dfffffffffff2",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x20000000000003",
+      "value": 9007199254740996,
+      "bits": "4340000000000002",
+      "faceY": -270215977642229440,
+      "faceBits": "c38dfffffffffff6",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000003"
+    },
+    {
+      "source": "0o400000000000000003",
+      "value": 9007199254740996,
+      "bits": "4340000000000002",
+      "faceY": -270215977642229440,
+      "faceBits": "c38dfffffffffff6",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000003"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000011",
+      "value": 9007199254740996,
+      "bits": "4340000000000002",
+      "faceY": -270215977642229440,
+      "faceBits": "c38dfffffffffff6",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0x3fffffffffffff",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0x3fffffffffffff"
+    },
+    {
+      "source": "0o777777777777777777",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0o777777777777777777"
+    },
+    {
+      "source": "0b111111111111111111111111111111111111111111111111111111",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0b111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x40000000000000",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0x40000000000000"
+    },
+    {
+      "source": "0o1000000000000000000",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0o1000000000000000000"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000000",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x40000000000001",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0x40000000000001"
+    },
+    {
+      "source": "0o1000000000000000001",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0o1000000000000000001"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000001",
+      "value": 18014398509481984,
+      "bits": "4350000000000000",
+      "faceY": -540431955284459100,
+      "faceBits": "c39dfffffffffff9",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x40000000000003",
+      "value": 18014398509481988,
+      "bits": "4350000000000001",
+      "faceY": -540431955284459200,
+      "faceBits": "c39dfffffffffffb",
+      "mouth": "Smile",
+      "ownedSource": "0x40000000000003"
+    },
+    {
+      "source": "0o1000000000000000003",
+      "value": 18014398509481988,
+      "bits": "4350000000000001",
+      "faceY": -540431955284459200,
+      "faceBits": "c39dfffffffffffb",
+      "mouth": "Smile",
+      "ownedSource": "0o1000000000000000003"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000011",
+      "value": 18014398509481988,
+      "bits": "4350000000000001",
+      "faceY": -540431955284459200,
+      "faceBits": "c39dfffffffffffb",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0xffffffffffffffff",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0xffffffffffffffff"
+    },
+    {
+      "source": "0o1777777777777777777777",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o1777777777777777777777"
+    },
+    {
+      "source": "0b1111111111111111111111111111111111111111111111111111111111111111",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x10000000000000000",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000000"
+    },
+    {
+      "source": "0o2000000000000000000000",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o2000000000000000000000"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000000",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x10000000000000001",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000001"
+    },
+    {
+      "source": "0o2000000000000000000001",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o2000000000000000000001"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000001",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x10000000000000003",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000003"
+    },
+    {
+      "source": "0o2000000000000000000003",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o2000000000000000000003"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000011",
+      "value": 18446744073709552000,
+      "bits": "43f0000000000000",
+      "faceY": -553402322211286550000,
+      "faceBits": "c43e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0xffffffffffffffffffffffffffffffff",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0xffffffffffffffffffffffffffffffff"
+    },
+    {
+      "source": "0o3777777777777777777777777777777777777777777",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o3777777777777777777777777777777777777777777"
+    },
+    {
+      "source": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x100000000000000000000000000000000",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x100000000000000000000000000000000"
+    },
+    {
+      "source": "0o4000000000000000000000000000000000000000000",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o4000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x100000000000000000000000000000001",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x100000000000000000000000000000001"
+    },
+    {
+      "source": "0o4000000000000000000000000000000000000000001",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o4000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x100000000000000000000000000000003",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x100000000000000000000000000000003"
+    },
+    {
+      "source": "0o4000000000000000000000000000000000000000003",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o4000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011",
+      "value": 3.402823669209385e+38,
+      "bits": "47f0000000000000",
+      "faceY": -1.0208471007628154e+40,
+      "faceBits": "c83e000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "source": "0o77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "source": "0b111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011",
+      "value": 8.98846567431158e+307,
+      "bits": "7fe0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "source": "0o177777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o177777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "source": "0b1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "source": "0o377777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o377777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "source": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "source": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "source": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "source": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011"
+    },
+    {
+      "source": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "source": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "source": "0o777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777",
+      "value": "Infinity",
+      "bits": "7ff0000000000000",
+      "faceY": null,
+      "faceBits": "fff0000000000000",
+      "mouth": "Smile",
+      "ownedSource": "0o777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "source": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005",
+      "value": 5,
+      "bits": "4014000000000000",
+      "faceY": 300,
+      "faceBits": "4072c00000000000",
+      "mouth": "Smile",
+      "ownedSource": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005"
+    }
+  ]
+}
