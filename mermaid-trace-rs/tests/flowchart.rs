@@ -1660,3 +1660,75 @@ fn flow_ac4_icon_and_image_labels_have_exact_native_bindings() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_svg_labels_are_native_groups_and_console_glyphs_are_generated() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "handDrawn"] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: false\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\nA@{{ shape: console, label: 'Console 😀' }}\r\nB[\"First 😀<br/>second\"]\r\nC[\"`First **bold** 😀\r\nsecond`\"]\r\nA --> B --> C\r\nE[\"\"]\r\n"
+            );
+            let result = mermaid_trace_rs::render("svg-label-groups", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let glyph = svg
+                .descendants()
+                .find(|n| n.attribute("class") == Some("console-glyph"))
+                .unwrap();
+            assert_eq!(glyph.attribute("data-mt-generated"), Some("glyph"));
+            assert!(
+                !glyph.has_attribute("data-mt-role"),
+                "decorative console glyph must not become the source label"
+            );
+            let utf16: Vec<_> = source.encode_utf16().collect();
+            for (id, expected) in [
+                ("A", "Console 😀"),
+                ("B", "First 😀<br/>second"),
+                ("C", "First **bold** 😀\r\nsecond"),
+            ] {
+                let key = format!("node:{id}");
+                let labels: Vec<_> = svg
+                    .descendants()
+                    .filter(|n| {
+                        n.attribute("data-mt-key") == Some(key.as_str())
+                            && n.attribute("data-mt-role") == Some("node-label")
+                    })
+                    .collect();
+                assert_eq!(
+                    labels.len(),
+                    1,
+                    "one native label group for {id}, {header}, {look}"
+                );
+                assert!(labels[0].has_tag_name("g"));
+                let start = labels[0]
+                    .attribute("data-mt-start")
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                let end = labels[0]
+                    .attribute("data-mt-end")
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), expected);
+                assert!(
+                    !labels[0]
+                        .descendants()
+                        .any(|n| n.has_tag_name("text") && n.has_attribute("data-mt-role")),
+                    "line fragments must not create duplicate label controls"
+                );
+            }
+            assert!(
+                !svg.descendants()
+                    .any(|n| n.attribute("data-mt-key") == Some("node:E")
+                        && n.attribute("data-mt-role") == Some("node-label"))
+            );
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline =
+                mermaid_trace_rs::render_with(&plain, "svg-label-groups", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}

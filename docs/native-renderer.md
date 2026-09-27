@@ -30,3 +30,5 @@ Empty and collapsed flowchart subgraphs retain the same group/frame/title source
 
 
 Icon, circle/rounded/square icon and image labels carry the same native node-label identity as ordinary labels, including top/bottom placement. Inert `data-mt-generated="asset"` marks icon artwork, whose internal text is not Mermaid label source. Invisible icon bounds helpers use `data-mt-generated="bounds"`; activation disables their pointer interception and restores it on disposal. Static geometry and ordinary node selection remain unchanged.
+
+Plain and Markdown SVG node labels emit one native identity on their visible label group, including wrapped/multiline text. Flowchart projection consumes these identities rather than assigning label spans to arbitrary descendant text. Console `>_` text is marked `data-mt-generated="glyph"`; it selects the enclosing source-backed node and is never an authored label. Empty labels create no label control.

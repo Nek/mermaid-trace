@@ -45,10 +45,13 @@ async function verifyNative(source: string, key: string, expected: string, label
     const asset = shape.first().locator(':scope:is(.icon-shape, .image-shape) > image, :scope:is(.icon-shape, .image-shape) > g:not(.label) svg');
     const ellipse = shape.first().locator(':scope > ellipse');
     const rough = shape.first().locator(':scope > g.basic.label-container > path').last();
+    const consoleBody = shape.first().locator(':scope > g.basic.label-container > rect');
     if (await asset.count()) {
       await asset.first().click({ position: { x: 3, y: 3 } });
     } else if (await ellipse.count()) {
       await ellipse.click({ position: { x: 3, y: (await ellipse.boundingBox())!.height / 2 } });
+    } else if (await consoleBody.count()) {
+      await consoleBody.click({ position: { x: 3, y: (await consoleBody.boundingBox())!.height / 2 } });
     } else if (await rough.count()) {
       const point = await rough.evaluate(element => {
         const path = element as SVGGeometryElement;
@@ -61,6 +64,13 @@ async function verifyNative(source: string, key: string, expected: string, label
     }
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
+    const consoleGlyph = shape.first().locator('.console-glyph');
+    if (await consoleGlyph.count()) {
+      await consoleGlyph.click();
+      const glyphEvent = await page.evaluate(() => (window as any).events.at(-1));
+      assert.equal(glyphEvent.role, 'node', 'generated glyph clicks select their enclosing node');
+      assert.equal(source.slice(glyphEvent.span.start, glyphEvent.span.end), expected);
+    }
     await first.locator(labelSelector).first().click();
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
@@ -109,14 +119,18 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), savedConfig, 'native configuration evidence must survive saved SVG and Markdown insertion');
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     await page.locator(labelSelector).first().click();
-    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label);
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label.replaceAll('\n', '\n> '));
     const start = toMarkdown(labelSpan.start);
-    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + label.length }));
+    const end = toMarkdown(labelSpan.end);
+    await page.locator(labelSelector).first().focus();
+    await page.locator(labelSelector).first().press('Enter');
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label.replaceAll('\n', '\n> '));
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end }));
     await original.evaluate((element, span) => {
       const doc = element.ownerDocument; const range = doc.createRange();
       range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
-    }, { start, end: start + label.length });
+    }, { start, end });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
     if (reverseNodeSource !== undefined) {
       const offset = source.indexOf(reverseNodeSource);
@@ -146,7 +160,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     }
     await page.locator('svg[data-mt-map]').focus(); await page.keyboard.press('Enter');
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdown.slice(markdown.indexOf('> ```')));
-    await writeFile(filename, markdown.replaceAll(label, 'Changed'));
+    await writeFile(filename, markdown.replaceAll(label.replaceAll('\n', '\n> '), 'Changed'));
     await page.locator('[data-mt-role=node-label]').filter({ hasText: 'Changed' }).first().waitFor();
     return savedConfig;
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
@@ -387,6 +401,21 @@ test('FLOW AC4/6: icon and image labels retain saved/live pointer, keyboard and 
         const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\n${statement}\nA --> B\n`;
         await verifyNative(source, 'node:A', statement, 'Asset 😀', []);
       }
+    }
+  }
+});
+
+
+test('FLOW AC4/6: native SVG labels group multiline text and keep console glyphs non-labels', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'handDrawn']) {
+    const statements = [
+      ["A@{ shape: console, label: 'Console 😀' }", 'Console 😀'],
+      ['A["First 😀<br/>second"]', 'First 😀<br/>second'],
+      ['A["`First **bold** 😀\nsecond`"]', 'First **bold** 😀\nsecond'],
+    ] as const;
+    for (const [statement, label] of statements) {
+      const source = `---\nconfig:\n  htmlLabels: false\n  look: ${look}\n  handDrawnSeed: 42\n---\n${header}\n${statement}\nA --> B\n`;
+      await verifyNative(source, 'node:A', statement, label);
     }
   }
 });

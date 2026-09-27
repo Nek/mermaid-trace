@@ -139,8 +139,12 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                 label,
                 &mut attributes,
             )?;
-            // A label is a child of a renderer-owned identity; never associate it by its text.
-            if !label && (primary.get("labelSpan").is_some() || kind == "node") {
+            // Flowchart nodes emit explicit label identities, including SVG text groups.
+            // Keep the existing identity-scoped projection for other native families.
+            if !label
+                && !key.starts_with("node:")
+                && (primary.get("labelSpan").is_some() || kind == "node")
+            {
                 for text in node
                     .descendants()
                     .filter(|n| n.has_tag_name("text") && visible(*n))
