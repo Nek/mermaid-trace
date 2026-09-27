@@ -153,6 +153,10 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                         && !text
                             .descendants()
                             .any(|child| child.has_attribute("data-mt-key"))
+                        && !text
+                            .ancestors()
+                            .take_while(|ancestor| *ancestor != node)
+                            .any(|ancestor| ancestor.has_attribute("data-mt-generated"))
                     {
                         bind(svg, text, primary, label_ref, kind, true, &mut attributes)?;
                     }

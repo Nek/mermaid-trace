@@ -28489,7 +28489,7 @@ index 09a7dbe0..416954d2 100644
              node_id,
              dom_idx,
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
-index 2c3ed217..023d8ea2 100644
+index 2c3ed217..4be400dc 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
 @@ -97,6 +97,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
@@ -28518,7 +28518,7 @@ index 2c3ed217..023d8ea2 100644
      out.push('>');
  }
  
-@@ -488,3 +493,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
+@@ -488,3 +493,48 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
          crate::flowchart::FlowchartSvgWidthMode::Bbox,
      )
  }
@@ -28541,25 +28541,45 @@ index 2c3ed217..023d8ea2 100644
 +        format!("node:{node_id}")
 +    })
 +}
++
++// Ordinary and asset-specific emitters share the same semantic label identity.
++pub(super) fn node_label_trace_attrs(ctx: &FlowchartRenderCtx<'_>, node_id: &str) -> String {
++    node_trace_key(ctx, node_id).map_or_else(String::new, |key| {
++        format!(
++            " data-mt-key=\"{}\" data-mt-label=\"true\"",
++            escape_xml_display(&key)
++        )
++    })
++}
++
++pub(super) fn node_bounds_trace_attrs(ctx: &FlowchartRenderCtx<'_>, node_id: &str) -> &'static str {
++    if node_trace_key(ctx, node_id).is_some() {
++        " data-mt-generated=\"bounds\""
++    } else {
++        ""
++    }
++}
++
++pub(super) fn node_asset_trace_attrs(ctx: &FlowchartRenderCtx<'_>, node_id: &str) -> &'static str {
++    if node_trace_key(ctx, node_id).is_some() {
++        " data-mt-generated=\"asset\""
++    } else {
++        ""
++    }
++}
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
-index d7e49e57..de2306db 100644
+index d7e49e57..a86325a9 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
-@@ -60,6 +60,13 @@ fn render_flowchart_node_label_with_wrapper(
+@@ -60,6 +60,7 @@ fn render_flowchart_node_label_with_wrapper(
      details: &mut FlowchartRenderDetails,
      close_node_wrapper: bool,
  ) {
-+    let trace_attrs =
-+        super::helpers::node_trace_key(ctx, common.node_id).map_or_else(String::new, |key| {
-+            format!(
-+                " data-mt-key=\"{}\" data-mt-label=\"true\"",
-+                escape_xml_display(&key)
-+            )
-+        });
++    let trace_attrs = super::helpers::node_label_trace_attrs(ctx, common.node_id);
      let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
          &ctx.html_label_text_style
      } else {
-@@ -266,7 +273,7 @@ fn render_flowchart_node_label_with_wrapper(
+@@ -266,7 +267,7 @@ fn render_flowchart_node_label_with_wrapper(
          }
          let _ = write!(
              out,
@@ -28650,6 +28670,155 @@ index 0a63098b..beecec82 100644
          }
          FlowchartShape::Hexagon => {
              super::render_hexagon(out, common, details);
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon.rs
+index 81b14bf4..30fecc07 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon.rs
+@@ -118,9 +118,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
+     } else {
+         outer_h / 2.0 - label_bbox_h
+     };
++    let trace_attrs = super::super::helpers::node_label_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
++        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject{trace_attrs} width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
+         fmt(-label_bbox_w / 2.0),
+         fmt(label_y),
+         fmt(label_bbox_w),
+@@ -132,9 +133,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
+     );
+ 
+     // Outer bbox helper node (transparent fill, no stroke) — emitted after the label group.
++    let bounds_attrs = super::super::helpers::node_bounds_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g><path d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
++        r#"<g><path{bounds_attrs} d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
+         escape_attr(&outer_path)
+     );
+ 
+@@ -147,9 +149,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
+             icon_name,
+             icon_size,
+         )?;
++        let asset_attrs = super::super::helpers::node_asset_trace_attrs(ctx, common.node_id);
+         let _ = write!(
+             out,
+-            r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
++            r#"<g{asset_attrs} transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
+             fmt(icon_tx),
+             fmt(icon_ty),
+             escape_attr(common.stroke_color),
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_circle.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_circle.rs
+index a94ee1d1..94fb4951 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_circle.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_circle.rs
+@@ -131,9 +131,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
+     } else {
+         outer_h / 2.0 - label_bbox_h
+     };
++    let trace_attrs = super::super::helpers::node_label_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
++        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject{trace_attrs} width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
+         fmt(-label_bbox_w / 2.0),
+         fmt(label_y),
+         fmt(label_bbox_w),
+@@ -151,9 +152,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
+             icon_name,
+             icon_size,
+         )?;
++        let asset_attrs = super::super::helpers::node_asset_trace_attrs(ctx, common.node_id);
+         let _ = write!(
+             out,
+-            r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
++            r#"<g{asset_attrs} transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
+             fmt(-icon_size / 2.0),
+             fmt(icon_dy - icon_size / 2.0),
+             escape_attr(common.stroke_color),
+@@ -174,9 +176,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
+         fmt(outer_x),
+         fmt(outer_y + outer_h),
+     );
++    let bounds_attrs = super::super::helpers::node_bounds_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g><path d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
++        r#"<g><path{bounds_attrs} d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
+         escape_attr(&outer_path),
+     );
+ 
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_square.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_square.rs
+index 775fe879..a05188dc 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_square.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/icon_square.rs
+@@ -200,9 +200,10 @@ fn render_icon_rect_frame(
+     } else {
+         outer_h / 2.0 - label_bbox_h
+     };
++    let trace_attrs = super::super::helpers::node_label_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
++        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject{trace_attrs} width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
+         fmt(-label_bbox_w / 2.0),
+         fmt(label_y),
+         fmt(label_bbox_w),
+@@ -214,9 +215,10 @@ fn render_icon_rect_frame(
+     );
+ 
+     // Outer bbox helper node (transparent fill, no stroke) — emitted after the label group.
++    let bounds_attrs = super::super::helpers::node_bounds_trace_attrs(ctx, common.node_id);
+     let _ = write!(
+         out,
+-        r#"<g><path d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
++        r#"<g><path{bounds_attrs} d="{}" stroke="none" stroke-width="0" fill="transparent"/></g>"#,
+         escape_attr(&outer_path)
+     );
+ 
+@@ -229,9 +231,10 @@ fn render_icon_rect_frame(
+             icon_name,
+             icon_size,
+         )?;
++        let asset_attrs = super::super::helpers::node_asset_trace_attrs(ctx, common.node_id);
+         let _ = write!(
+             out,
+-            r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
++            r#"<g{asset_attrs} transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
+             fmt(icon_tx),
+             fmt(icon_ty),
+             escape_attr(common.stroke_color),
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/image_square.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/image_square.rs
+index 787ad422..032665c6 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/image_square.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/image_square.rs
+@@ -170,12 +170,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
+         } else {
+             image_height / 2.0 - label_bbox_h / 2.0 + label_padding / 2.0
+         };
++        let trace_attrs = super::super::helpers::node_label_trace_attrs(ctx, common.node_id);
+         let _ = write!(
+             out,
+             concat!(
+                 r#"<g class="label" style="" transform="translate({},{})">"#,
+                 r#"<rect/>"#,
+-                r#"<foreignObject width="{}" height="{}"{}>"#,
++                r#"<foreignObject{trace_attrs} width="{}" height="{}"{}>"#,
+                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
+                 r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
+                 r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
+@@ -188,7 +189,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
+             HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+             fmt_display(ctx.wrapping_width),
+             super::super::helpers::flowchart_node_label_span_class(label.label_type),
+-            label_html
++            label_html,
++            trace_attrs = trace_attrs,
+         );
+ 
+         let outer_x0 = -outer_w / 2.0;
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs
 index 0e88fbb6..e59cae96 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/mod.rs
@@ -29848,10 +30017,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..06046a78
+index 00000000..465e8303
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,365 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30175,6 +30344,46 @@ index 00000000..06046a78
 +            .any(|p| p["classification"] == "configuration-key"
 +                && p["path"] == json!(["values", 0, "nested"])
 +                && slice(&p["labelSpan"]) == "Value 😀")
++    );
++}
++
++#[test]
++fn native_asset_labels_keep_identity_and_generated_helpers_are_explicit() {
++    let source = "flowchart LR\r\nA@{ icon: 'missing:icon', label: 'Asset 😀' }\r\nB@{ icon: 'missing:icon', form: circle, label: 'Asset 😀' }\r\nC@{ icon: 'missing:icon', form: rounded, label: 'Asset 😀' }\r\nD@{ icon: 'missing:icon', form: square, label: 'Asset 😀' }\r\nE@{ img: 'data:image/svg+xml;base64,PHN2Zy8+', label: 'Asset 😀', w: 48, h: 48 }\r\nA --> B --> C --> D --> E\r\n";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    for id in ["A", "B", "C", "D", "E"] {
++        let key = format!("node:{id}");
++        assert!(
++            svg.descendants()
++                .any(|n| n.attribute("data-mt-key") == Some(key.as_str())
++                    && n.attribute("data-mt-label") == Some("true")),
++            "missing native label {id}"
++        );
++    }
++    assert_eq!(
++        svg.descendants()
++            .filter(|n| n.attribute("data-mt-generated") == Some("asset"))
++            .count(),
++        4
++    );
++    assert_eq!(
++        svg.descendants()
++            .filter(|n| n.attribute("data-mt-generated") == Some("bounds"))
++            .count(),
++        4
 +    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs

@@ -29,6 +29,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.setContent(svg! + svg!.replaceAll('planning-saved', 'planning-copy'));
+    const boundsBefore = await page.locator('[data-mt-generated="bounds"]').evaluateAll(elements => elements.map(element => element.getAttribute('pointer-events')));
     await page.evaluate(async activation => {
       const { activateSvg } = await import(activation);
       const events: unknown[] = [];
@@ -41,9 +42,12 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await first.locator('title[tabindex], desc[tabindex], title[data-mt-role], desc[data-mt-role]').count(), 0, 'nonvisual accessibility text must not become a selectable control');
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
+    const asset = shape.first().locator(':scope:is(.icon-shape, .image-shape) > image, :scope:is(.icon-shape, .image-shape) > g:not(.label) svg');
     const ellipse = shape.first().locator(':scope > ellipse');
     const rough = shape.first().locator(':scope > g.basic.label-container > path').last();
-    if (await ellipse.count()) {
+    if (await asset.count()) {
+      await asset.first().click({ position: { x: 3, y: 3 } });
+    } else if (await ellipse.count()) {
       await ellipse.click({ position: { x: 3, y: (await ellipse.boundingBox())!.height / 2 } });
     } else if (await rough.count()) {
       const point = await rough.evaluate(element => {
@@ -97,6 +101,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+    assert.deepEqual(await page.locator('[data-mt-generated="bounds"]').evaluateAll(elements => elements.map(element => element.getAttribute('pointer-events'))), boundsBefore, 'dispose must restore generated bounds hit behavior');
     await writeFile(filename, markdown);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
@@ -370,5 +375,18 @@ test('FLOW AC4/6: configuration provenance survives saved SVG and live Markdown 
     const nested = (evidence as ConfigPiece[]).find(piece => JSON.stringify(piece.path) === JSON.stringify(['values', 0, 'nested']));
     assert.ok(nested?.labelSpan, 'array indices must remain typed in saved and live SVG');
     assert.equal(nativeSlice(nested.labelSpan), 'Value 😀');
+  }
+});
+
+test('FLOW AC4/6: icon and image labels retain saved/live pointer, keyboard and source selection', { timeout: 180_000 }, async () => {
+  const image = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSJyZWQiLz48L3N2Zz4=';
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
+    for (const properties of ["icon: 'missing:icon'", "icon: 'missing:icon', form: circle", "icon: 'missing:icon', form: rounded", "icon: 'missing:icon', form: square", `img: '${image}', w: 48, h: 48, constraint: on`]) {
+      for (const pos of ['t', 'b']) {
+        const statement = `A@{ ${properties}, pos: ${pos}, label: 'Asset 😀' }`;
+        const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\n${statement}\nA --> B\n`;
+        await verifyNative(source, 'node:A', statement, 'Asset 😀', []);
+      }
+    }
   }
 });

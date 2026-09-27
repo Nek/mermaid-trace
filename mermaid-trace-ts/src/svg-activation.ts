@@ -100,6 +100,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
   set(svg, 'role', 'group');
   set(svg, 'tabindex', '0');
   set(svg, 'aria-label', 'Select whole diagram');
+  for (const helper of svg.querySelectorAll('[data-mt-generated="bounds"]')) set(helper, 'pointer-events', 'none');
   for (const element of elements) {
     const piece = byId.get(refs(element)[0]!)!;
     set(element, 'tabindex', '0');

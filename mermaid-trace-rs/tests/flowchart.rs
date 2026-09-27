@@ -1586,3 +1586,77 @@ fn flow_ac4_json5_tokens_keep_escapes_continuations_containers_and_typed_array_p
         );
     }
 }
+
+#[test]
+fn flow_ac4_icon_and_image_labels_have_exact_native_bindings() {
+    let image = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSJyZWQiLz48L3N2Zz4=";
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            for properties in [
+                "icon: 'missing:icon'".to_string(),
+                "icon: 'missing:icon', form: circle".to_string(),
+                "icon: 'missing:icon', form: rounded".to_string(),
+                "icon: 'missing:icon', form: square".to_string(),
+                format!("img: '{image}', w: 48, h: 48, constraint: on"),
+            ] {
+                for pos in ["t", "b"] {
+                    let statement = format!("A@{{ {properties}, pos: {pos}, label: 'Asset 😀' }}");
+                    let source = format!(
+                        "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n{statement}\r\nA --> B\r\n"
+                    );
+                    let result = mermaid_trace_rs::render("asset-label", &source).unwrap();
+                    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let label = svg.descendants().find(|n| n.attribute("data-mt-key") == Some("node:A") && n.attribute("data-mt-role") == Some("node-label")).unwrap_or_else(|| panic!("missing asset label: {properties}, {header}, html={html}, pos={pos}"));
+                    assert!(
+                        !svg.descendants().any(|n| n.has_tag_name("text")
+                            && n.descendants()
+                                .any(|child| child.is_text() && child.text() == Some("?"))
+                            && n.has_attribute("data-mt-role")),
+                        "icon placeholder text is generated, not the authored label"
+                    );
+                    let utf16: Vec<_> = source.encode_utf16().collect();
+                    let start = label
+                        .attribute("data-mt-start")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    let end = label
+                        .attribute("data-mt-end")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), "Asset 😀");
+                    for empty in ["", " "] {
+                        let empty_source = source.replace("Asset 😀", empty);
+                        let empty_result =
+                            mermaid_trace_rs::render("asset-empty", &empty_source).unwrap();
+                        let empty_svg =
+                            roxmltree::Document::parse(empty_result["svg"].as_str().unwrap())
+                                .unwrap();
+                        assert!(
+                            empty_svg
+                                .descendants()
+                                .any(|n| n.attribute("data-mt-key") == Some("node:A")
+                                    && n.attribute("data-mt-role") == Some("node"))
+                        );
+                        assert!(
+                            !empty_svg.descendants().any(|n| n.attribute("data-mt-role")
+                                == Some("node-label")
+                                && n.ancestors().any(
+                                    |parent| parent.attribute("data-mt-key") == Some("node:A")
+                                )),
+                            "empty asset labels and placeholder glyphs must not receive source label controls"
+                        );
+                    }
+                    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "asset-label", &source).unwrap();
+                    assert_eq!(
+                        strip_trace(result["svg"].as_str().unwrap()),
+                        strip_trace(baseline["svg"].as_str().unwrap())
+                    );
+                }
+            }
+        }
+    }
+}
