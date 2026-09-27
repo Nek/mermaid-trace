@@ -11651,6 +11651,76 @@ index 17ec4d62..e8b1115a 100644
                                  rewrite_safe: *rewrite_safe,
                              });
                              *path = Some(key_path);
+diff --git a/crates/merman-render/src/flowchart/elk.rs b/crates/merman-render/src/flowchart/elk.rs
+index cdc83769..1fd66aba 100644
+--- a/crates/merman-render/src/flowchart/elk.rs
++++ b/crates/merman-render/src/flowchart/elk.rs
+@@ -813,6 +813,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+         cluster_label_base_style,
+         cluster_title_wrapping_width: wrapping_width,
+         cluster_wrap_mode,
++        cluster_padding,
+     };
+     let node_measure_ctx = NodeMeasureContext {
+         model: render_model,
+@@ -914,6 +915,7 @@ struct ElkMeasureContext<'a> {
+     cluster_label_base_style: &'a TextStyle,
+     cluster_title_wrapping_width: f64,
+     cluster_wrap_mode: WrapMode,
++    cluster_padding: f64,
+ }
+ 
+ #[derive(Clone, Copy)]
+@@ -1877,11 +1879,25 @@ fn subgraph_to_elk_node(
+         };
+     }
+ 
++    let label = subgraph_label(declaration_ordinal, sg, ctx);
++    // Empty groups are ELK leaves: compound sizing cannot infer their title bounds.
++    let (width, height) = if sg.nodes.is_empty() {
++        let title = label.unwrap_or(elk::Label {
++            width: 0.0,
++            height: 0.0,
++        });
++        (
++            title.width + 2.0 * ctx.cluster_padding,
++            title.height + 2.0 * ctx.cluster_padding,
++        )
++    } else {
++        (0.0, 0.0)
++    };
+     elk::Node {
+         id: sg.id.clone(),
+         kind: elk::NodeKind::Group,
+-        width: 0.0,
+-        height: 0.0,
++        width,
++        height,
+         parent,
+         // Use the resolved dir, not has_explicit_dir: FlowDB may populate it through inheritDir,
+         // and Mermaid applies SeparateChildren whenever that resolved direction exists.
+@@ -1894,7 +1910,7 @@ fn subgraph_to_elk_node(
+             None
+         },
+         layer_constraint: None,
+-        label: subgraph_label(declaration_ordinal, sg, ctx),
++        label,
+     }
+ }
+ 
+@@ -2728,6 +2744,12 @@ mod tests {
+ 
+         assert_eq!(empty.kind, elk::NodeKind::Group);
+         assert_eq!(empty.label.map(|label| label.height), Some(22.0));
++        let padding = FlowchartConfigView::new(MermaidConfig::default().as_value())
++            .layout_settings()
++            .cluster_padding;
++        let title = empty.label.unwrap();
++        assert_eq!(empty.width, title.width + 2.0 * padding);
++        assert_eq!(empty.height, title.height + 2.0 * padding);
+     }
+ 
+     #[test]
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
@@ -12409,31 +12479,30 @@ index 489b7134..0e2c8748 100644
          out.push_str(r#" marker-start="url(#"#);
          write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node.rs b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
-index 09a7dbe0..9d4ace87 100644
+index 09a7dbe0..416954d2 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/node.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/render/node.rs
-@@ -138,6 +138,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
+@@ -135,9 +135,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
+         }
+         _ => node_classes,
+     };
++    let trace_key = helpers::node_trace_key(ctx, node_id);
      helpers::open_node_wrapper(
          out,
          helpers::NodeWrapperAttrs {
-+            trace_source: ctx
-+                .config
-+                .as_value()
-+                .get("traceSource")
-+                .and_then(serde_json::Value::as_bool)
-+                == Some(true),
++            trace_key: trace_key.as_deref(),
              diagram_id: ctx.diagram_id,
              node_id,
              dom_idx,
 diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
-index 2c3ed217..84bc4607 100644
+index 2c3ed217..023d8ea2 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/render/node/helpers.rs
 @@ -97,6 +97,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
  }
  
  pub(super) struct NodeWrapperAttrs<'a> {
-+    pub(super) trace_source: bool,
++    pub(super) trace_key: Option<&'a str>,
      pub(super) diagram_id: crate::svg::parity::SvgDiagramId<'a>,
      pub(super) node_id: &'a str,
      pub(super) dom_idx: Option<usize>,
@@ -12441,50 +12510,62 @@ index 2c3ed217..84bc4607 100644
  
  pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
      let NodeWrapperAttrs {
-+        trace_source,
++        trace_key,
          diagram_id,
          node_id,
          dom_idx,
-@@ -202,6 +204,13 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+@@ -202,6 +204,9 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
      if tooltip_enabled {
          let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
      }
-+    if trace_source {
-+        let _ = write!(
-+            out,
-+            r#" data-mt-key="node:{}""#,
-+            escape_attr_display(node_id)
-+        );
++    if let Some(key) = trace_key {
++        let _ = write!(out, r#" data-mt-key="{}""#, escape_attr_display(key));
 +    }
      out.push('>');
  }
  
-diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
-index d7e49e57..20a7003e 100644
---- a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
-+++ b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
-@@ -60,6 +60,20 @@ fn render_flowchart_node_label_with_wrapper(
-     details: &mut FlowchartRenderDetails,
-     close_node_wrapper: bool,
- ) {
-+    let trace_attrs = if ctx
+@@ -488,3 +493,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metri
+         crate::flowchart::FlowchartSvgWidthMode::Bbox,
+     )
+ }
++
++pub(super) fn node_trace_key(ctx: &FlowchartRenderCtx<'_>, node_id: &str) -> Option<String> {
++    if ctx
 +        .config
 +        .as_value()
 +        .get("traceSource")
 +        .and_then(serde_json::Value::as_bool)
-+        == Some(true)
++        != Some(true)
 +    {
-+        format!(
-+            " data-mt-key=\"node:{}\" data-mt-label=\"true\"",
-+            escape_xml_display(common.node_id)
-+        )
++        return None;
++    }
++    let subgraph_proxy = ctx.subgraphs_by_id.contains_key(node_id)
++        && (ctx.is_subgraph_collapsed(node_id) || !ctx.subgraph_has_children(node_id));
++    Some(if subgraph_proxy {
++        format!("flowchart:subgraph:{node_id}")
 +    } else {
-+        String::new()
-+    };
++        format!("node:{node_id}")
++    })
++}
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
+index d7e49e57..de2306db 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/label.rs
+@@ -60,6 +60,13 @@ fn render_flowchart_node_label_with_wrapper(
+     details: &mut FlowchartRenderDetails,
+     close_node_wrapper: bool,
+ ) {
++    let trace_attrs =
++        super::helpers::node_trace_key(ctx, common.node_id).map_or_else(String::new, |key| {
++            format!(
++                " data-mt-key=\"{}\" data-mt-label=\"true\"",
++                escape_xml_display(&key)
++            )
++        });
      let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
          &ctx.html_label_text_style
      } else {
-@@ -266,7 +280,7 @@ fn render_flowchart_node_label_with_wrapper(
+@@ -266,7 +273,7 @@ fn render_flowchart_node_label_with_wrapper(
          }
          let _ = write!(
              out,

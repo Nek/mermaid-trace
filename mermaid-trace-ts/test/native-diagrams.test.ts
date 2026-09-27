@@ -75,10 +75,10 @@ async function verifyNative(source: string, key: string, expected: string, label
       } else {
         const shape = await background.count() ? background.first() : target;
         const centered = role === 'node' && await shape.evaluate(element => element.tagName === 'path');
-        await shape.click(await background.count() && !centered ? { position: { x: 10, y: 3 } } : {});
+        await shape.click(await background.count() && !centered ? { position: { x: 1, y: (await shape.boundingBox())!.height / 2 } } : {});
       }
       const control = await page.evaluate(() => (window as any).events.at(-1));
-      assert.equal(source.slice(control.span.start, control.span.end), text);
+      assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
     }
     if (supersededLabel !== undefined) {
@@ -232,6 +232,22 @@ test('FLOW AC5/6: ellipse silhouettes, labels and connectors remain selectable i
       for (const look of ['classic', 'handDrawn']) {
         const source = `---\nconfig:\n  htmlLabels: ${html}\n  look: ${look}\n  handDrawnSeed: 42\n---\n${header}\nA(-Actor 😀-) -->|go| B\n`;
         await verifyNative(source, 'node:A', 'A(-Actor 😀-)', 'Actor 😀', [['edge:L_A_B_0', 'go', 'edge-label']]);
+      }
+    }
+  }
+});
+
+
+test('FLOW AC4/6: empty and collapsed subgraphs retain saved and live frame/title selection', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      for (const content of ['', 'b\n', 'C --> D\n']) {
+        const block = `subgraph G["Empty 😀"]\n${content}end`;
+        const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nsubgraph A\na["Actor 😀"] --> b\nend\n${block}\n` + (content.startsWith('C') ? 'G@{ view: collapsed }\n' : '');
+        await verifyNative(source, 'node:a', 'a["Actor 😀"]', 'Actor 😀', [
+          ['flowchart:subgraph:G', block],
+          ['flowchart:subgraph:G', 'Empty 😀', 'control-label'],
+        ]);
       }
     }
   }

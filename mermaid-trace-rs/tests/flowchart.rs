@@ -541,3 +541,65 @@ fn flow_ac5_legacy_ellipse_syntax_renders_native_geometry_and_exact_ranges() {
     mermaid_trace_rs::render("ellipse-pinned", &source)
         .expect("pinned ellipse fixture must render");
 }
+
+#[test]
+fn flow_ac4_empty_and_collapsed_subgraph_proxies_keep_group_identity() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            for block in [
+                "subgraph G[\"Empty 😀\"]\nend",
+                "subgraph G[\"Empty 😀\"]\nb\nend",
+                "subgraph G[\"Empty 😀\"]\nC --> D\nend\nG@{ view: collapsed }",
+            ] {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n---\n{header}\nsubgraph A\na --> b\nend\n{block}\n"
+                );
+                let result = mermaid_trace_rs::render("group-proxy", &source).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let group = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some("flowchart:subgraph:G")
+                            && n.attribute("data-mt-role") == Some("control")
+                    })
+                    .expect("leaf/collapsed subgraph must retain group selection");
+                assert!(
+                    !group
+                        .descendants()
+                        .any(|n| n.attribute("data-mt-key") == Some("node:G"))
+                );
+                assert!(
+                    svg.descendants()
+                        .any(|n| n.attribute("data-mt-role") == Some("control-label")
+                            && n.ancestors().any(
+                                |a| a.attribute("data-mt-key") == Some("flowchart:subgraph:G")
+                            )),
+                    "missing proxy title selection"
+                );
+                let piece = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "flowchart:subgraph:G")
+                    .unwrap();
+                let text: Vec<_> = source.encode_utf16().collect();
+                let slice = |span: &Value| {
+                    String::from_utf16(
+                        &text[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize],
+                    )
+                    .unwrap()
+                };
+                assert_eq!(slice(&piece["span"]), block.split("\nG@{").next().unwrap());
+                assert_eq!(slice(&piece["labelSpan"]), "Empty 😀");
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "group-proxy", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
