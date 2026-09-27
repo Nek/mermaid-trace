@@ -11,6 +11,159 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_geometry_config_preserves_zero_dimensions_and_signed_spacing() {
+    let renderer = mermaid_trace_rs::renderer();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for (width, height, spacing, mx, my, left) in [
+                (0.0, 50.0, 50.0, 50.0, 10.0, 150.0),
+                (150.0, 0.0, 50.0, 50.0, 10.0, 150.0),
+                (150.0, 50.0, -25.5, 50.0, 10.0, 150.0),
+                (0.0, 0.0, 70.0, 20.0, 0.0, 80.0),
+                (200.0, 80.0, -10.5, 30.0, 20.0, 100.0),
+                (160.0, 40.0, 0.0, 0.0, 0.0, 0.0),
+                (150.0, 50.0, -75.0, 50.0, 10.0, 150.0),
+                (150.0, 50.0, -250.0, 50.0, 10.0, 150.0),
+                (150.0, 300.0, 50.0, 50.0, 10.0, 150.0),
+                (150.0, 50.0, 50.0, 50.0, 500.0, 150.0),
+            ] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  journey:\r\n    width: {width}\r\n    height: {height}\r\n    taskMargin: {spacing}\r\n    diagramMarginX: {mx}\r\n    diagramMarginY: {my}\r\n    leftMargin: {left}\r\n---\r\njourney\r\nsection S 😀\r\nFirst : 5\r\nSecond : 3\r\nsection T\r\nThird : 1\r\n"
+                );
+                let RenderOutput::LayoutJson(Some(output)) = renderer
+                    .render(RenderRequest::layout_json(
+                        &source,
+                        OperationControl::new(),
+                        SvgRequest::default(),
+                    ))
+                    .unwrap()
+                else {
+                    panic!("journey layout")
+                };
+                let layout = &output.layout()["layout"]["JourneyDiagram"];
+                assert_eq!(
+                    layout["left_margin"],
+                    json!(left),
+                    "no actor legend changes margin"
+                );
+                for (index, task) in layout["tasks"].as_array().unwrap().iter().enumerate() {
+                    assert_eq!(task["width"], json!(width), "configured width: {source}");
+                    assert_eq!(task["height"], json!(height), "configured height: {source}");
+                    assert_eq!(task["x"], json!(left + index as f64 * (width + spacing)));
+                    assert_eq!(task["y"], json!(2.0 * height + my));
+                    assert_eq!(
+                        task["face_cx"],
+                        json!(left + index as f64 * (width + spacing) + width / 2.0)
+                    );
+                }
+                assert_eq!(layout["sections"][0]["width"], json!(2.0 * width + mx));
+                assert_eq!(layout["sections"][1]["width"], json!(width));
+                assert_eq!(layout["activity_line"]["y1"], json!(4.0 * height));
+                let startx = (0..3)
+                    .map(|index| {
+                        let x = left + index as f64 * (width + spacing);
+                        x.min(x + mx + spacing)
+                    })
+                    .fold(0.0, f64::min);
+                let stopx = (0..3)
+                    .map(|index| {
+                        let x = left + index as f64 * (width + spacing);
+                        x.max(x + mx + spacing)
+                    })
+                    .fold(left, f64::max);
+                assert_eq!(layout["width"], json!(left + stopx + 2.0 * mx));
+                assert_eq!(layout["bounds"]["min_x"], json!(startx));
+                assert_eq!(
+                    layout["bounds"]["max_x"],
+                    json!(startx + left + stopx + 2.0 * mx)
+                );
+                assert_eq!(
+                    layout["height"],
+                    json!(450.0_f64.max(2.0 * height + my) + 2.0 * my)
+                );
+                let result =
+                    mermaid_trace_rs::render_with(&renderer, "journey-geometry", &source).unwrap();
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-geometry", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let mut request = SvgRequest::default();
+                request.pipeline = Some(merman::svg::SvgPipeline::parity());
+                let RenderOutput::Svg(Some(raw)) = renderer
+                    .render(RenderRequest::svg(
+                        &source,
+                        OperationControl::new(),
+                        request,
+                    ))
+                    .unwrap()
+                else {
+                    panic!("raw journey SVG")
+                };
+                let raw_svg = roxmltree::Document::parse(raw.svg()).unwrap();
+                let viewbox: Vec<f64> = raw_svg
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|value| value.parse().unwrap())
+                    .collect();
+                assert_eq!(viewbox[0], startx);
+                assert_eq!(viewbox[2], left + stopx + 2.0 * mx);
+                assert_eq!(viewbox[3], 450.0_f64.max(2.0 * height + my) + 2.0 * my);
+                assert_eq!(
+                    svg.descendants()
+                        .filter(|n| n.has_tag_name("rect")
+                            && n.attribute("class")
+                                .is_some_and(|c| c.starts_with("task task-type-")))
+                        .count(),
+                    if width == 0.0 || height == 0.0 { 0 } else { 3 },
+                    "safe export must not invent a zero-area body"
+                );
+                for (index, name) in ["First", "Second", "Third"].iter().enumerate() {
+                    let key = format!("journey:task:{index}");
+                    assert!(
+                        svg.descendants()
+                            .any(|n| n.attribute("data-mt-key") == Some(key.as_str())
+                                && n.attribute("data-mt-role") == Some("node")),
+                        "native task body identity"
+                    );
+                    let rect = raw_svg
+                        .descendants()
+                        .filter(|n| {
+                            n.has_tag_name("rect")
+                                && n.attribute("class")
+                                    .is_some_and(|c| c.starts_with("task task-type-"))
+                        })
+                        .nth(index)
+                        .expect("raw task rectangle");
+                    assert_eq!(
+                        rect.attribute("width").unwrap().parse::<f64>().unwrap(),
+                        width
+                    );
+                    assert_eq!(
+                        rect.attribute("height").unwrap().parse::<f64>().unwrap(),
+                        height
+                    );
+                    let label = result["mapping"]["pieces"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|p| p["domId"] == key && p.get("labelSpan").is_some())
+                        .expect("visible label remains mapped");
+                    assert_eq!(selected(&source, &label["labelSpan"]), *name);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_number_boundary_corpus_preserves_models_layout_and_safe_artifacts() {
     use merman::{Engine, ParseOptions, RenderSemanticModel};
     let corpus: Value =

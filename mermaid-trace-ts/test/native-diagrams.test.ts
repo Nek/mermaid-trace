@@ -8,6 +8,18 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 
+async function clickExposedTarget(target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  const position = await target.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    for (const x of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const y of [0.1, 0.5, 0.9]) {
+      const hit = element.ownerDocument.elementFromPoint(box.x + box.width * x, box.y + box.height * y);
+      if (hit?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return { x: box.width * x, y: box.height * y };
+    }
+    throw new Error('mapped visual has no exposed pointer target');
+  });
+  await target.click({ position });
+}
 
 async function noteConnectorPoint(target: Locator) {
   await target.scrollIntoViewIfNeeded();
@@ -205,6 +217,16 @@ async function verifyNative(source: string, key: string, expected: string, label
     const first = page.locator('svg[data-mt-map]').first();
     const configEvidence = (element: Element) => JSON.parse(element.querySelector('[data-mt-native]')?.getAttribute('data-mt-native') ?? '[]').filter((piece: { classification?: string }) => ['frontmatter', 'source-directive', 'configuration-key'].includes(piece.classification ?? ''));
     const savedConfig = await first.evaluate(configEvidence);
+    // Markdown normalizes CRLF in logical fence input; native evidence uses that input's byte offsets.
+    const markdownConfig = structuredClone(savedConfig);
+    const sourceBytes = new TextEncoder().encode(source);
+    for (const piece of markdownConfig) for (const field of ['span', 'labelSpan']) {
+      if (!piece[field]) continue;
+      for (const bound of ['start', 'end']) {
+        const prefix = sourceBytes.slice(0, piece[field][bound]);
+        piece[field][bound] -= prefix.reduce((count, byte, index) => count + Number(byte === 13 && sourceBytes[index + 1] === 10), 0);
+      }
+    }
     assert.equal(await first.locator('title[tabindex], desc[tabindex], title[data-mt-role], desc[data-mt-role]').count(), 0, 'nonvisual accessibility text must not become a selectable control');
     const shape = first.locator(`[data-mt-key="${key}"][data-mt-role=node]`);
     const cardRect = shape.first().locator(':scope > rect');
@@ -212,7 +234,18 @@ async function verifyNative(source: string, key: string, expected: string, label
     const ellipse = shape.first().locator(':scope > ellipse');
     const rough = shape.first().locator(':scope > g.basic.label-container > path').last();
     const consoleBody = shape.first().locator(':scope > g.basic.label-container > rect');
-    if (await asset.count()) {
+    const taskLine = shape.first().locator('line.task-line');
+    if (!await cardRect.count() && await taskLine.count()) {
+      const point = await taskLine.evaluate(element => {
+        const line = element as SVGGeometryElement;
+        for (const fraction of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+          const point = line.getPointAtLength(line.getTotalLength() * fraction).matrixTransform(line.getScreenCTM()!);
+          if (element.ownerDocument.elementFromPoint(point.x, point.y)?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return { x: point.x, y: point.y };
+        }
+        throw new Error('task line has no exposed painted pointer target');
+      });
+      await page.mouse.click(point.x, point.y);
+    } else if (await asset.count()) {
       await asset.first().click({ position: { x: 3, y: 3 } });
     } else if (await ellipse.count()) {
       await ellipse.click({ position: { x: 3, y: (await ellipse.boundingBox())!.height / 2 } });
@@ -226,7 +259,8 @@ async function verifyNative(source: string, key: string, expected: string, label
       });
       await page.mouse.click(point.x, point.y);
     } else {
-      await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
+      if (key.startsWith('journey:') && await cardRect.count()) await clickExposedTarget(cardRect.first());
+      else await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
     }
     let event = await page.evaluate(() => (window as any).events.at(-1));
     const nodeSpan = event.span;
@@ -247,7 +281,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(glyphEvent.role, 'node', 'generated glyph clicks select their enclosing node');
       assert.equal(source.slice(glyphEvent.span.start, glyphEvent.span.end), expected);
     }
-    await first.locator(labelSelector).first().click();
+    await clickExposedTarget(first.locator(labelSelector).first());
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     const labelSpan = event.span;
@@ -364,7 +398,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     preview = await watchPreview(filename, { port: 0, sourceView: true });
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const original = page.frameLocator('#source-frame').locator('#source');
-    assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), savedConfig, 'native configuration evidence must survive saved SVG and Markdown insertion');
+    assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), markdownConfig, 'native configuration evidence must survive saved SVG and normalized Markdown insertion');
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
     const liveDefaultFace = page.locator(`svg[data-mt-map] [data-mt-key="${key}"][data-mt-role=node] circle.face:not([data-mt-key])`).first();
     if (await liveDefaultFace.count()) {
@@ -372,7 +406,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(expected));
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(nodeSpan.start), end: toMarkdownEnd(nodeSpan.end) }));
     }
-    await page.locator(labelSelector).first().click();
+    await clickExposedTarget(page.locator(labelSelector).first());
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
     if (expectedTextColour !== undefined) {
       const labelGroup = page.locator(labelSelector).first();
@@ -738,6 +772,19 @@ test('JOURNEY-2-SCORE-NUMBERS: numeric score parts share saved/live selection an
       const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\nTask 😀 : ${score} : Alice\n`;
       const start = source.indexOf('Task 😀 : ') + 'Task 😀 : '.length;
       await verifyNative(source, 'journey:task:0', `Task 😀 : ${score} : Alice`, 'Task 😀', [], { start, end: start + score.length }, [], 'journey:task:0', undefined, true);
+    }
+  }
+});
+
+test('JOURNEY-2-GEOMETRY-CONFIG: zero-area tasks and signed spacing retain saved/live selection', { timeout: 180_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    for (const [width, height, margin] of [[0, 50, 70], [150, 0, 50], [0, 0, 70], [150, 50, -25.5], [150, 50, -75], [150, 50, -250]]) {
+      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n  journey:\r\n    width: ${width}\r\n    height: ${height}\r\n    taskMargin: ${margin}\r\n    leftMargin: ${margin === -250 ? 400 : 150}\r\n---\r\njourney\r\nsection S 😀\r\nFirst : 5\r\nSecond : 3\r\n`;
+      for (const [index, name, score] of [[0, 'First', '5'], [1, 'Second', '3']] as const) {
+        const key = `journey:task:${index}`;
+        const statement = `${name} : ${score}`;
+        await verifyNative(source, key, statement, name, [[`journey:score:${index}`, score], ['journey:section:0', 'S 😀', 'control-label']], statement, [], key, undefined, true);
+      }
     }
   }
 });

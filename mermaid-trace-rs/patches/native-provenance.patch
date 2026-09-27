@@ -28447,10 +28447,18 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
-index c8ebca79..3d646d8a 100644
+index c8ebca79..35051a0a 100644
 --- a/crates/merman-render/src/journey.rs
 +++ b/crates/merman-render/src/journey.rs
-@@ -250,6 +250,7 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -224,6 +224,7 @@ pub(crate) fn layout_journey_diagram_typed(
+     let mut current_fill = "#CCC".to_string();
+     let mut current_num: i64 = 0;
+ 
++    let mut startx: f64 = 0.0;
+     let mut stopx = left_margin;
+     for (i, task) in model.tasks.iter().enumerate() {
+         let x = (i as f64) * cfg.task_margin + (i as f64) * cfg.cell_width + left_margin;
+@@ -250,11 +251,12 @@ pub(crate) fn layout_journey_diagram_typed(
                  cfg.cell_width * (count as f64) + cfg.diagram_margin_x * ((count - 1) as f64);
  
              sections.push(JourneySectionLayout {
@@ -28458,7 +28466,13 @@ index c8ebca79..3d646d8a 100644
                  section: task.section.to_string(),
                  num: current_num,
                  x,
-@@ -269,16 +270,13 @@ pub(crate) fn layout_journey_diagram_typed(
+                 y: 50.0,
+-                width: section_width.max(1.0),
++                width: section_width.max(0.0),
+                 height: cfg.cell_height,
+                 fill: current_fill.clone(),
+                 task_count: count,
+@@ -269,16 +271,13 @@ pub(crate) fn layout_journey_diagram_typed(
          let face_cy = if task.score_is_nan {
              None
          } else {
@@ -28478,7 +28492,7 @@ index c8ebca79..3d646d8a 100644
              JourneyMouthKind::Sad
          } else {
              JourneyMouthKind::Ambivalent
-@@ -286,11 +284,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -286,11 +285,12 @@ pub(crate) fn layout_journey_diagram_typed(
  
          let mut actor_circles = Vec::new();
          let mut cx = x + 14.0;
@@ -28492,10 +28506,69 @@ index c8ebca79..3d646d8a 100644
                  actor: p.to_string(),
                  pos,
                  color,
-@@ -389,6 +388,57 @@ mod tests {
+@@ -325,13 +325,15 @@ pub(crate) fn layout_journey_diagram_typed(
+             mouth,
+         });
+ 
+-        stopx = stopx.max(x + cfg.diagram_margin_x + cfg.task_margin);
++        let task_stopx = x + cfg.diagram_margin_x + cfg.task_margin;
++        startx = startx.min(x).min(task_stopx);
++        stopx = stopx.max(x).max(task_stopx);
+     }
+ 
+     let stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
+         0.0
+     } else {
+-        JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX
++        task_y.max(JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX)
+     });
+ 
+     let height = (stopy - 0.0 + 2.0 * cfg.diagram_margin_y).max(1.0);
+@@ -350,9 +352,9 @@ pub(crate) fn layout_journey_diagram_typed(
+ 
+     let viewbox_top_pad = JOURNEY_VIEWBOX_TOP_PAD_PX;
+     let bounds = Bounds {
+-        min_x: 0.0,
++        min_x: startx,
+         min_y: -viewbox_top_pad,
+-        max_x: width,
++        max_x: startx + width,
+         max_y: -viewbox_top_pad + height + extra_vert_for_title,
+     };
+ 
+@@ -389,6 +391,86 @@ mod tests {
      use merman_core::diagrams::journey::JourneyDiagramRenderModel;
      use serde_json::json;
  
++    #[test]
++    fn journey_bounds_normalize_signed_endpoints_and_large_task_start_y() {
++        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
++        let parsed = Engine::new()
++            .parse_diagram_for_render_model_sync(
++                "journey\nFirst :5\nSecond :3\nThird :1\n",
++                ParseOptions::strict(),
++            )
++            .unwrap()
++            .unwrap();
++        let RenderSemanticModel::Journey(model) = parsed.model() else {
++            panic!("journey")
++        };
++        for (spacing, height, margin_y, min_x, width, diagram_height) in [
++            (-75.0, 50.0, 10.0, 0.0, 550.0, 470.0),
++            (-250.0, 50.0, 10.0, -250.0, 400.0, 470.0),
++            (50.0, 300.0, 10.0, 0.0, 900.0, 630.0),
++            (50.0, 50.0, 500.0, 0.0, 900.0, 1600.0),
++        ] {
++            let layout = super::layout_journey_diagram_typed(model,
++                &json!({"journey":{"taskMargin":spacing,"height":height,"diagramMarginY":margin_y}}),
++                &DeterministicTextMeasurer::default()).unwrap();
++            assert_eq!(layout.width, width);
++            assert_eq!(layout.height, diagram_height);
++            assert_eq!(layout.bounds.as_ref().unwrap().min_x, min_x);
++            assert_eq!(layout.bounds.as_ref().unwrap().max_x, min_x + width);
++        }
++    }
++
 +    #[test]
 +    fn journey_fractional_and_infinite_scores_round_trip_through_typed_layout() {
 +        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
@@ -28551,10 +28624,30 @@ index c8ebca79..3d646d8a 100644
      fn journey_layout_carries_use_max_width_config() {
          let model = JourneyDiagramRenderModel::default();
 diff --git a/crates/merman-render/src/journey/config.rs b/crates/merman-render/src/journey/config.rs
-index 6f096465..a2bbd954 100644
+index 6f096465..b52bf8c2 100644
 --- a/crates/merman-render/src/journey/config.rs
 +++ b/crates/merman-render/src/journey/config.rs
-@@ -77,6 +77,16 @@ impl<'a> JourneyConfigView<'a> {
+@@ -58,16 +58,15 @@ impl<'a> JourneyConfigView<'a> {
+                 .max(0.0),
+             task_margin: self
+                 .journey_f64("taskMargin")
+-                .unwrap_or(DEFAULT_TASK_MARGIN)
+-                .max(0.0),
++                .unwrap_or(DEFAULT_TASK_MARGIN),
+             cell_width: self
+                 .journey_f64("width")
+                 .unwrap_or(DEFAULT_CELL_WIDTH)
+-                .max(1.0),
++                .max(0.0),
+             cell_height: self
+                 .journey_f64("height")
+                 .unwrap_or(DEFAULT_CELL_HEIGHT)
+-                .max(1.0),
++                .max(0.0),
+             actor_colours: self.actor_colours(),
+             section_fills: self.section_fills(),
+             use_max_width: self.use_max_width(),
+@@ -77,6 +76,16 @@ impl<'a> JourneyConfigView<'a> {
      pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
          JourneyRenderSettings {
              task_text_style: self.task_text_style(),
@@ -28571,7 +28664,7 @@ index 6f096465..a2bbd954 100644
              title_font_size: config_string(self.journey_config, &["titleFontSize"])
                  .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
              title_font_family: config_string(self.journey_config, &["titleFontFamily"])
-@@ -157,6 +167,8 @@ pub(crate) struct JourneyLayoutSettings {
+@@ -157,6 +166,8 @@ pub(crate) struct JourneyLayoutSettings {
  #[derive(Debug, Clone)]
  pub(crate) struct JourneyRenderSettings {
      pub(crate) task_text_style: TextStyle,
@@ -28580,6 +28673,22 @@ index 6f096465..a2bbd954 100644
      pub(crate) title_font_size: String,
      pub(crate) title_font_family: String,
      pub(crate) title_color: String,
+@@ -223,6 +234,15 @@ mod tests {
+         assert!(!settings.use_max_width);
+     }
+ 
++    #[test]
++    fn journey_geometry_preserves_zero_dimensions_and_signed_task_spacing() {
++        let cfg = json!({"journey":{"width":0,"height":0,"taskMargin":-25.5}});
++        let settings = JourneyConfigView::new(&cfg).layout_settings();
++        assert_eq!(settings.cell_width, 0.0);
++        assert_eq!(settings.cell_height, 0.0);
++        assert_eq!(settings.task_margin, -25.5);
++    }
++
+     #[test]
+     fn journey_render_settings_project_values() {
+         let cfg = json!({
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
