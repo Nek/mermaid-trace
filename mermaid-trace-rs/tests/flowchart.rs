@@ -1924,3 +1924,47 @@ fn flow_ac5_every_pinned_public_shape_keeps_native_node_and_label_bindings() {
         }
     }
 }
+
+#[test]
+fn flow_ac4_layout_connectors_keep_exact_authored_spans_and_static_output() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\nA ghost@~~~ B\r\nB labeled@~~~|Same 😀| C\r\nC painted@~~~ D\r\nlinkStyle 2 stroke:#123,stroke-width:3px\r\n"
+                );
+                let result = mermaid_trace_rs::render("layout-links", &source).unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                let slice = |span: &Value| {
+                    String::from_utf16(
+                        &utf16[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize],
+                    )
+                    .unwrap()
+                };
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                for (key, expected) in [
+                    ("edge:ghost", "ghost@~~~"),
+                    ("edge:labeled", "labeled@~~~|Same 😀|"),
+                    ("edge:painted", "painted@~~~"),
+                ] {
+                    let piece = pieces
+                        .iter()
+                        .find(|p| p["domId"] == key && p.get("relation").is_none())
+                        .unwrap();
+                    assert_eq!(slice(&piece["span"]), expected);
+                    if key == "edge:labeled" {
+                        assert_eq!(slice(&piece["labelSpan"]), "Same 😀");
+                    }
+                }
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "layout-links", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}

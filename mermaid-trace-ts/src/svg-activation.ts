@@ -18,7 +18,15 @@ export function activateSvg(svg: SVGSVGElement, options: {
   if (active.has(svg)) throw new Error('SVG is already activated');
   const mapping = readSvgMapping(new XMLSerializer().serializeToString(svg), options.source);
   const byId = new Map(mapping.pieces.map(piece => [piece.id, piece]));
-  const elements = [...svg.querySelectorAll('[data-mt-refs]')];
+  const elements = [...svg.querySelectorAll('[data-mt-refs]')].filter(element => {
+    if (element.getAttribute('data-mt-role') !== 'edge' || !['path', 'line'].includes(element.localName)) return true;
+    const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
+    if (!style || !style.stroke) return true;
+    if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+    return (style.stroke !== 'none' && parseFloat(style.strokeWidth) > 0 && Number(style.strokeOpacity) > 0)
+      || (element.localName === 'path' && style.fill !== 'none' && Number(style.fillOpacity) > 0)
+      || [style.markerStart, style.markerMid, style.markerEnd].some(marker => marker !== 'none');
+  });
   const hitTargets = new Map<Element, Element>();
   const refs = (element: Element) => element.getAttribute('data-mt-refs')!.split(' ');
   const labelIds = new Set(elements.filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
@@ -152,7 +160,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
       if (!piece) throw new Error(`Unknown piece: ${pieceId}`);
       const element = elements.find(element => element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))
         ?? elements.find(element => refs(element).includes(piece.id))!;
-      (element as SVGElement).focus({ preventScroll: true });
+      (element as SVGElement | undefined)?.focus({ preventScroll: true });
       emit({ trigger: 'activation', role: piece.kind, pieces: [piece], span: piece.span });
     },
     dispose() {

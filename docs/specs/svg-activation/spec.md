@@ -63,3 +63,7 @@ Verification: tests first failed because focusing did not select and clicks move
 ACT-AC2 / STATE-NOTE-CONNECTOR: when a note body and its connector share the complete statement range, reverse selection wholly inside the visible note label uses that label's authored subrange for containment. It highlights only the label; selecting the whole statement relates both note and connector. The regression uses saved native state SVG, retaining all prior family/activation gates.
 
 Verification: the note-text reverse regression failed by highlighting its connector. The shared containment change passes all saved/live note variants, existing activation and sequence checks, and the full 49-test TypeScript/browser suite with typecheck. Full note-statement selection still selects the connector; note-text selection highlights only the note label.
+
+ACT-AC1/2 / FLOW-2 visibility: activation gives keyboard and widened pointer targets only to painted connectors, using the mounted browser's computed paint styles. Hidden/layout-only connector metadata and programmatic source selection survive; independently visible labels remain controls. Dispose restores original attributes/markup. Hosts reattach after changing artifact/style inputs.
+
+Verification: the failing invisible-link keyboard regression now passes saved/live activation across both layouts, three looks and both HTML modes. The complete 50-test TypeScript/browser suite and typecheck pass, preserving state-region and note-connector acceptance.
