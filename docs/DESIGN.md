@@ -8,7 +8,7 @@ The [feature spec](specs/source-mapping/spec.md) is the source of truth for beha
 
 Use four logical components in one project: a DOM-free mapping core; a Mermaid-to-static-SVG producer; an independently consumable SVG activation library; and a thin viewer composing activation with a source view. Separate package publication is not required initially.
 
-The producer embeds inert source locations and AST references/projections. Generated SVG displays independently, with no embedded scripts or runtime requirement. The activation library accepts an existing inline SVG and never requires Mermaid parsing/rendering merely to activate it. Saving and loading an artifact must not require the producer to remain present. A serialized AST projection is not the full parser AST.
+The producer embeds inert source locations and AST references/projections. Generated SVG displays independently, with no embedded scripts or runtime requirement. The activation library accepts an existing inline SVG and never requires Mermaid parsing/rendering merely to activate it. It supplies instance-scoped default selection/focus styles; hosts may override their appearance. Disposal removes those styles and restores the original SVG. Saving and loading an artifact must not require the producer to remain present. A serialized AST projection is not the full parser AST.
 
 Prefer source metadata inside SVG for standalone portability; retain an optional encoded preceding comment for HTML-fragment compatibility. Exact format and coordinates remain proposed until M1. The same artifact contract will let the TypeScript activation library consume Rust-produced SVG.
 

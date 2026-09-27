@@ -37,10 +37,9 @@ pre{overflow:auto;background:#f5f7f9;padding:12px;border-radius:6px}svg{display:
 #source-frame{display:block;width:100%;height:100%;border:0}
 #selection-status{min-height:3em;font-size:13px;margin-top:14px}#occurrences{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;font-size:13px;border:1px solid #b8cbd8;border-radius:6px;padding:5px 10px;background:white;color:#172c3e;cursor:pointer}
 .location{margin-top:16px}.location input{width:100%;padding:8px;border:1px solid #c9d6e0;border-radius:6px;font:13px ui-monospace,monospace}.location small,#copy-status{font-size:12px;color:#516776}
-[data-md-target],svg{cursor:pointer}[data-md-selected]{background:#e4f4f5;box-shadow:0 0 0 2px #007c8a}svg[data-mt-selected=true]{outline:2px solid #007c8a;outline-offset:4px;filter:none}[data-mt-refs]{cursor:pointer}[data-mt-selected=true]{filter:drop-shadow(0 0 3px #007c8a)}
-[data-mt-role=node][data-mt-selected=true] rect{stroke:#007c8a!important;stroke-width:3px!important}
-[data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;stroke-width:3px!important}
-:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}svg [data-mt-selected=true]:focus-visible{outline:none}footer{padding:0 32px 24px;font-size:13px;color:#516776}
+[data-md-target],svg{cursor:pointer}[data-md-selected]{background:#e4f4f5;box-shadow:0 0 0 2px #007c8a}[data-mt-refs]{cursor:pointer}
+
+:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}footer{padding:0 32px 24px;font-size:13px;color:#516776}
 @media(max-width:850px){main{grid-template-columns:1fr;padding:16px}.source{position:static}header{padding:20px}.source-editor{height:45vh}[data-mt-block]{overflow-x:auto}svg{min-width:520px}}
 </style></head><body>
 <header><h1>Mermaid Trace</h1><p>Click a block, heading, or diagram element — or drag rendered text — to select its Markdown and copy its location.</p></header>

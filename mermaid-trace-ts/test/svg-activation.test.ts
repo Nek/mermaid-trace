@@ -43,6 +43,10 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
     assert.equal(result.otherSelected, 0);
     assert.equal(result.hasMermaid, false);
     assert.deepEqual(result.selectedRoles, ['node-label']);
+    const selectedLabel = first.locator('[data-mt-role="node-label"][data-mt-selected=true]');
+    assert.match(await selectedLabel.evaluate(element => getComputedStyle(element).filter), /drop-shadow/, 'saved SVG activation supplies its own visible selection cue');
+    assert.equal(await selectedLabel.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'focus uses the selection cue');
+    assert.equal(await page.locator('svg').nth(1).locator('[data-mt-role="node-label"]').first().evaluate(element => getComputedStyle(element).filter), 'none', 'default selection style stays within its SVG');
     await first.locator('[data-mt-role="edge-label"]').first().focus();
     await page.keyboard.press('Enter');
     await page.keyboard.press('Space');

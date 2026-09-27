@@ -38,11 +38,10 @@ pre{height:100%;margin:0;padding:14px;overflow:auto;white-space:pre;color:#172c3
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(basename(filename))}</title><style>
 @font-face{font-family:TraceBaseline;src:url(data:font/woff2;base64,${font.toString('base64')}) format('woff2');font-weight:400}
 *{box-sizing:border-box}body{margin:0;color:#172c3e;background:white;font:16px/1.6 system-ui,sans-serif}article{max-width:960px;margin:auto;padding:28px}img{max-width:100%}svg{display:block;max-width:100%;height:auto;margin:24px auto}pre{overflow:auto;background:#f5f7f9;padding:12px}blockquote{border-left:3px solid #b8cbd8;margin-left:0;padding-left:16px}
-[data-md-target],svg,[data-mt-refs]{cursor:pointer}[data-md-selected]{background:#e4f4f5;box-shadow:0 0 0 2px #007c8a}svg[data-mt-selected=true]{outline:2px solid #007c8a;outline-offset:4px;filter:none}[data-mt-selected=true]{filter:drop-shadow(0 0 3px #007c8a)}
-[data-mt-role=node][data-mt-selected=true] rect{stroke:#007c8a!important;stroke-width:3px!important}[data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;stroke-width:3px!important}
+[data-md-target],svg,[data-mt-refs]{cursor:pointer}[data-md-selected]{background:#e4f4f5;box-shadow:0 0 0 2px #007c8a}
 body:has(#source-frame){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}body:has(#source-frame) article{width:100%;min-width:0;margin:0 auto}aside{position:sticky;top:0;height:100vh;padding:28px;min-width:0;border-left:1px solid #d9e2e9;display:flex;flex-direction:column;gap:12px}#source-frame{width:100%;flex:1;min-height:0;border:1px solid #c9d6e0}
 @media(max-width:850px){body:has(#source-frame){display:block}aside{position:static;height:50vh;border-left:0;border-top:1px solid #d9e2e9}}
-:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}svg [data-mt-selected=true]:focus-visible{outline:none}::selection{background:#a9e0e5;color:#172c3e}
+:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}::selection{background:#a9e0e5;color:#172c3e}
 </style></head><body><article aria-label="Rendered Markdown">${view.html}</article>${sourcePane}<script id="trace-data" type="application/json">${payload}</script><script type="module" src="/@mermaid-trace/viewer.js"></script></body></html>`;
 }
 

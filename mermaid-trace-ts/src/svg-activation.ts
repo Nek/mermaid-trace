@@ -10,6 +10,7 @@ export type Activation = {
 };
 
 const active = new WeakSet<SVGSVGElement>();
+let nextScope = 0;
 
 export function activateSvg(svg: SVGSVGElement, options: {
   readonly source?: string;
@@ -139,6 +140,20 @@ export function activateSvg(svg: SVGSVGElement, options: {
     emit({ trigger: event.type === 'focusin' ? 'focus' : 'activation', role: element.getAttribute('data-mt-role')!, pieces: refs(element).map(id => byId.get(id)!),
       span: { start: Number(element.getAttribute('data-mt-start')), end: Number(element.getAttribute('data-mt-end')) } });
   };
+  let scope: string;
+  do { scope = `mt-${++nextScope}`; } while (svg.ownerDocument.querySelector(`svg[data-mt-active="${scope}"]`));
+  const selector = `svg[data-mt-active="${scope}"]`;
+  const selectionStyle = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'style');
+  selectionStyle.textContent = `
+${selector}{cursor:pointer}
+${selector}[data-mt-selected=true]{outline:2px solid #007c8a;outline-offset:4px;filter:none}
+${selector} [data-mt-selected=true]{filter:drop-shadow(0 0 3px #007c8a)}
+${selector} [data-mt-selected=true] [data-mt-selected=true]{filter:none}
+${selector} [data-mt-selected=true]:focus{outline:none}
+${selector} [data-mt-role=node][data-mt-selected=true] rect{stroke:#007c8a!important;stroke-width:3px!important}
+${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;stroke-width:3px!important}`;
+  set(svg, 'data-mt-active', scope);
+  svg.append(selectionStyle);
   set(svg, 'role', 'group');
   set(svg, 'tabindex', '0');
   set(svg, 'aria-label', 'Select whole diagram');
@@ -202,6 +217,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
       svg.removeEventListener('mousedown', pointerFocus);
       svg.removeEventListener('selectstart', preventTextSelection);
       for (const target of hitTargets.keys()) target.remove();
+      selectionStyle.remove();
       for (const [element, attributes] of changes) for (const [name, { before, after }] of attributes) {
         if (element.getAttribute(name) !== after) continue;
         if (before === null) element.removeAttribute(name);
