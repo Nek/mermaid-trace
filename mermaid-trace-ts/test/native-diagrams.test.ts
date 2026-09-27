@@ -170,7 +170,7 @@ test('OWN-STATE-ENDPOINT: saved and live references select their transition owne
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string | { start: number; end: number }, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string, reverseWholeOwner = false) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -178,6 +178,9 @@ async function verifyNative(source: string, key: string, expected: string, label
   const toMarkdownEnd = (offset: number) => toMarkdown(offset) - (source[offset - 1] === '\n' ? 2 : 0);
   const markdownSelection = (text: string) => text.replace(/\n(?!$)/g, '\n> ');
   const reverseRole = reversePrimaryKey === key ? 'node' : reversePrimaryKey.startsWith('edge:') ? 'edge' : 'control';
+  const reverseSpan = typeof reverseNodeSource === 'string'
+    ? { start: source.indexOf(reverseNodeSource), end: source.indexOf(reverseNodeSource) + reverseNodeSource.length }
+    : reverseNodeSource;
   const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
   const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
   const browser = await chromium.launch();
@@ -228,6 +231,11 @@ async function verifyNative(source: string, key: string, expected: string, label
     let event = await page.evaluate(() => (window as any).events.at(-1));
     const nodeSpan = event.span;
     assert.equal(source.slice(event.span.start, event.span.end), expected);
+    const defaultFace = shape.first().locator('circle.face:not([data-mt-key])');
+    if (await defaultFace.count()) {
+      await defaultFace.click({ position: { x: 15, y: 3 } });
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), nodeSpan, 'a generated default face belongs to its task');
+    }
     if (key.startsWith('state:node:')) {
       await shape.first().focus(); await shape.first().press('Enter');
       assert.equal(await shape.first().getAttribute('data-mt-selected'), 'true', 'state node keyboard activation keeps node selection');
@@ -321,16 +329,15 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await first.getAttribute('data-mt-selected'), null);
       }
     }
-    if (reverseNodeSource !== undefined) {
-      const start = source.indexOf(reverseNodeSource);
-      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + reverseNodeSource.length });
+    if (reverseSpan !== undefined) {
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), reverseSpan);
       if (reversePrimaryKey === key) {
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
       } else {
         assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its owning object');
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'an owning object must not select a merely referenced node');
       }
-      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
+      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
@@ -341,6 +348,12 @@ async function verifyNative(source: string, key: string, expected: string, label
     const original = page.frameLocator('#source-frame').locator('#source');
     assert.deepEqual(await page.locator('svg[data-mt-map]').first().evaluate(configEvidence), savedConfig, 'native configuration evidence must survive saved SVG and Markdown insertion');
     assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
+    const liveDefaultFace = page.locator(`svg[data-mt-map] [data-mt-key="${key}"][data-mt-role=node] circle.face:not([data-mt-key])`).first();
+    if (await liveDefaultFace.count()) {
+      await liveDefaultFace.click({ position: { x: 15, y: 3 } });
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(expected));
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(nodeSpan.start), end: toMarkdownEnd(nodeSpan.end) }));
+    }
     await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
     if (expectedTextColour !== undefined) {
@@ -364,17 +377,16 @@ async function verifyNative(source: string, key: string, expected: string, label
     }, { start, end });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
     assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), sharedLabelSpan ? 1 : 0, 'original source respects equal-span visual equivalence');
-    if (reverseNodeSource !== undefined) {
-      const offset = source.indexOf(reverseNodeSource);
+    if (reverseSpan !== undefined) {
       await original.evaluate((element, span) => {
         const doc = element.ownerDocument; const range = doc.createRange();
         range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
         doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
-      }, { start: toMarkdown(offset), end: toMarkdownEnd(offset + reverseNodeSource.length) });
+      }, { start: toMarkdown(reverseSpan.start), end: toMarkdownEnd(reverseSpan.end) });
       // A straight SVG connector can have a zero-width bounding box while its stroke is rendered.
       await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`, { state: 'attached' });
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
-      assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
+      assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
@@ -678,6 +690,14 @@ test('JOURNEY-2-TEXT: every label line remains one saved and live source target 
   for (const mode of ['tspan', 'other']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
     const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  journey:\n    textPlacement: ${mode}\n    taskFontSize: 18\n    sectionColours: ['#123456']\n---\njourney\nsection First\nBefore :5: Alice\nsection Second\nTask<br>Line :5: Alice\n`;
     await verifyNative(source, 'journey:task:1', 'Task<br>Line :5: Alice', 'Task<br>Line', [['journey:section:1', 'Second', 'control-label']], undefined, [], 'journey:task:1', 'rgb(18, 52, 86)');
+  }
+});
+
+test('JOURNEY-2-SCORE-GEOMETRY: unrenderable score source selects its task and empty-score default faces remain clickable', { timeout: 180_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const score of ['bad 😀', 'Task', 'NaN', 'Infinity', '-Infinity', '1e309', '']) {
+    const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n---\njourney\nTask : ${score} : Alice\n`;
+    const scoreStart = source.indexOf('Task : ') + 'Task : '.length;
+    await verifyNative(source, 'journey:task:0', `Task : ${score} : Alice`, 'Task', [], score ? { start: scoreStart, end: scoreStart + score.length } : undefined, [], 'journey:task:0', undefined, true);
   }
 });
 

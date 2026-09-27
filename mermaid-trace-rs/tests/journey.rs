@@ -11,6 +11,98 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_unrenderable_scores_preserve_task_ownership_without_phantom_geometry() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for value in [
+                "bad 😀",
+                "Task",
+                "NaN",
+                "Infinity",
+                "-Infinity",
+                "1e309",
+                "",
+            ] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\nTask : {value} : Alice\r\n"
+                );
+                let result = mermaid_trace_rs::render("journey-score", &source).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let faces: Vec<_> = svg
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("face"))
+                    .collect();
+                assert_eq!(
+                    faces.len(),
+                    usize::from(value.is_empty()),
+                    "unrenderable scores have no phantom face: {value}/{look}/{html}"
+                );
+                assert_eq!(
+                    svg.descendants()
+                        .filter(|node| node.has_tag_name("circle"))
+                        .count(),
+                    if value.is_empty() { 5 } else { 2 },
+                    "only the authored actor/legend and a renderable default face have circles"
+                );
+                assert_eq!(
+                    svg.descendants()
+                        .filter(|node| node.attribute("class") == Some("mouth"))
+                        .count(),
+                    usize::from(value.is_empty()),
+                    "no default-position invalid mouth"
+                );
+                assert!(
+                    !svg.descendants().any(|node| node.attribute("data-mt-key")
+                        == Some("journey:score:0")
+                        && node.has_attribute("data-mt-role")),
+                    "no nonexistent score control"
+                );
+                if value.is_empty() {
+                    assert_eq!(faces[0].attribute("cy"), Some("450"));
+                } else {
+                    let native: Vec<Value> = serde_json::from_str(
+                        svg.descendants()
+                            .find_map(|node| node.attribute("data-mt-native"))
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    let property = native
+                        .iter()
+                        .find(|piece| piece["semanticId"] == "score:0")
+                        .expect("authored score retained");
+                    assert_eq!(property["kind"], "nonvisual");
+                    assert_eq!(property["classification"], "unrenderable-score");
+                    assert_eq!(property["ownerDomId"], "journey:task:0");
+                    assert_eq!(
+                        &source[property["span"]["start"].as_u64().unwrap() as usize
+                            ..property["span"]["end"].as_u64().unwrap() as usize],
+                        value
+                    );
+                }
+                let task = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|piece| piece["domId"] == "journey:task:0")
+                    .unwrap();
+                assert_eq!(
+                    selected(&source, &task["span"]),
+                    format!("Task : {value} : Alice")
+                );
+                assert_eq!(selected(&source, &task["labelSpan"]), "Task");
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-score", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_text_modes_preserve_label_groups_and_native_palette_cycles() {
     for mode in ["fo", "old", "tspan", "other"] {
         for br in ["<br>", "<BR>", "<br/>", "<br />"] {

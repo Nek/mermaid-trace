@@ -12961,7 +12961,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..21c511bc 100644
+index 68bde024..02048098 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -10,7 +10,7 @@ use crate::{
@@ -13093,7 +13093,7 @@ index 68bde024..21c511bc 100644
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
 +            if trace_source {
-+                source_occurrences.push(json!({"kind":"control","semanticId":format!("score:{task_id}"),"domId":format!("journey:score:{task_id}"),"span":SourceSpan::new(score_start,score_start+score_text.len())}));
++                source_occurrences.push(json!({"kind":"control","semanticId":format!("score:{task_id}"),"taskIndex":task_id,"property":"score","ownerDomId":format!("journey:task:{task_id}"),"domId":format!("journey:score:{task_id}"),"span":SourceSpan::new(score_start,score_start+score_text.len())}));
 +            }
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
@@ -13132,7 +13132,7 @@ index 68bde024..21c511bc 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +715,72 @@ fn parse_journey_semantic_source(
+@@ -639,9 +715,86 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13161,6 +13161,20 @@ index 68bde024..21c511bc 100644
 +            piece["classification"] == "accessibility" && piece["semanticId"] == "accDescr"
 +        });
 +        for (occurrence, piece) in source_occurrences.iter_mut().enumerate() {
++            if piece["property"] == "score"
++                && piece["taskIndex"]
++                    .as_u64()
++                    .and_then(|index| db.tasks.get(index as usize))
++                    .is_some_and(|task| task.score_is_nan)
++            {
++                piece["kind"] = json!("nonvisual");
++                piece["classification"] = json!("unrenderable-score");
++                piece
++                    .as_object_mut()
++                    .expect("source occurrence")
++                    .remove("domId");
++            }
++
 +            if piece["origin"] == "body" && piece["semanticId"] == "title" {
 +                piece["effective"] = json!(Some(occurrence) == last_title);
 +                if db.title.trim().is_empty() {
@@ -13205,7 +13219,7 @@ index 68bde024..21c511bc 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-@@ -674,7 +813,7 @@ fn spanned_keyword_value<'a>(
+@@ -674,7 +827,7 @@ fn spanned_keyword_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13214,7 +13228,7 @@ index 68bde024..21c511bc 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -697,7 +836,7 @@ fn spanned_colon_value<'a>(
+@@ -697,7 +850,7 @@ fn spanned_colon_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -30745,6 +30759,208 @@ index be0592cb..56cc21a0 100644
 +    }
 +    out
 +}
+diff --git a/crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs b/crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs
+index a9051ce1..af5fb151 100644
+--- a/crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs
++++ b/crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs
+@@ -7,7 +7,7 @@ use std::convert::Infallible;
+ use super::css_sanitize::sanitize_css_value_with_checkpoints;
+ use super::presentation_fallback::is_mermaid_missing_amount_hsl;
+ use super::util::{
+-    SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
++    SvgTagScanner, checkpoint_loop, escape_xml_attr, next_svg_quoted_attr,
+     next_svg_quoted_attr_with_checkpoints, start_tag_name,
+ };
+ use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+@@ -48,6 +48,21 @@ fn infallible<T>(result: std::result::Result<T, Infallible>) -> T {
+ pub(crate) fn sanitize_element_attributes_cow_with_checkpoints<'a, E>(
+     svg: Cow<'a, str>,
+     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
++) -> std::result::Result<Cow<'a, str>, E> {
++    sanitize_elements_cow_with_checkpoints(svg, checkpoint, false)
++}
++
++pub(crate) fn drop_invalid_geometry_cow_with_checkpoints<'a, E>(
++    svg: Cow<'a, str>,
++    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
++) -> std::result::Result<Cow<'a, str>, E> {
++    sanitize_elements_cow_with_checkpoints(svg, checkpoint, true)
++}
++
++fn sanitize_elements_cow_with_checkpoints<'a, E>(
++    svg: Cow<'a, str>,
++    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
++    geometry_only: bool,
+ ) -> std::result::Result<Cow<'a, str>, E> {
+     let source = svg.as_ref();
+     let mut out = None::<String>;
+@@ -59,7 +74,10 @@ pub(crate) fn sanitize_element_attributes_cow_with_checkpoints<'a, E>(
+         checkpoint_loop(tag_index, checkpoint)?;
+         tag_index = tag_index.saturating_add(1);
+         let raw_tag = tag.raw();
+-        if let Some(active_name) = active_svg_element_name(raw_tag) {
++        if let Some(active_name) = (!geometry_only)
++            .then(|| active_svg_element_name(raw_tag))
++            .flatten()
++        {
+             let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
+             output.push_str(&source[copied_until..tag.start()]);
+             copied_until = if tag.is_self_closing() {
+@@ -72,20 +90,22 @@ pub(crate) fn sanitize_element_attributes_cow_with_checkpoints<'a, E>(
+             continue;
+         }
+ 
+-        if is_bad_rect_tag(raw_tag) {
++        if let Some(name) = invalid_geometry_element(raw_tag, checkpoint)? {
+             let output = out.get_or_insert_with(|| String::with_capacity(source.len()));
+             output.push_str(&source[copied_until..tag.start()]);
+             copied_until = if tag.is_self_closing() {
+                 scanner.cursor()
+             } else {
+-                find_with_checkpoints(&source[scanner.cursor()..], "</rect>", checkpoint)?
+-                    .map(|rel_close| scanner.cursor() + rel_close + "</rect>".len())
++                find_close_tag_end(source, scanner.cursor(), name, checkpoint)?
+                     .unwrap_or(scanner.cursor())
+             };
+             scanner.skip_to(copied_until);
+             continue;
+         }
+ 
++        if geometry_only {
++            continue;
++        }
+         match sanitize_tag_attributes(raw_tag, checkpoint)? {
+             Cow::Borrowed(_) => {
+                 if let Some(output) = out.as_mut() {
+@@ -535,9 +555,17 @@ fn find_close_tag_end<E>(
+ ) -> std::result::Result<Option<usize>, E> {
+     let mut scanner = SvgTagScanner::new(svg);
+     scanner.skip_to(from);
++    let mut depth = 1usize;
+     while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+         if close_tag_matches(tag.raw(), name) {
+-            return Ok(Some(scanner.cursor()));
++            depth -= 1;
++            if depth == 0 {
++                return Ok(Some(scanner.cursor()));
++            }
++        } else if !tag.is_self_closing()
++            && start_tag_name(tag.raw()).is_some_and(|current| current.eq_ignore_ascii_case(name))
++        {
++            depth += 1;
+         }
+     }
+     checkpoint()?;
+@@ -596,6 +624,52 @@ fn is_bad_rect_tag(tag: &str) -> bool {
+         || is_missing_or_invalid_rect_dimension(height.as_deref())
+ }
+ 
++// Removing invalid geometry attributes can make a previously unrenderable shape draw at
++// default coordinates. Drop that element (and its children) instead, preserving valid siblings.
++fn invalid_geometry_element<'a, E>(
++    tag: &'a str,
++    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
++) -> std::result::Result<Option<&'a str>, E> {
++    let Some(name) = start_tag_name(tag) else {
++        return Ok(None);
++    };
++    if is_bad_rect_tag(tag) {
++        return Ok(Some(name));
++    }
++    let element = local_name(name).to_ascii_lowercase();
++    let mut cursor = 0usize;
++    while let Some(attr) = next_svg_quoted_attr_with_checkpoints(tag, cursor, checkpoint)? {
++        let field = local_name(&tag[attr.name_start..attr.name_end]).to_ascii_lowercase();
++        let coordinate = match element.as_str() {
++            "circle" => matches!(field.as_str(), "cx" | "cy" | "r"),
++            "ellipse" => matches!(field.as_str(), "cx" | "cy" | "rx" | "ry"),
++            "line" => matches!(field.as_str(), "x1" | "x2" | "y1" | "y2"),
++            "rect" => matches!(field.as_str(), "x" | "y" | "width" | "height" | "rx" | "ry"),
++            "image" | "use" | "svg" => matches!(field.as_str(), "x" | "y" | "width" | "height"),
++            "text" | "tspan" => matches!(field.as_str(), "x" | "y" | "dx" | "dy"),
++            _ => false,
++        };
++        let path_data = element == "path" && field == "d"
++            || matches!(element.as_str(), "polygon" | "polyline") && field == "points";
++        if !coordinate && field != "transform" && !path_data {
++            cursor = attr.full_end;
++            continue;
++        }
++        let value = merman_core::entities::decode_html_entities_to_unicode(
++            &tag[attr.value_start..attr.value_end],
++        );
++        if coordinate && is_provably_invalid_scalar(&value)
++            || field == "transform" && is_invalid_svg_transform(&value)
++            || path_data && contains_non_finite_numeric_token(&value)
++        {
++            return Ok(Some(name));
++        }
++        cursor = attr.full_end;
++    }
++    checkpoint()?;
++    Ok(None)
++}
++
+ fn sanitize_style_attribute<E>(
+     value: &str,
+     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+@@ -788,6 +862,39 @@ fn is_numeric_token_boundary(ch: Option<char>) -> bool {
+ mod tests {
+     use super::{parsed_attribute_violates_resvg_contract, sanitize_element_attributes};
+ 
++    #[test]
++    fn invalid_geometry_is_removed_without_default_position_shapes_or_lost_siblings() {
++        for value in [
++            "NaN",
++            "Infinity",
++            "-Infinity",
++            "undefined",
++            "NaNpx",
++            "&#78;aN",
++        ] {
++            for shape in [
++                format!(r#"<circle id="bad" cy="{value}" r="15"><title>invalid</title></circle>"#),
++                format!(r#"<ellipse id="bad" cx="{value}" rx="10" ry="5"/>"#),
++                format!(r#"<line id="bad" y2="{value}" x2="20"/>"#),
++                format!(r#"<rect id="bad" x="{value}" width="20" height="10"/>"#),
++                format!(r#"<text id="bad" y="{value}">invalid</text>"#),
++            ] {
++                let svg = format!(r#"<svg>{shape}<circle id="keep" cx="10" cy="20" r="3"/></svg>"#);
++                let out = sanitize_element_attributes(&svg);
++                assert!(!out.contains(r#"id="bad""#), "{out}");
++                assert!(
++                    out.contains(r#"<circle id="keep" cx="10" cy="20" r="3"/>"#),
++                    "{out}"
++                );
++            }
++        }
++        let svg = r#"<svg><g id="bad" transform="translate(10,NaN)"><g><circle r="2"/></g><path d="M0,0L10,10"/></g><g id="keep"><circle r="3"/></g></svg>"#;
++        assert_eq!(
++            sanitize_element_attributes(svg),
++            r#"<svg><g id="keep"><circle r="3"/></g></svg>"#
++        );
++    }
++
+     #[test]
+     fn sanitize_style_attribute_drops_invalid_bare_declarations() {
+         let svg = r#"<svg><path style="undefined; stroke: #333; undefined"/></svg>"#;
+@@ -962,13 +1069,14 @@ mod tests {
+     s:style="animation:spin 1s;stroke:#333"
+     q:fill="url(file:///tmp/paint.svg#paint)"
+     xml:width="NaN"
+-    s:transform="rotate(NaN)"
+-    q:d="M 0 NaN"
+     xml:x="10px"
++    d="M0,0L10,10"
+ />
++<path id="invalid-geometry" s:transform="rotate(NaN)" q:d="M 0 NaN"/>
+ </svg>"##;
+ 
+         let out = sanitize_element_attributes(svg);
++        assert!(!out.contains("invalid-geometry"), "{out}");
+ 
+         assert!(
+             out.contains(r#"xmlns:s="http://www.w3.org/2000/svg""#),
 diff --git a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs b/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
 index d42bad8f..3c9bd090 100644
 --- a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
@@ -30791,6 +31007,44 @@ index d42bad8f..3c9bd090 100644
  
          assert!(
              !out.contains("<foreignObject"),
+diff --git a/crates/merman-render/src/svg/pipeline/mod.rs b/crates/merman-render/src/svg/pipeline/mod.rs
+index 349c673f..34331760 100644
+--- a/crates/merman-render/src/svg/pipeline/mod.rs
++++ b/crates/merman-render/src/svg/pipeline/mod.rs
+@@ -402,6 +402,15 @@ impl SvgPipeline {
+             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
+         }
+ 
++        // Filter invalid source geometry before any HTML fallback can relocate it into
++        // a new, otherwise valid overlay at default coordinates.
++        if self.preset == SvgPipelinePreset::ResvgSafe {
++            current = builtin::attr_sanitize::drop_invalid_geometry_cow_with_checkpoints(
++                current,
++                &mut || execution.checkpoint(),
++            )?;
++        }
++
+         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
+             execution.checkpoint()?;
+             let ctx = SvgPostprocessContext::new(
+@@ -827,7 +836,7 @@ mod tests {
+ 
+     #[test]
+     fn resvg_safe_pipeline_strips_generic_raster_hazards() {
+-        let svg = r#"<svg id="test" xmlns="http://www.w3.org/2000/svg"><style type="text/css">@keyframes bounce { 0% { transform: scale(1); } 100% { transform: scale(1.1); } } #test :root { --bg: white; } .node rect { animation: dash 1s linear; transform: rotate(45deg); fill: red; }</style><g transform="translate(undefined,NaN)"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject><rect width="10px" height="12px" stroke="" style="fill: ; stroke: #333; transform: rotate(45deg); animation: dash 1s;"/><rect width="10px" height="" fill="hsl(240, 100%, NaN%)"/></g></svg>"#;
++        let svg = r#"<svg id="test" xmlns="http://www.w3.org/2000/svg"><style type="text/css">@keyframes bounce { 0% { transform: scale(1); } 100% { transform: scale(1.1); } } #test :root { --bg: white; } .node rect { animation: dash 1s linear; transform: rotate(45deg); fill: red; }</style><g id="invalid" transform="translate(undefined,NaN)"><foreignObject width="20" height="20"><div>Phantom</div></foreignObject><g><circle r="5"/></g></g><g><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject><rect width="10px" height="12px" stroke="" style="fill: ; stroke: #333; transform: rotate(45deg); animation: dash 1s;"/><rect width="10px" height="" fill="hsl(240, 100%, NaN%)"/></g></svg>"#;
+         let session = render_session();
+ 
+         let out = SvgPipeline::resvg_safe()
+@@ -835,6 +844,8 @@ mod tests {
+             .unwrap();
+ 
+         assert!(!out.contains("<foreignObject"));
++        assert!(!out.contains("Phantom"));
++        assert!(!out.contains(r#"id="invalid""#));
+         assert!(!out.contains("@keyframes"));
+         assert!(!out.contains(":root"));
+         assert!(!out.contains("animation"));
 diff --git a/crates/merman/tests/configuration_source_provenance.rs b/crates/merman/tests/configuration_source_provenance.rs
 new file mode 100644
 index 00000000..afd37acc
