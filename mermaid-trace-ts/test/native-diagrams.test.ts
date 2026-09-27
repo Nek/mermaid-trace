@@ -156,3 +156,19 @@ test('STATE AC5/6: title, special states and HTML notes remain selectable in sav
     ['state:node:A----note-5', 'note right of A : Annotation'],
   ]);
 });
+
+test('FLOW AC4/6: nested subgraph frames, repeated titles and YAML title work in saved SVG and Markdown', { timeout: 120_000 }, async () => {
+  for (const html of [false, true]) {
+    const inner = 'subgraph "Same 😀"\nA["Actor 😀"] -->|go| B\nend';
+    const group = 'subgraph G["Same 😀"]\n' + inner + '\nend';
+    const source = `---\ntitle: "Whole 😀"\nconfig:\n  htmlLabels: ${html}\n---\nflowchart LR\n${group}\n`;
+    await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [
+      ['flowchart:subgraph:G', group],
+      ['flowchart:subgraph:G', 'Same 😀', 'control-label'],
+      ['flowchart:subgraph:subGraph0', inner],
+      ['flowchart:subgraph:subGraph0', 'Same 😀', 'control-label'],
+      ['flowchart:title', 'Whole 😀', 'control-label'],
+      ['edge:L_A_B_0', 'go', 'edge-label'],
+    ]);
+  }
+});

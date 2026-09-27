@@ -152,3 +152,75 @@ fn map_native_ac1_preprocessing_chains_and_declarations_preserve_parity() {
             .contains("Unsupported source map")
     );
 }
+
+#[test]
+fn flow_ac4_subgraph_frames_and_titles_have_native_original_ranges() {
+    for header in ["graph", "flowchart"] {
+        for html in [false, true] {
+            let block = "subgraph G[\"Same 😀\"]\r\nsubgraph \"Same 😀\"\r\nA[Actor] -->|go| B\r\nend\r\nend";
+            let source = format!(
+                "---\r\ntitle: \"Whole 😀\"\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header} LR\r\n{block}\r\n"
+            );
+            let result = mermaid_trace_rs::render("flow-groups", &source).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let text: Vec<_> = source.encode_utf16().collect();
+            let selected = |span: &Value| {
+                String::from_utf16(
+                    &text[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            let group = pieces
+                .iter()
+                .find(|p| p["domId"] == "flowchart:subgraph:G")
+                .expect("native subgraph frame mapping");
+            assert_eq!(selected(&group["span"]), block);
+            assert_eq!(selected(&group["labelSpan"]), "Same 😀");
+            let anonymous = pieces
+                .iter()
+                .find(|p| p["domId"] == "flowchart:subgraph:subGraph0")
+                .expect("native anonymous subgraph identity");
+            assert_eq!(
+                selected(&anonymous["span"]),
+                "subgraph \"Same 😀\"\r\nA[Actor] -->|go| B\r\nend"
+            );
+            assert_eq!(selected(&anonymous["labelSpan"]), "Same 😀");
+            assert_ne!(group["labelSpan"], anonymous["labelSpan"]);
+            let title = pieces
+                .iter()
+                .find(|p| p["domId"] == "flowchart:title")
+                .expect("frontmatter title mapping");
+            assert_eq!(selected(&title["span"]), "title: \"Whole 😀\"");
+            assert_eq!(selected(&title["labelSpan"]), "Whole 😀");
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            for key in [
+                "flowchart:subgraph:G",
+                "flowchart:subgraph:subGraph0",
+                "flowchart:title",
+            ] {
+                assert!(
+                    svg.descendants()
+                        .any(|n| n.attribute("data-mt-key") == Some(key)
+                            && n.attribute("data-mt-role") == Some("control-label")),
+                    "{key}/{html}"
+                );
+            }
+            for (key, role) in [("node:A", "node-label"), ("edge:L_A_B_0", "edge-label")] {
+                assert!(
+                    svg.descendants().any(|n| n
+                        .ancestors()
+                        .any(|a| a.attribute("data-mt-key") == Some(key))
+                        && n.attribute("data-mt-role") == Some(role)),
+                    "missing {key}/{html}"
+                );
+            }
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "flow-groups", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
