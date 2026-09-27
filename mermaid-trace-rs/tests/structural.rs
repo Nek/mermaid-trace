@@ -86,7 +86,7 @@ fn state_ac5_pinned_upstream_corpus_has_no_unmapped_semantic_shapes() {
                                 .any(|c| c == "node" || c == "cluster" || c == "statediagram-state")
                         })
                 }) {
-                    // Generated note layout wrappers and the trailing concurrency region are not source-backed states.
+                    // Generated note layout wrappers and regions without any authored statement remain decoration.
                     let generated = node.attribute("data-mt-generated") == Some("true");
                     if !generated && node.attribute("data-mt-key").is_none() {
                         failures.push(format!(
@@ -169,6 +169,21 @@ fn state_ac6_configuration_variants_preserve_every_label_and_svg_bytes() {
                     );
                     let result = mermaid_trace_rs::render("state-variants", &source).unwrap();
                     let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    for region in ["C", "D"] {
+                        let piece = result["mapping"]["pieces"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|p| {
+                                p["effective"] == true && selected(&source, &p["span"]) == region
+                            })
+                            .expect("each configured concurrency region has a source block");
+                        assert!(
+                            svg.descendants()
+                                .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str()
+                                    && n.attribute("data-mt-role") == Some("node"))
+                        );
+                    }
                     for label in ["Title", "Details", "C", "D", "Group", "go"] {
                         assert!(
                             svg.descendants().any(|n| n
@@ -424,5 +439,69 @@ fn state_struct_ac1_2_special_states_and_multiline_notes_bind_native_identity() 
                     .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str())
             );
         }
+    }
+}
+
+#[test]
+fn state_region_background_maps_its_own_statements() {
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        let left = "state \"Draft 😀\" as Draft: Editable content\r\n    Draft : Can be revised\r\n    state Review\r\n    [*] --> Draft\r\n    Draft --> Review : submit\r\n    Review --> Draft : revise\r\n    Review --> [*] : approve";
+        let right = "[*] --> Indexing\r\n    Indexing --> [*] : indexed";
+        let source = format!(
+            "{header}\r\n[*] --> Editing\r\nstate Editing {{\r\n    {left}\r\n    --\r\n    {right}\r\n}}\r\nEditing --> Published : publish\r\nPublished --> [*]\r\nnote right of Published : Available to readers\r\n"
+        );
+        let rendered = mermaid_trace_rs::render("state-regions", &source).unwrap();
+        let doc = roxmltree::Document::parse(rendered["svg"].as_str().unwrap()).unwrap();
+        let pieces = rendered["mapping"]["pieces"].as_array().unwrap();
+        for expected in [left, right] {
+            let piece = pieces
+                .iter()
+                .find(|p| {
+                    p["domId"].as_str().unwrap().starts_with("state:node:")
+                        && selected(&source, &p["span"]) == expected
+                })
+                .expect("each grey region has its own authored block");
+            assert!(
+                doc.descendants()
+                    .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str()
+                        && n.attribute("data-mt-role") == Some("node")),
+                "region must be an activation target"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_regions_preserve_nested_empty_and_separator_occurrences() {
+    let inner = "state Inner {\r\n    X\r\n    --\r\n    Y\r\n  }";
+    let source = format!(
+        "stateDiagram-v2\r\n%% 😀\r\nstate Outer {{\r\n  --\r\n  --\r\n  {inner}\r\n  --\r\n  Z\r\n}}\r\n"
+    );
+    let result = mermaid_trace_rs::render("state-nested-regions", &source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    for text in [inner, "X", "Y", "Z"] {
+        assert!(
+            pieces
+                .iter()
+                .any(|p| p["effective"] == true && selected(&source, &p["span"]) == text),
+            "region {text}"
+        );
+    }
+    let separators: Vec<_> = pieces
+        .iter()
+        .filter(|p| selected(&source, &p["span"]) == "--")
+        .collect();
+    assert_eq!(
+        separators.len(),
+        4,
+        "empty regions and all real separators retain source relationships"
+    );
+    let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    for piece in separators {
+        assert!(
+            doc.descendants()
+                .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str()
+                    && n.attribute("data-mt-role") == Some("node"))
+        );
     }
 }

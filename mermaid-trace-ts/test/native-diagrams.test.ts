@@ -80,7 +80,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
     for (const [controlKey, text, role = 'control'] of controls) {
-      const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      const target = controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
         const point = await target.evaluate(element => {
@@ -97,6 +97,13 @@ async function verifyNative(source: string, key: string, expected: string, label
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
+      if (controlKey === 'state:region:last') {
+        assert.equal(control.role, 'node');
+        assert.equal(await first.getAttribute('data-mt-selected'), null, 'region click must not select the diagram');
+        await page.evaluate(span => (window as any).handles[0].highlight([span]), control.span);
+        assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'region source block selects its rectangle');
+        assert.equal(await first.getAttribute('data-mt-selected'), null);
+      }
     }
     if (reverseNodeSource !== undefined) {
       const start = source.indexOf(reverseNodeSource);
@@ -145,10 +152,16 @@ async function verifyNative(source: string, key: string, expected: string, label
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
-      const target = page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      const target = controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
         await target.click();
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+      }
+      if (controlKey === 'state:region:last') {
+        const rect = target.locator(':scope > g > rect.divider');
+        await rect.click({ position: { x: 1, y: (await rect.boundingBox())!.height / 2 } });
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+        assert.equal(await page.locator('svg[data-mt-map]').getAttribute('data-mt-selected'), null);
       }
       const before = await page.evaluate(() => navigator.clipboard.readText());
       await target.focus();
@@ -199,7 +212,7 @@ test('STATE AC4/6: repeated description rows, concurrency and HTML variants reta
       ['state:label:A:1', 'Compact', 'node-label'],
       ['state:label:A:2', 'Repeated', 'node-label'],
       ['state:label:A:3', 'Repeated', 'node-label'],
-      ['state:node:divider-id-1', '--', 'node'],
+      ['state:node:divider-id-1', 'B', 'node'],
       ['state:edge:edge0', 'A --> A : again', 'edge'],
       ['state:edge:edge0', 'again', 'edge-label'],
     ]);
@@ -426,4 +439,11 @@ test('FLOW AC5/6: state shape retains finite saved/live geometry and selections'
     const source = `---\nconfig:\n  htmlLabels: ${htmlLabels}\n  look: ${look}\n  handDrawnSeed: 42\n---\n${header}\n${statement}\nA --> B\n`;
     await verifyNative(source, 'node:A', statement, 'State 😀', [], 'state');
   }
+});
+
+
+test('STATE REGION: grey right region selects its own source block in saved SVG and Markdown', { timeout: 120_000 }, async () => {
+  const right = '[*] --> Indexing\n    Indexing --> [*] : indexed';
+  const source = 'stateDiagram-v2\n  [*] --> Editing\n  state Editing {\n    state "Draft" as Draft: Editable content\n    Draft : Can be revised\n    Draft : Can be revised\n    state "Review" as Review\n    [*] --> Draft\n    Draft --> Review : submit\n    Review --> Draft : revise\n    Review --> [*] : approve\n    --\n    ' + right + '\n  }\n  Editing --> Published : publish\n  Published --> [*]\n  note right of Published : Available to readers\n';
+  await verifyNative(source, 'state:node:Draft', 'state "Draft" as Draft: Editable content', 'Draft', [['state:region:last', right, 'node']]);
 });

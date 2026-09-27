@@ -13528,7 +13528,7 @@ index 2d861649..11f5a878 100644
 +    }
 +}
 diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
-index 46e623f8..51740563 100644
+index 46e623f8..dacb468d 100644
 --- a/crates/merman-core/src/diagrams/state/db.rs
 +++ b/crates/merman-core/src/diagrams/state/db.rs
 @@ -1,9 +1,9 @@
@@ -13697,7 +13697,7 @@ index 46e623f8..51740563 100644
                      ctx.edges.push(StateDiagramRenderEdge {
                          id: format!("edge{}", *ctx.graph_item_count),
                          start: relation.state1.id.clone(),
-@@ -807,6 +848,31 @@ fn build_layout_data_typed(
+@@ -807,6 +848,49 @@ fn build_layout_data_typed(
          parsed_item: &StateStmt,
          alt_flag: bool,
      ) -> std::result::Result<(), String> {
@@ -13708,6 +13708,24 @@ index 46e623f8..51740563 100644
 +            .and_then(Value::as_bool)
 +            .unwrap_or(false)
 +        {
++            // Concurrency rectangles represent their child statements, not layout decoration.
++            // Keep the original separator occurrence below for reverse-source queries.
++            if parsed_item.ty == "divider"
++                && let Some(children) = parsed_item.doc.as_deref()
++                && let Some(span) = children
++                    .iter()
++                    .filter_map(|stmt| match stmt {
++                        Stmt::State(state) => state.span.or(state.id_span),
++                        Stmt::Relation(relation) => relation.span,
++                        Stmt::Located { span, .. } => Some(*span),
++                        _ => None,
++                    })
++                    .reduce(|left, right| {
++                        SourceSpan::new(left.start.min(right.start), left.end.max(right.end))
++                    })
++            {
++                ctx.source_occurrences.push(json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span,"effective":true}));
++            }
 +            if let Some(span) = if parsed_item.note.is_some() {
 +                parsed_item.id_span
 +            } else {
@@ -13729,7 +13747,7 @@ index 46e623f8..51740563 100644
          let item_id = parsed_item.id.clone();
          if item_id == "root" || item_id.is_empty() {
              return Ok(());
-@@ -842,6 +908,8 @@ fn build_layout_data_typed(
+@@ -842,6 +926,8 @@ fn build_layout_data_typed(
                  id: item_id.clone(),
                  shape,
                  label: json!(sanitize_text(&item_id, config)),
@@ -13738,7 +13756,7 @@ index 46e623f8..51740563 100644
                  css_classes,
                  css_styles: styles.clone(),
                  node_type: None,
-@@ -852,11 +920,20 @@ fn build_layout_data_typed(
+@@ -852,11 +938,20 @@ fn build_layout_data_typed(
              }
          });
  
@@ -13759,7 +13777,7 @@ index 46e623f8..51740563 100644
              config,
          );
  
-@@ -868,7 +945,10 @@ fn build_layout_data_typed(
+@@ -868,7 +963,10 @@ fn build_layout_data_typed(
              entry.is_group = true;
              let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
              entry.dir = Some(dir);
@@ -13771,7 +13789,7 @@ index 46e623f8..51740563 100644
              entry.shape = if parsed_item.ty == "divider" {
                  SHAPE_DIVIDER.to_string()
              } else {
-@@ -932,6 +1012,21 @@ fn build_layout_data_typed(
+@@ -932,6 +1030,21 @@ fn build_layout_data_typed(
              n.text = sanitize_text(&n.text, config);
  
              let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
@@ -13793,7 +13811,7 @@ index 46e623f8..51740563 100644
              let parent_base_id = format!("{item_id}{PARENT_ID}");
              let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
                  || ctx.states.contains_key(&parent_base_id)
-@@ -940,6 +1035,15 @@ fn build_layout_data_typed(
+@@ -940,6 +1053,15 @@ fn build_layout_data_typed(
              } else {
                  parent_base_id
              };
@@ -13809,7 +13827,7 @@ index 46e623f8..51740563 100644
              let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
              let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
  
-@@ -1028,6 +1132,7 @@ fn build_layout_data_typed(
+@@ -1028,6 +1150,7 @@ fn build_layout_data_typed(
  
      {
          let mut ctx = TypedLayoutContext {
@@ -13817,7 +13835,7 @@ index 46e623f8..51740563 100644
              states,
              classes,
              config,
-@@ -1040,6 +1145,113 @@ fn build_layout_data_typed(
+@@ -1040,6 +1163,113 @@ fn build_layout_data_typed(
          setup_doc(&mut ctx, None, root_doc, false)?;
      }
  
@@ -13931,7 +13949,7 @@ index 46e623f8..51740563 100644
      // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
      for node in nodes.iter_mut() {
          let Some(label_val) = node.label.clone() else {
-@@ -1064,7 +1276,7 @@ fn build_layout_data_typed(
+@@ -1064,7 +1294,7 @@ fn build_layout_data_typed(
          node.description = Some(rest);
      }
  
@@ -13940,7 +13958,7 @@ index 46e623f8..51740563 100644
  }
  
  fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
-@@ -1102,6 +1314,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+@@ -1102,6 +1332,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
  
  fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
      match stmt {
@@ -30644,6 +30662,63 @@ index 00000000..91db05f3
 +                    && node.attribute("data-mt-label") == Some("true"))
 +        );
 +    }
++}
+diff --git a/crates/merman/tests/state_source_provenance.rs b/crates/merman/tests/state_source_provenance.rs
+new file mode 100644
+index 00000000..d153df94
+--- /dev/null
++++ b/crates/merman/tests/state_source_provenance.rs
+@@ -0,0 +1,51 @@
++use merman::{
++    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
++};
++use serde_json::{Value, json};
++
++#[test]
++fn concurrency_regions_keep_native_child_ranges_and_separator_relationships() {
++    let source = "stateDiagram-v2\r\n%% 😀\r\nstate Parallel {\r\n  state \"Left 😀\" as A\r\n  --\r\n  [*] --> B\r\n  B --> [*] : done\r\n}\r\n";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let pieces: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|n| n.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let slice = |span: &Value| {
++        &source[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
++    };
++    for expected in ["state \"Left 😀\" as A", "[*] --> B\r\n  B --> [*] : done"] {
++        let piece = pieces
++            .iter()
++            .find(|p| p["effective"] == true && slice(&p["span"]) == expected)
++            .expect("native region range");
++        assert!(
++            svg.descendants()
++                .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str())
++        );
++    }
++    let separator = pieces
++        .iter()
++        .find(|p| p.get("span").is_some() && slice(&p["span"]) == "--")
++        .expect("original separator relationship");
++    assert!(
++        pieces
++            .iter()
++            .any(|p| p["domId"] == separator["domId"] && p["effective"] == true)
++    );
 +}
 diff --git a/docs/json5-provenance.md b/docs/json5-provenance.md
 new file mode 100644
