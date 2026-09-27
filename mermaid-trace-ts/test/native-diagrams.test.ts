@@ -14,6 +14,8 @@ async function verifyNative(source: string, key: string, expected: string, label
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
+  const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
+  const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
   const browser = await chromium.launch();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
@@ -38,15 +40,16 @@ async function verifyNative(source: string, key: string, expected: string, label
     await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
     let event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), expected);
-    await first.locator(`[data-mt-key="${key}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`).first().click();
+    await first.locator(labelSelector).first().click();
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
     assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+    const controlSpans: { start: number; end: number }[] = [];
     for (const [controlKey, text, role = 'control'] of controls) {
       const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
-      const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > path[fill]:not([fill=none])');
+      const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
         const point = await target.evaluate(element => {
           const shape = element as SVGGeometryElement;
@@ -55,17 +58,20 @@ async function verifyNative(source: string, key: string, expected: string, label
         });
         await page.mouse.click(point.x, point.y);
       } else {
-        await (await background.count() ? background.first() : target).click(await background.count() ? { position: { x: 10, y: 3 } } : {});
+        const shape = await background.count() ? background.first() : target;
+        const centered = role === 'node' && await shape.evaluate(element => element.tagName === 'path');
+        await shape.click(await background.count() && !centered ? { position: { x: 10, y: 3 } } : {});
       }
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text);
+      controlSpans.push(control.span);
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     await writeFile(filename, markdown);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const original = page.frameLocator('#source-frame').locator('#source');
-    await page.locator(`[data-mt-key="${key}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`).first().click();
+    await page.locator(labelSelector).first().click();
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), label);
     const start = markdown.indexOf(label);
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + label.length }));
@@ -75,6 +81,21 @@ async function verifyNative(source: string, key: string, expected: string, label
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
     }, { start, end: start + label.length });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
+    for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
+      const target = page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      if (role.endsWith('-label')) {
+        await target.click();
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+      }
+      const before = await page.evaluate(() => navigator.clipboard.readText());
+      await target.focus();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before, 'focus must not copy');
+      await target.press(index % 2 ? 'Space' : 'Enter');
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+      const span = controlSpans[index]!;
+      const toMarkdown = (offset: number) => markdown.indexOf('> ' + source.split('\n')[0]) + 2 + offset + (source.slice(0, offset).match(/\n/g)?.length ?? 0) * 2;
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdown(span.end) }));
+    }
     await page.locator('svg').focus(); await page.keyboard.press('Enter');
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdown.slice(markdown.indexOf('> ```')));
     await writeFile(filename, markdown.replaceAll(label, 'Changed'));
@@ -105,5 +126,33 @@ test('STATE STRUCT-AC2/3: saved native SVG and original Markdown state selection
     ['state:node:A----note-2', 'note right of A : Annotation'],
     ['state:node:Group', 'Group', 'node-label'],
     ['state:node:Group', block, 'node'],
+  ]);
+});
+
+test('STATE AC4/6: repeated description rows, concurrency and HTML variants retain keyboard and clipboard selection', { timeout: 120_000 }, async () => {
+  for (const html of [false, true]) {
+    const source = `---\nconfig:\n  htmlLabels: ${html}\n  look: handDrawn\n  handDrawnSeed: 42\n---\nstateDiagram-v2\nstate "Title 😀" as A: Compact\nA : Repeated\nA : Repeated\nA --> A : again\nstate Parallel {\n  B\n  --\n  C\n}\n`;
+    await verifyNative(source, 'state:node:A', 'state "Title 😀" as A: Compact', 'Title 😀', [
+      ['state:label:A:1', 'Compact', 'node-label'],
+      ['state:label:A:2', 'Repeated', 'node-label'],
+      ['state:label:A:3', 'Repeated', 'node-label'],
+      ['state:node:divider-id-1', '--', 'node'],
+      ['state:edge:edge0', 'A --> A : again', 'edge'],
+      ['state:edge:edge0', 'again', 'edge-label'],
+    ]);
+  }
+});
+
+test('STATE AC5/6: title, special states and HTML notes remain selectable in saved and live Markdown', { timeout: 60_000 }, async () => {
+  const source = '---\ntitle: "Mapped state"\nconfig:\n  htmlLabels: true\n---\nstateDiagram\nstate "Actor 😀" as A\nstate Decision <<choice>>\nstate Fork <<fork>>\nstate Join <<join>>\n[*] --> A\nA --> Decision\nDecision --> Fork\nFork --> Join\nJoin --> [*]\nnote right of A : Annotation\n';
+  await verifyNative(source, 'state:node:A', 'state "Actor 😀" as A', 'Actor 😀', [
+    ['state:title', 'Mapped state', 'control-label'],
+    ['state:node:Decision', 'state Decision <<choice>>', 'node'],
+    ['state:node:Fork', 'state Fork <<fork>>', 'node'],
+    ['state:node:Join', 'state Join <<join>>', 'node'],
+    ['state:node:root_start', '[*]', 'node'],
+    ['state:node:root_end', '[*]', 'node'],
+    ['state:node:A----note-5', 'Annotation', 'control-label'],
+    ['state:node:A----note-5', 'note right of A : Annotation'],
   ]);
 });

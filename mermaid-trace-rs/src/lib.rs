@@ -36,6 +36,26 @@ pub fn render_with(renderer: &Renderer, id: &str, source: &str) -> Result<Value,
 }
 
 fn annotate(svg: &str, source: &str) -> Result<Value, String> {
+    // A safe SVG conversion can leave an empty renderer group after relocating its label.
+    // Bind the visible replacement, keeping empty containers out of keyboard navigation.
+    let visible = |node: roxmltree::Node<'_, '_>| {
+        node.descendants().any(|child| {
+            child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+                || [
+                    "path",
+                    "line",
+                    "rect",
+                    "circle",
+                    "ellipse",
+                    "polygon",
+                    "polyline",
+                    "image",
+                    "foreignObject",
+                ]
+                .iter()
+                .any(|tag| child.has_tag_name(*tag))
+        })
+    };
     let document = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
     let root = document.root_element();
     let occurrences: Vec<Value> = serde_json::from_str(
@@ -48,14 +68,16 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
     let mut attributes: BTreeMap<usize, String> = BTreeMap::new();
     let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for mut piece in occurrences {
+        if piece["kind"] == "decoration" || piece["kind"] == "nonvisual" {
+            continue;
+        }
         let key = piece["domId"]
             .as_str()
             .ok_or("Missing native identity")?
             .to_owned();
-        if piece["kind"] == "decoration"
-            || !root
-                .descendants()
-                .any(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+        if !root
+            .descendants()
+            .any(|n| n.attribute("data-mt-key") == Some(key.as_str()) && visible(n))
         {
             continue;
         }
@@ -74,9 +96,15 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
     }
     for (key, mut indices) in groups {
         // Preserve occurrence queries while using the explicit declaration for visual activation.
-        indices.sort_by_key(|&i| pieces[i].get("labelSpan").is_none());
+        indices.sort_by_key(|&i| {
+            (
+                pieces[i].get("labelSpan").is_none(),
+                pieces[i]["declaration"] != true,
+            )
+        });
         let primary = &pieces[indices[0]];
         if primary["kind"] == "node"
+            && !key.starts_with("state:")
             && indices
                 .iter()
                 .filter(|&&i| pieces[i].get("labelSpan").is_some())
@@ -94,7 +122,7 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
         let label_ref = primary["id"].as_str().expect("assigned piece ID");
         for node in root
             .descendants()
-            .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+            .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()) && visible(*n))
         {
             let label = node.attribute("data-mt-label") == Some("true");
             if label && primary.get("labelSpan").is_none() {
@@ -117,6 +145,9 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                         .skip(1)
                         .find(|n| n.has_attribute("data-mt-key"))
                         == Some(node)
+                        && !text
+                            .descendants()
+                            .any(|child| child.has_attribute("data-mt-key"))
                     {
                         bind(svg, text, primary, label_ref, kind, true, &mut attributes)?;
                     }

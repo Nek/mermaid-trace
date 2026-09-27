@@ -22,7 +22,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 | `sequence` | Native participants/messages/labels/notes/activations/controls implemented; complete syntax/occurrence conformance pending |
 | `flowchart-elk` | Not verified through mapped viewer; required |
 | `classDiagram` | Missing |
-| `stateDiagram` | Native declarations/references/aliases, special and composite states, transitions/labels and attached notes implemented; complete occurrence/syntax/variant conformance pending |
+| `stateDiagram` | Pinned native state inventory verified: declarations/references, repeated descriptions, composites/concurrency, special states, transitions, notes, titles and directive relationships; 286 fixtures, 48 variants and saved/live interaction checks (STATE-2) |
 | `er` | Missing |
 | `c4` | Missing |
 | `gitGraph` | Missing |

@@ -4,7 +4,7 @@ Delivery order: state → class → ER, following the completed planning diagram
 
 As a diagram author, I want to select structural diagram pieces and locate their exact original source, including in Markdown and saved SVG.
 
-## Current feature: state diagrams (incomplete)
+## Current feature: state diagrams
 
 Decision, 2026-09-27: implementing diagram support means the complete family, not a representative slice. STATE-1 below records the delivered mapping slice, not completion of state support. Close state occurrence, concurrency and syntax/configuration/renderer gaps before CLASS-1 or ER-1. Enumerate remaining constructs and variants from the native grammar, renderer and upstream fixtures, give each exact-source and interaction expectations, then implement them through failing acceptance tests. Full state support requires every applicable coverage check to pass; wider syntax is not deferred work.
 
@@ -34,14 +34,17 @@ Plan: inventory the official Mermaid grammar/docs and pinned Merman fixtures; ad
 
 ## Verification
 
-STATE-1 implemented. Native tests cover original UTF-16 ranges through CRLF/frontmatter/comments, repeated Unicode aliases, transitions and endpoint relationships, nested composite states, start/end/choice/fork/join states, inline and multiline notes, both state headers and mapped/plain SVG equality. Saved-SVG pointer checks cover nodes/labels, labeled and unlabeled transition strokes, notes/text and composite frames/labels. Nested reverse selection excludes enclosing nodes. The live nested-Markdown route verifies source selection, clipboard, background selection and saves; existing invalid-edit recovery checks remain mandatory.
+STATE-1 and STATE-2 implemented for the pinned native state family. Both headers cover declarations/references, compact and repeated descriptions, multiline labels, nested/reopened composites, concurrency, special states, transitions, attached notes and frontmatter titles. Native style/link/direction relationships retain their statements without replacing the primary click range. Accessibility and accepted no-op directives are explicitly nonvisual; generated region/note scaffolding has no fabricated source. YAML title ranges come from native tokens, including quoted, escaped, aliased, literal and folded values. A cyclic hierarchy returns a diagnostic rather than hanging.
 
 | Contract | Evidence |
 |---|---|
-| STRUCT-AC1 | Two tests in `mermaid-trace-rs/tests/structural.rs` |
-| STRUCT-AC2 | Native SVG equality and `STATE STRUCT-AC2/3` in `mermaid-trace-ts/test/native-diagrams.test.ts` |
-| STRUCT-AC3 | Same production watch/browser test plus the mandatory existing watch/activation suite |
+| STRUCT-AC1 / STATE-AC4 | Exact original UTF-16 span tests, repeated identical rows, declaration precedence, empty-label and YAML cases in `mermaid-trace-rs/tests/structural.rs` |
+| STRUCT-AC2 / STATE-AC5 | All 286 pinned upstream state fixtures render, map every source-backed semantic shape and visible label, and preserve mapped/plain SVG bytes; native directives and generated/nonvisual classifications checked |
+| STRUCT-AC3 / STATE-AC6 | Three state browser tests in `mermaid-trace-ts/test/native-diagrams.test.ts`: saved SVG and nested Markdown, pointer/keyboard selection, clipboard, optional source, reverse highlighting, instance isolation and saves |
+| STATE-AC6 | 48 header/look/HTML-label/direction combinations preserve labels and mapped/plain bytes; existing native state theme/security/layout tests remain mandatory; malformed cyclic input returns a diagnostic |
 
-Verification: `make typecheck`, `make test` (12 Rust, 28 TypeScript/browser tests), 184 native state parser/render checks, 35 native ASCII state-model checks and generated-parser verification pass. The shared containment check currently scans matching pieces; an interval index is warranted only if large artifacts show a performance issue.
+Verification passed: `make typecheck`; `make test` (21 Rust and 30 TypeScript/browser tests); native core and renderer library suites (1,196 renderer unit tests); 184 native state parser/render checks; generated-parser verification; and clean pinned-archive patch application with all 64 changed native files matching the live checkout. The SVG text fallback now preserves local foreignObject translations, preventing overlapping HTML description rows. The artifact adapter ignores empty containers left by that conversion and binds the visible label instead.
 
-CLASS-1 and ER-1 follow complete state support; they are not implemented yet. Repeated state descriptions/declarations, concurrency and wider syntax/configuration/renderer conformance are unfinished state requirements. STATE-1 does not close the state-family or all-family gate.
+This closes the enumerated state-family provenance inventory at the pinned native revision; it does not close the all-family release gate or promise parity with a newer Mermaid version. Refresh the corpus and inventory when changing either upstream version. CLASS-1 and ER-1 follow; they are not implemented yet.
+
+Manual in-app verification at port 5174 selected the second identical description row and highlighted only its original text. The preview uses the rebuilt native Rust process. Upstream implementation commit: `39e213ee`; the checked-in patch reproduces it together with the earlier provenance changes.

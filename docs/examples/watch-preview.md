@@ -68,18 +68,23 @@ kanban
 
 ## State diagram
 
-Select states, their labels, composite frames, transitions or attached notes.
+Select states, individual description rows, concurrent regions, composite frames, transitions or attached notes.
 
 ```mermaid
 stateDiagram-v2
   [*] --> Editing
   state Editing {
-    state "Draft" as Draft
+    state "Draft" as Draft: Editable content
+    Draft : Can be revised
+    Draft : Can be revised
     state "Review" as Review
     [*] --> Draft
     Draft --> Review : submit
     Review --> Draft : revise
     Review --> [*] : approve
+    --
+    [*] --> Indexing
+    Indexing --> [*] : indexed
   }
   Editing --> Published : publish
   Published --> [*]

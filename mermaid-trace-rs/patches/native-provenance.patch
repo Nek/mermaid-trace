@@ -1159,10 +1159,10 @@ index ad743fd1..138c6d67 100644
      v
    },
 diff --git a/crates/merman-core/src/diagrams/state/ast.rs b/crates/merman-core/src/diagrams/state/ast.rs
-index 2d861649..003a9f32 100644
+index 2d861649..11f5a878 100644
 --- a/crates/merman-core/src/diagrams/state/ast.rs
 +++ b/crates/merman-core/src/diagrams/state/ast.rs
-@@ -15,6 +15,8 @@ pub(crate) struct ClickStmt {
+@@ -15,11 +15,14 @@ pub(crate) struct ClickStmt {
  
  #[derive(Debug, Clone)]
  pub(crate) struct StateStmt {
@@ -1171,7 +1171,13 @@ index 2d861649..003a9f32 100644
      pub id: String,
      pub id_span: Option<SourceSpan>,
      pub ty: String,
-@@ -31,6 +33,8 @@ pub(crate) struct StateStmt {
+     pub description: Option<String>,
+     pub descriptions: Vec<String>,
++    pub description_spans: Vec<SourceSpan>,
+     pub doc: Option<Vec<Stmt>>,
+     pub note: Option<Note>,
+     pub classes: Vec<String>,
+@@ -31,11 +34,14 @@ pub(crate) struct StateStmt {
  impl StateStmt {
      pub(crate) fn new(id: String) -> Self {
          Self {
@@ -1180,7 +1186,13 @@ index 2d861649..003a9f32 100644
              id,
              id_span: None,
              ty: "default".to_string(),
-@@ -55,6 +59,8 @@ impl StateStmt {
+             description: None,
+             descriptions: Vec::new(),
++            description_spans: Vec::new(),
+             doc: None,
+             note: None,
+             classes: Vec::new(),
+@@ -55,6 +61,8 @@ impl StateStmt {
  
  #[derive(Debug, Clone)]
  pub(crate) struct RelationStmt {
@@ -1189,11 +1201,80 @@ index 2d861649..003a9f32 100644
      pub state1: StateStmt,
      pub state2: StateStmt,
      pub description: Option<String>,
+@@ -62,14 +70,36 @@ pub(crate) struct RelationStmt {
+ 
+ #[derive(Debug, Clone)]
+ pub(crate) enum Stmt {
++    Located {
++        span: SourceSpan,
++        statement: Box<Stmt>,
++    },
+     Noop,
+     State(StateStmt),
+     Relation(Box<RelationStmt>),
+-    ClassDef { id: String, classes: String },
+-    ApplyClass { ids: String, class_name: String },
+-    Style { ids: String, styles: String },
++    ClassDef {
++        id: String,
++        classes: String,
++    },
++    ApplyClass {
++        ids: String,
++        class_name: String,
++    },
++    Style {
++        ids: String,
++        styles: String,
++    },
+     Direction(String),
+     AccTitle(String),
+     AccDescr(String),
+     Click(ClickStmt),
+ }
++
++impl Stmt {
++    pub(crate) fn unlocated(&self) -> &Self {
++        match self {
++            Self::Located { statement, .. } => statement.unlocated(),
++            other => other,
++        }
++    }
++}
 diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
-index 46e623f8..06ddfa49 100644
+index 46e623f8..51740563 100644
 --- a/crates/merman-core/src/diagrams/state/db.rs
 +++ b/crates/merman-core/src/diagrams/state/db.rs
-@@ -391,7 +391,7 @@ impl StateDb {
+@@ -1,9 +1,9 @@
+ use crate::sanitize::{sanitize_text, sanitize_text_or_array};
+-use crate::{Error, MermaidConfig, ParseMetadata, Result};
++use crate::{Error, MermaidConfig, ParseMetadata, Result, SourceSpan};
+ use indexmap::IndexMap;
+ use serde_json::{Map, Value, json};
+-use std::collections::HashMap;
+ use std::collections::hash_map::Entry;
++use std::collections::{HashMap, HashSet};
+ 
+ use super::{
+     Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
+@@ -194,7 +194,7 @@ impl StateDb {
+         self.links.clear();
+ 
+         for stmt in root_doc {
+-            match stmt {
++            match stmt.unlocated() {
+                 Stmt::State(s) => self.add_state(s),
+                 Stmt::Relation(relation) => self.add_relation(
+                     &relation.state1,
+@@ -209,6 +209,7 @@ impl StateDb {
+                 Stmt::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(d)),
+                 Stmt::Click(c) => self.add_link(&c.id, &c.url, &c.tooltip),
+                 Stmt::Noop => {}
++                Stmt::Located { .. } => unreachable!("unwrapped native statement"),
+             }
+         }
+     }
+@@ -391,7 +392,7 @@ impl StateDb {
          &self,
          meta: &ParseMetadata,
      ) -> Result<StateDiagramRenderModel> {
@@ -1202,7 +1283,7 @@ index 46e623f8..06ddfa49 100644
              &self.root_doc,
              &self.states,
              &self.style_classes,
-@@ -477,6 +477,7 @@ impl StateDb {
+@@ -477,6 +478,7 @@ impl StateDb {
              .collect();
  
          Ok(StateDiagramRenderModel {
@@ -1210,7 +1291,79 @@ index 46e623f8..06ddfa49 100644
              direction: self.direction.clone().unwrap_or_else(|| "TB".to_string()),
              acc_title: self.acc_title.clone(),
              acc_descr: self.acc_descr.clone(),
-@@ -717,7 +718,15 @@ fn build_layout_data_typed(
+@@ -566,6 +568,8 @@ struct NodeScratch {
+     id: String,
+     shape: String,
+     label: Value,
++    label_sources: Vec<Option<SourceSpan>>,
++    has_title_declaration: bool,
+     css_classes: String,
+     css_styles: Vec<String>,
+     node_type: Option<String>,
+@@ -580,31 +584,42 @@ fn apply_state_descriptions(
+     item_id: &str,
+     primary_description: Option<&str>,
+     additional_descriptions: &[String],
++    primary_span: Option<SourceSpan>,
++    additional_spans: &[SourceSpan],
+     config: &MermaidConfig,
+ ) {
+     // Mermaid's compact form can produce a primary display label plus an additional description:
+     // `state "Some long name" as S1: The description`.
+     let mut descriptions = primary_description
+         .into_iter()
+-        .chain(additional_descriptions.iter().map(String::as_str))
+-        .filter(|description| !description.trim().is_empty())
++        .map(|text| (text, primary_span))
++        .chain(
++            additional_descriptions
++                .iter()
++                .enumerate()
++                .map(|(i, text)| (text.as_str(), additional_spans.get(i).copied())),
++        )
++        .filter(|(description, _)| !description.trim().is_empty())
+         .peekable();
+     if descriptions.peek().is_none() {
+         return;
+     }
+ 
+     let base_label = sanitize_text(item_id, config);
+-    for description in descriptions {
++    for (description, span) in descriptions {
+         match &mut entry.label {
+             Value::Array(labels) => {
+                 entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                 labels.push(Value::String(description.to_string()));
++                entry.label_sources.push(span);
+             }
+             Value::String(label) if !label.is_empty() => {
+                 entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                 if *label == base_label {
+                     entry.label = Value::Array(vec![Value::String(description.to_string())]);
++                    entry.label_sources = vec![span];
+                 } else {
++                    entry.label_sources.push(span);
+                     entry.label = Value::Array(vec![
+                         Value::String(label.clone()),
+                         Value::String(description.to_string()),
+@@ -614,6 +629,7 @@ fn apply_state_descriptions(
+             _ => {
+                 entry.shape = SHAPE_STATE.to_string();
+                 entry.label = Value::String(description.to_string());
++                entry.label_sources = vec![span];
+             }
+         }
+     }
+@@ -635,7 +651,7 @@ fn apply_state_descriptions(
+ fn get_dir_for_doc(doc: &[Stmt], default_dir: &str) -> String {
+     let mut dir = default_dir.to_string();
+     for stmt in doc {
+-        if let Stmt::Direction(d) = stmt {
++        if let Stmt::Direction(d) = stmt.unlocated() {
+             dir = d.clone();
+         }
+     }
+@@ -717,7 +733,15 @@ fn build_layout_data_typed(
      states: &HashMap<String, StateRecord>,
      classes: &IndexMap<String, StyleClass>,
      config: &MermaidConfig,
@@ -1227,7 +1380,7 @@ index 46e623f8..06ddfa49 100644
      let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
      let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
      let mut node_index: HashMap<String, usize> = HashMap::new();
-@@ -726,6 +735,7 @@ fn build_layout_data_typed(
+@@ -726,6 +750,7 @@ fn build_layout_data_typed(
      let mut graph_item_count: usize = 0;
  
      struct TypedLayoutContext<'a> {
@@ -1235,7 +1388,7 @@ index 46e623f8..06ddfa49 100644
          states: &'a HashMap<String, StateRecord>,
          classes: &'a IndexMap<String, StyleClass>,
          config: &'a MermaidConfig,
-@@ -784,6 +794,22 @@ fn build_layout_data_typed(
+@@ -784,6 +809,22 @@ fn build_layout_data_typed(
  
                      let edge_label_raw = relation.description.clone().unwrap_or_default();
                      let edge_label = sanitize_text(&edge_label_raw, ctx.config);
@@ -1258,7 +1411,7 @@ index 46e623f8..06ddfa49 100644
                      ctx.edges.push(StateDiagramRenderEdge {
                          id: format!("edge{}", *ctx.graph_item_count),
                          start: relation.state1.id.clone(),
-@@ -807,6 +833,30 @@ fn build_layout_data_typed(
+@@ -807,6 +848,31 @@ fn build_layout_data_typed(
          parsed_item: &StateStmt,
          alt_flag: bool,
      ) -> std::result::Result<(), String> {
@@ -1276,6 +1429,7 @@ index 46e623f8..06ddfa49 100644
 +            } {
 +                let mut piece = json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span});
 +                if parsed_item.note.is_none() {
++                    piece["declaration"] = json!(parsed_item.span.is_some());
 +                    if let Some(label) = parsed_item.label_span {
 +                        piece["labelSpan"] = json!(label);
 +                    }
@@ -1289,7 +1443,49 @@ index 46e623f8..06ddfa49 100644
          let item_id = parsed_item.id.clone();
          if item_id == "root" || item_id.is_empty() {
              return Ok(());
-@@ -932,6 +982,21 @@ fn build_layout_data_typed(
+@@ -842,6 +908,8 @@ fn build_layout_data_typed(
+                 id: item_id.clone(),
+                 shape,
+                 label: json!(sanitize_text(&item_id, config)),
++                label_sources: vec![parsed_item.id_span],
++                has_title_declaration: false,
+                 css_classes,
+                 css_styles: styles.clone(),
+                 node_type: None,
+@@ -852,11 +920,20 @@ fn build_layout_data_typed(
+             }
+         });
+ 
++        if !entry.has_title_declaration && parsed_item.span.is_some() && parsed_item.note.is_none()
++        {
++            if entry.label.as_str() == Some(sanitize_text(&item_id, config).as_str()) {
++                entry.label_sources = vec![parsed_item.id_span];
++            }
++            entry.has_title_declaration = true;
++        }
+         apply_state_descriptions(
+             entry,
+             &item_id,
+             parsed_item.description.as_deref(),
+             &parsed_item.descriptions,
++            parsed_item.label_span,
++            &parsed_item.description_spans,
+             config,
+         );
+ 
+@@ -868,7 +945,10 @@ fn build_layout_data_typed(
+             entry.is_group = true;
+             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
+             entry.dir = Some(dir);
+-            entry.explicit_dir = Some(doc.iter().any(|stmt| matches!(stmt, Stmt::Direction(_))));
++            entry.explicit_dir = Some(
++                doc.iter()
++                    .any(|stmt| matches!(stmt.unlocated(), Stmt::Direction(_))),
++            );
+             entry.shape = if parsed_item.ty == "divider" {
+                 SHAPE_DIVIDER.to_string()
+             } else {
+@@ -932,6 +1012,21 @@ fn build_layout_data_typed(
              n.text = sanitize_text(&n.text, config);
  
              let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
@@ -1311,7 +1507,23 @@ index 46e623f8..06ddfa49 100644
              let parent_base_id = format!("{item_id}{PARENT_ID}");
              let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
                  || ctx.states.contains_key(&parent_base_id)
-@@ -1028,6 +1093,7 @@ fn build_layout_data_typed(
+@@ -940,6 +1035,15 @@ fn build_layout_data_typed(
+             } else {
+                 parent_base_id
+             };
++            if ctx
++                .config
++                .as_value()
++                .get("traceSource")
++                .and_then(Value::as_bool)
++                .unwrap_or(false)
++            {
++                ctx.source_occurrences.push(json!({"kind":"decoration","semanticId":parent_node_id,"domId":format!("state:node:{parent_node_id}")}));
++            }
+             let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
+             let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
+ 
+@@ -1028,6 +1132,7 @@ fn build_layout_data_typed(
  
      {
          let mut ctx = TypedLayoutContext {
@@ -1319,7 +1531,121 @@ index 46e623f8..06ddfa49 100644
              states,
              classes,
              config,
-@@ -1064,7 +1130,7 @@ fn build_layout_data_typed(
+@@ -1040,6 +1145,113 @@ fn build_layout_data_typed(
+         setup_doc(&mut ctx, None, root_doc, false)?;
+     }
+ 
++    if config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        .unwrap_or(false)
++    {
++        // These identities follow the label accumulation itself, including replacement of the implicit ID title.
++        for node in &nodes {
++            if node.shape == "divider"
++                && !source_occurrences
++                    .iter()
++                    .any(|p| p["domId"] == format!("state:node:{}", node.id))
++            {
++                source_occurrences.push(json!({"kind":"decoration","semanticId":node.id,"domId":format!("state:node:{}",node.id)}));
++            }
++            if matches!(
++                node.shape.as_str(),
++                "stateStart" | "stateEnd" | "fork" | "join" | "choice" | "divider"
++            ) {
++                continue;
++            }
++            if let Some(scratch) = node_db.get(&node.id) {
++                for (index, span) in scratch.label_sources.iter().enumerate() {
++                    if let Some(span) = span {
++                        source_occurrences.push(json!({"kind":"node","semanticId":node.id,"domId":format!("state:label:{}:{index}", node.id),"span":span,"labelSpan":span,"labelIndex":index}));
++                    }
++                }
++            }
++        }
++    }
++
++    if config
++        .as_value()
++        .get("traceSource")
++        .and_then(Value::as_bool)
++        .unwrap_or(false)
++    {
++        let mut documents = vec![(root_doc, None::<&str>)];
++        while let Some((doc, parent)) = documents.pop() {
++            for item in doc {
++                if let Stmt::State(state) = item {
++                    if let Some(children) = state.doc.as_deref() {
++                        documents.push((children, Some(&state.id)));
++                    }
++                }
++                let Stmt::Located { span, statement } = item else {
++                    continue;
++                };
++                let relation = match statement.as_ref() {
++                    Stmt::ClassDef { .. } | Stmt::ApplyClass { .. } | Stmt::Style { .. } => "style",
++                    Stmt::Click(_) => "link",
++                    Stmt::Direction(_) => "direction",
++                    Stmt::AccTitle(_) | Stmt::AccDescr(_) => "accessibility",
++                    Stmt::Noop => "no-visual",
++                    _ => unreachable!("only directives carry location wrappers"),
++                };
++                let mut targets = Vec::new();
++                for node in &nodes {
++                    let source_backed = source_occurrences.iter().any(|piece| {
++                        piece["domId"] == format!("state:node:{}", node.id)
++                            && piece["kind"] == "node"
++                    });
++                    if !source_backed {
++                        continue;
++                    }
++                    let affected = match statement.as_ref() {
++                        Stmt::ClassDef { id, .. } => {
++                            node.css_classes.split_whitespace().any(|name| name == id)
++                        }
++                        Stmt::ApplyClass { ids, .. } | Stmt::Style { ids, .. } => {
++                            ids.split(',').any(|id| id.trim() == node.id)
++                        }
++                        Stmt::Click(click) => click.id == node.id,
++                        Stmt::Direction(_) => {
++                            let mut ancestor = Some(node.id.as_str());
++                            let mut in_scope = parent.is_none();
++                            let mut visited = HashSet::new();
++                            while let Some(id) = ancestor {
++                                if !visited.insert(id) {
++                                    return Err(format!("Cyclic state hierarchy involving {id}"));
++                                }
++                                if Some(id) == parent {
++                                    in_scope = true;
++                                    break;
++                                }
++                                ancestor =
++                                    node_db.get(id).and_then(|node| node.parent_id.as_deref());
++                            }
++                            in_scope
++                        }
++                        _ => false,
++                    };
++                    if affected {
++                        targets.push(&node.id);
++                    }
++                }
++                if targets.is_empty() {
++                    source_occurrences.push(json!({"kind":"nonvisual","semanticId":relation,"classification":relation,"span":span}));
++                } else {
++                    for id in targets {
++                        source_occurrences.push(json!({"kind":"node","semanticId":id,"domId":format!("state:node:{id}"),"relation":relation,"span":span}));
++                    }
++                }
++            }
++        }
++    }
++
+     // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
+     for node in nodes.iter_mut() {
+         let Some(label_val) = node.label.clone() else {
+@@ -1064,7 +1276,7 @@ fn build_layout_data_typed(
          node.description = Some(rest);
      }
  
@@ -1328,8 +1654,16 @@ index 46e623f8..06ddfa49 100644
  }
  
  fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
+@@ -1102,6 +1314,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+ 
+ fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
+     match stmt {
++        Stmt::Located { statement, .. } => stmt_to_json_shallow(statement, doc),
+         Stmt::Noop => Value::Null,
+         Stmt::State(s) => {
+             let mut obj = Map::new();
 diff --git a/crates/merman-core/src/diagrams/state/parse.rs b/crates/merman-core/src/diagrams/state/parse.rs
-index a335e8d3..0be3a782 100644
+index a335e8d3..9c849f61 100644
 --- a/crates/merman-core/src/diagrams/state/parse.rs
 +++ b/crates/merman-core/src/diagrams/state/parse.rs
 @@ -201,6 +201,7 @@ fn construct_state_semantic_source(
@@ -1340,7 +1674,7 @@ index a335e8d3..0be3a782 100644
      let mut divider_cnt = 0usize;
      assign_divider_ids(&mut doc, &mut divider_cnt, control)?;
  
-@@ -210,6 +211,72 @@ fn construct_state_semantic_source(
+@@ -210,6 +211,84 @@ fn construct_state_semantic_source(
      Ok(Ok(StateSemanticSource { db, editor_facts }))
  }
  
@@ -1387,7 +1721,8 @@ index a335e8d3..0be3a782 100644
 +                    span.end = span.start + code[span.start..span.end].trim_end().len();
 +                }
 +                if let Some(span) = state.label_span {
-+                    state.label_span = Some(label_span(span, code, state.note.is_some()));
++                    let label = label_span(span, code, state.note.is_some());
++                    state.label_span = (label.start < label.end).then_some(label);
 +                }
 +                if state.doc.is_some() && state.label_span.is_none() {
 +                    state.label_span = state.id_span;
@@ -1396,9 +1731,20 @@ index a335e8d3..0be3a782 100644
 +                    stack.push(doc.iter_mut());
 +                }
 +            }
++            Stmt::Located { span, .. } => {
++                let boundary = code[..span.start]
++                    .rfind(['\n', '\r', ';'])
++                    .map_or(0, |p| p + 1);
++                let prefix = &code[boundary..span.start];
++                if prefix.trim() == "state" {
++                    span.start = boundary + prefix.len() - prefix.trim_start().len();
++                }
++                span.end = span.start + code[span.start..span.end].trim_end().len();
++            }
 +            Stmt::Relation(relation) => {
 +                if let Some(span) = relation.label_span {
-+                    relation.label_span = Some(label_span(span, code, false));
++                    let label = label_span(span, code, false);
++                    relation.label_span = (label.start < label.end).then_some(label);
 +                }
 +                if let Some(span) = &mut relation.span {
 +                    span.end = span.start + code[span.start..span.end].trim_end().len();
@@ -1427,7 +1773,7 @@ index 1607cf60..6b3ba347 100644
      pub direction: String,
      #[serde(default, rename = "accTitle")]
 diff --git a/crates/merman-core/src/diagrams/state_grammar.lalrpop b/crates/merman-core/src/diagrams/state_grammar.lalrpop
-index 280e3b85..f61c9000 100644
+index 280e3b85..348ab7c8 100644
 --- a/crates/merman-core/src/diagrams/state_grammar.lalrpop
 +++ b/crates/merman-core/src/diagrams/state_grammar.lalrpop
 @@ -78,6 +78,17 @@ Item: Option<Stmt> = {
@@ -1438,7 +1784,7 @@ index 280e3b85..f61c9000 100644
 +    match &mut stmt {
 +      Stmt::State(state) => state.span = Some(SourceSpan::new(l, r)),
 +      Stmt::Relation(relation) => relation.span = Some(SourceSpan::new(l, r)),
-+      _ => {},
++      _ => return Stmt::Located { span: SourceSpan::new(l, r), statement: Box::new(stmt) },
 +    }
 +    stmt
 +  }
@@ -1465,7 +1811,7 @@ index 280e3b85..f61c9000 100644
      Stmt::State(s)
    },
  
-@@ -103,7 +117,8 @@ Statement: Stmt = {
+@@ -103,11 +117,13 @@ Statement: Stmt = {
    <_id:CompositState> => Stmt::Noop,
  
    <l:@L> <id:CompositState> <r:@R> <doc:Block> => Stmt::State(StateStmt {
@@ -1475,7 +1821,12 @@ index 280e3b85..f61c9000 100644
      id_span: Some(SourceSpan::new(l, r)),
      ty: "default".to_string(),
      description: None,
-@@ -116,7 +131,7 @@ Statement: Stmt = {
+     descriptions: Vec::new(),
++    description_spans: Vec::new(),
+     doc: Some(doc),
+     note: None,
+     classes: Vec::new(),
+@@ -116,12 +132,13 @@ Statement: Stmt = {
      start: None,
    }),
  
@@ -1484,7 +1835,18 @@ index 280e3b85..f61c9000 100644
      let trimmed = descr.trim().to_string();
      let mut state_id = id;
      let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
-@@ -133,7 +148,8 @@ Statement: Stmt = {
+     let description = trimmed;
+     let mut descriptions: Vec<String> = Vec::new();
++    let mut description_spans = Vec::new();
+     if let Some((a, b)) = state_id
+       .split_once(':')
+       .map(|(a, b)| (a.to_string(), b.to_string())) {
+@@ -130,14 +147,18 @@ Statement: Stmt = {
+       let extra = b.trim();
+       if !extra.is_empty() {
+         descriptions.push(extra.to_string());
++        let start = l + state_id.len() + 1 + b.len() - b.trim_start().len();
++        description_spans.push(SourceSpan::new(start, start + extra.len()));
        }
      }
      Stmt::State(StateStmt {
@@ -1494,7 +1856,12 @@ index 280e3b85..f61c9000 100644
        id_span,
        ty: "default".to_string(),
        description: Some(description),
-@@ -166,8 +182,9 @@ Statement: Stmt = {
+       descriptions,
++      description_spans,
+       doc,
+       note: None,
+       classes: Vec::new(),
+@@ -166,12 +187,14 @@ Statement: Stmt = {
  };
  
  NoteStatement: Stmt = {
@@ -1506,7 +1873,12 @@ index 280e3b85..f61c9000 100644
      id_span: Some(SourceSpan::new(l, r)),
      ty: "default".to_string(),
      description: None,
-@@ -192,9 +209,9 @@ NotePosition: String = {
+     descriptions: Vec::new(),
++    description_spans: Vec::new(),
+     doc: None,
+     note: Some(Note { position: Some(pos), text }),
+     classes: Vec::new(),
+@@ -192,9 +215,9 @@ NotePosition: String = {
    RightOf => "right of".to_string(),
  };
  
@@ -7485,13 +7857,13 @@ index fd0772ed..acb93440 100644
          __1,
          __2,
 diff --git a/crates/merman-core/src/generated/lalrpop/state_grammar.rs b/crates/merman-core/src/generated/lalrpop/state_grammar.rs
-index f5d64403..18699056 100644
+index f5d64403..e8faf9a7 100644
 --- a/crates/merman-core/src/generated/lalrpop/state_grammar.rs
 +++ b/crates/merman-core/src/generated/lalrpop/state_grammar.rs
 @@ -1,5 +1,5 @@
  // auto-generated: "lalrpop 0.23.1"
 -// sha3: ad12e290972e53e810834ca98ff6e821e0e24f897673659316ba96ad13468b12
-+// sha3: e5c0cc8f8da82607eb96eff0341eaaf58ef9fdd44b3df2064dbfe27194d7441a
++// sha3: 03c52a0a6b8ab7efaf143bdf8eba98ad6b31b90fdc673a6691902b5a89801cbc
  use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
  use crate::SourceSpan;
  #[allow(unused_extern_crates)]
@@ -8920,7 +9292,7 @@ index f5d64403..18699056 100644
 +    match &mut stmt {
 +      Stmt::State(state) => state.span = Some(SourceSpan::new(l, r)),
 +      Stmt::Relation(relation) => relation.span = Some(SourceSpan::new(l, r)),
-+      _ => {},
++      _ => return Stmt::Located { span: SourceSpan::new(l, r), statement: Box::new(stmt) },
 +    }
 +    stmt
 +  }
@@ -9008,7 +9380,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2348,7 +2398,8 @@ fn ___action19<
+@@ -2348,11 +2398,13 @@ fn ___action19<
  ) -> Stmt
  {
      Stmt::State(StateStmt {
@@ -9018,7 +9390,12 @@ index f5d64403..18699056 100644
      id_span: Some(SourceSpan::new(l, r)),
      ty: "default".to_string(),
      description: None,
-@@ -2363,9 +2414,11 @@ fn ___action19<
+     descriptions: Vec::new(),
++    description_spans: Vec::new(),
+     doc: Some(doc),
+     note: None,
+     classes: Vec::new(),
+@@ -2363,9 +2415,11 @@ fn ___action19<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9031,7 +9408,20 @@ index f5d64403..18699056 100644
      (_, _, _): (usize, Tok, usize),
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2389,7 +2442,8 @@ fn ___action20<
+@@ -2378,6 +2432,7 @@ fn ___action20<
+     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
+     let description = trimmed;
+     let mut descriptions: Vec<String> = Vec::new();
++    let mut description_spans = Vec::new();
+     if let Some((a, b)) = state_id
+       .split_once(':')
+       .map(|(a, b)| (a.to_string(), b.to_string())) {
+@@ -2386,14 +2441,18 @@ fn ___action20<
+       let extra = b.trim();
+       if !extra.is_empty() {
+         descriptions.push(extra.to_string());
++        let start = l + state_id.len() + 1 + b.len() - b.trim_start().len();
++        description_spans.push(SourceSpan::new(start, start + extra.len()));
        }
      }
      Stmt::State(StateStmt {
@@ -9041,7 +9431,12 @@ index f5d64403..18699056 100644
        id_span,
        ty: "default".to_string(),
        description: Some(description),
-@@ -2405,7 +2459,7 @@ fn ___action20<
+       descriptions,
++      description_spans,
+       doc,
+       note: None,
+       classes: Vec::new(),
+@@ -2405,7 +2464,7 @@ fn ___action20<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9050,7 +9445,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2419,7 +2473,7 @@ fn ___action21<
+@@ -2419,7 +2478,7 @@ fn ___action21<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9059,7 +9454,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2433,7 +2487,7 @@ fn ___action22<
+@@ -2433,7 +2492,7 @@ fn ___action22<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9068,7 +9463,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2447,7 +2501,7 @@ fn ___action23<
+@@ -2447,7 +2506,7 @@ fn ___action23<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9077,7 +9472,7 @@ index f5d64403..18699056 100644
  >(
      (_, ___0, _): (usize, Tok, usize),
  ) -> Stmt
-@@ -2456,18 +2510,21 @@ fn ___action24<
+@@ -2456,22 +2515,26 @@ fn ___action24<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9101,7 +9496,12 @@ index f5d64403..18699056 100644
      id_span: Some(SourceSpan::new(l, r)),
      ty: "default".to_string(),
      description: None,
-@@ -2482,7 +2539,7 @@ fn ___action25<
+     descriptions: Vec::new(),
++    description_spans: Vec::new(),
+     doc: None,
+     note: Some(Note { position: Some(pos), text }),
+     classes: Vec::new(),
+@@ -2482,7 +2545,7 @@ fn ___action25<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9110,7 +9510,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, _text, _): (usize, String, usize),
-@@ -2494,7 +2551,7 @@ fn ___action26<
+@@ -2494,7 +2557,7 @@ fn ___action26<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9119,7 +9519,7 @@ index f5d64403..18699056 100644
  >(
      (_, ___0, _): (usize, Tok, usize),
  ) -> String
-@@ -2503,7 +2560,7 @@ fn ___action27<
+@@ -2503,7 +2566,7 @@ fn ___action27<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9128,7 +9528,7 @@ index f5d64403..18699056 100644
  >(
      (_, ___0, _): (usize, Tok, usize),
  ) -> String
-@@ -2512,26 +2569,28 @@ fn ___action28<
+@@ -2512,26 +2575,28 @@ fn ___action28<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9163,7 +9563,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, doc, _): (usize, Vec<Stmt>, usize),
-@@ -2542,7 +2601,7 @@ fn ___action31<
+@@ -2542,7 +2607,7 @@ fn ___action31<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9172,7 +9572,7 @@ index f5d64403..18699056 100644
  >(
      ___lookbehind: &usize,
      ___lookahead: &usize,
-@@ -2552,7 +2611,7 @@ fn ___action32<
+@@ -2552,7 +2617,7 @@ fn ___action32<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9181,7 +9581,7 @@ index f5d64403..18699056 100644
  >(
      (_, b, _): (usize, Vec<Stmt>, usize),
  ) -> Option<Vec<Stmt>>
-@@ -2561,7 +2620,7 @@ fn ___action33<
+@@ -2561,7 +2626,7 @@ fn ___action33<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9190,7 +9590,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, id, _): (usize, String, usize),
-@@ -2572,7 +2631,7 @@ fn ___action34<
+@@ -2572,7 +2637,7 @@ fn ___action34<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9199,7 +9599,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, ids, _): (usize, String, usize),
-@@ -2583,7 +2642,7 @@ fn ___action35<
+@@ -2583,7 +2648,7 @@ fn ___action35<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9208,7 +9608,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, ids, _): (usize, String, usize),
-@@ -2594,7 +2653,7 @@ fn ___action36<
+@@ -2594,7 +2659,7 @@ fn ___action36<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9217,7 +9617,7 @@ index f5d64403..18699056 100644
  >(
      (_, d, _): (usize, String, usize),
  ) -> Stmt
-@@ -2603,7 +2662,7 @@ fn ___action37<
+@@ -2603,7 +2668,7 @@ fn ___action37<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9226,7 +9626,7 @@ index f5d64403..18699056 100644
  >(
      (_, t, _): (usize, String, usize),
  ) -> Stmt
-@@ -2612,7 +2671,7 @@ fn ___action38<
+@@ -2612,7 +2677,7 @@ fn ___action38<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9235,7 +9635,7 @@ index f5d64403..18699056 100644
  >(
      (_, d, _): (usize, String, usize),
  ) -> Stmt
-@@ -2621,7 +2680,7 @@ fn ___action39<
+@@ -2621,7 +2686,7 @@ fn ___action39<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9244,7 +9644,7 @@ index f5d64403..18699056 100644
  >(
      (_, d, _): (usize, String, usize),
  ) -> Stmt
-@@ -2630,7 +2689,7 @@ fn ___action40<
+@@ -2630,7 +2695,7 @@ fn ___action40<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9253,7 +9653,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, s, _): (usize, StateStmt, usize),
-@@ -2646,7 +2705,7 @@ fn ___action41<
+@@ -2646,7 +2711,7 @@ fn ___action41<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9262,7 +9662,7 @@ index f5d64403..18699056 100644
  >(
      (_, _, _): (usize, Tok, usize),
      (_, s, _): (usize, StateStmt, usize),
-@@ -2662,7 +2721,7 @@ fn ___action42<
+@@ -2662,7 +2727,7 @@ fn ___action42<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9271,7 +9671,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, id, _): (usize, String, usize),
-@@ -2677,7 +2736,7 @@ fn ___action43<
+@@ -2677,7 +2742,7 @@ fn ___action43<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9280,7 +9680,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, _, _): (usize, Tok, usize),
-@@ -2692,7 +2751,7 @@ fn ___action44<
+@@ -2692,7 +2757,7 @@ fn ___action44<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9289,7 +9689,7 @@ index f5d64403..18699056 100644
  >(
      (_, l, _): (usize, usize, usize),
      (_, pair, _): (usize, (String, String), usize),
-@@ -2708,7 +2767,7 @@ fn ___action45<
+@@ -2708,7 +2773,7 @@ fn ___action45<
  }
  
  #[allow(clippy::needless_lifetimes)]
@@ -9298,7 +9698,7 @@ index f5d64403..18699056 100644
  >(
      ___lookbehind: &usize,
      ___lookahead: &usize,
-@@ -2718,7 +2777,7 @@ fn ___action46<
+@@ -2718,7 +2783,7 @@ fn ___action46<
  }
  
  #[allow(clippy::needless_lifetimes)]
@@ -9307,7 +9707,7 @@ index f5d64403..18699056 100644
  >(
      ___lookbehind: &usize,
      ___lookahead: &usize,
-@@ -2728,7 +2787,7 @@ fn ___action47<
+@@ -2728,7 +2793,7 @@ fn ___action47<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9316,7 +9716,7 @@ index f5d64403..18699056 100644
  >(
      ___lookbehind: &usize,
      ___lookahead: &usize,
-@@ -2738,7 +2797,7 @@ fn ___action48<
+@@ -2738,7 +2803,7 @@ fn ___action48<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9325,7 +9725,7 @@ index f5d64403..18699056 100644
  >(
      (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
  ) -> alloc::vec::Vec<Option<Stmt>>
-@@ -2747,7 +2806,7 @@ fn ___action49<
+@@ -2747,7 +2812,7 @@ fn ___action49<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9334,7 +9734,7 @@ index f5d64403..18699056 100644
  >(
      (_, ___0, _): (usize, Option<Stmt>, usize),
  ) -> Option<Stmt>
-@@ -2756,7 +2815,7 @@ fn ___action50<
+@@ -2756,7 +2821,7 @@ fn ___action50<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9343,7 +9743,7 @@ index f5d64403..18699056 100644
  >(
      (_, ___0, _): (usize, Option<Stmt>, usize),
  ) -> alloc::vec::Vec<Option<Stmt>>
-@@ -2765,7 +2824,7 @@ fn ___action51<
+@@ -2765,7 +2830,7 @@ fn ___action51<
  }
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -9352,7 +9752,7 @@ index f5d64403..18699056 100644
  >(
      (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
      (_, e, _): (usize, Option<Stmt>, usize),
-@@ -2776,25 +2835,25 @@ fn ___action52<
+@@ -2776,25 +2841,25 @@ fn ___action52<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9382,7 +9782,7 @@ index f5d64403..18699056 100644
  >(
      ___0: (usize, alloc::vec::Vec<Option<Stmt>>, usize),
      ___1: (usize, Option<Stmt>, usize),
-@@ -2802,11 +2861,11 @@ fn ___action54<
+@@ -2802,11 +2867,11 @@ fn ___action54<
  {
      let ___start0 = ___1.0;
      let ___end0 = ___1.2;
@@ -9396,7 +9796,7 @@ index f5d64403..18699056 100644
          ___0,
          ___temp0,
      )
-@@ -2814,7 +2873,7 @@ fn ___action54<
+@@ -2814,7 +2879,7 @@ fn ___action54<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9405,7 +9805,7 @@ index f5d64403..18699056 100644
  >(
      ___lookbehind: &usize,
      ___lookahead: &usize,
-@@ -2822,7 +2881,7 @@ fn ___action55<
+@@ -2822,7 +2887,7 @@ fn ___action55<
  {
      let ___start0 = *___lookbehind;
      let ___end0 = *___lookahead;
@@ -9414,7 +9814,7 @@ index f5d64403..18699056 100644
          &___start0,
          &___end0,
      );
-@@ -2834,14 +2893,14 @@ fn ___action55<
+@@ -2834,14 +2899,14 @@ fn ___action55<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9431,7 +9831,7 @@ index f5d64403..18699056 100644
          ___0,
      );
      let ___temp0 = (___start0, ___temp0, ___end0);
-@@ -2852,7 +2911,7 @@ fn ___action56<
+@@ -2852,7 +2917,7 @@ fn ___action56<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9440,7 +9840,7 @@ index f5d64403..18699056 100644
  >(
      ___0: (usize, String, usize),
      ___1: (usize, usize, usize),
-@@ -2860,12 +2919,12 @@ fn ___action57<
+@@ -2860,12 +2925,12 @@ fn ___action57<
  {
      let ___start0 = ___0.0;
      let ___end0 = ___0.0;
@@ -9455,7 +9855,7 @@ index f5d64403..18699056 100644
          ___temp0,
          ___0,
          ___1,
-@@ -2874,7 +2933,7 @@ fn ___action57<
+@@ -2874,7 +2939,7 @@ fn ___action57<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9464,7 +9864,7 @@ index f5d64403..18699056 100644
  >(
      ___0: (usize, Tok, usize),
      ___1: (usize, usize, usize),
-@@ -2882,12 +2941,12 @@ fn ___action58<
+@@ -2882,12 +2947,12 @@ fn ___action58<
  {
      let ___start0 = ___0.0;
      let ___end0 = ___0.0;
@@ -9479,7 +9879,7 @@ index f5d64403..18699056 100644
          ___temp0,
          ___0,
          ___1,
-@@ -2896,19 +2955,19 @@ fn ___action58<
+@@ -2896,19 +2961,19 @@ fn ___action58<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9502,7 +9902,7 @@ index f5d64403..18699056 100644
          ___temp0,
          ___0,
      )
-@@ -2916,112 +2975,156 @@ fn ___action59<
+@@ -2916,112 +2981,156 @@ fn ___action59<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9680,7 +10080,7 @@ index f5d64403..18699056 100644
          &___start0,
          &___end0,
      );
-@@ -3034,14 +3137,14 @@ fn ___action64<
+@@ -3034,14 +3143,14 @@ fn ___action64<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9697,7 +10097,7 @@ index f5d64403..18699056 100644
          &___start0,
          &___end0,
      );
-@@ -3054,19 +3157,39 @@ fn ___action65<
+@@ -3054,19 +3163,39 @@ fn ___action65<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9740,7 +10140,7 @@ index f5d64403..18699056 100644
          ___0,
          ___temp0,
      )
-@@ -3074,19 +3197,19 @@ fn ___action66<
+@@ -3074,19 +3203,19 @@ fn ___action66<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9763,7 +10163,7 @@ index f5d64403..18699056 100644
          ___0,
          ___temp0,
      )
-@@ -3094,7 +3217,7 @@ fn ___action67<
+@@ -3094,7 +3223,7 @@ fn ___action67<
  
  #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
      clippy::just_underscores_and_digits)]
@@ -9772,7 +10172,7 @@ index f5d64403..18699056 100644
  >(
      ___0: (usize, Tok, usize),
      ___1: (usize, String, usize),
-@@ -3104,23 +3227,71 @@ fn ___action68<
+@@ -3104,23 +3233,71 @@ fn ___action68<
  {
      let ___start0 = ___2.2;
      let ___end0 = ___3.0;
@@ -9847,7 +10247,7 @@ index f5d64403..18699056 100644
  >(
      ___0: (usize, String, usize),
      ___1: (usize, Vec<Stmt>, usize),
-@@ -3128,15 +3299,41 @@ fn ___action69<
+@@ -3128,15 +3305,41 @@ fn ___action69<
  {
      let ___start0 = ___0.2;
      let ___end0 = ___1.0;
@@ -9892,10 +10292,58 @@ index f5d64403..18699056 100644
  }
  
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..337bb1ad 100644
+index f4d33957..1d283d38 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
-@@ -616,6 +616,24 @@ impl<'a> ParsePipeline<'a> {
+@@ -581,11 +581,42 @@ impl<'a> ParsePipeline<'a> {
+                 DirectiveRecoveryMode::Strict
+             };
+             let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
+-            let preprocessed = self.preprocess_for_with_directive_recovery_controlled(
+-                PreprocessPath::Render,
+-                directive_recovery,
+-                &control,
+-            )?;
++            let trace_source = self
++                .engine
++                .site_config
++                .as_value()
++                .get("traceSource")
++                .and_then(Value::as_bool)
++                .unwrap_or(false);
++            let (preprocessed, source_config) = if trace_source {
++                let captured = self.preprocess_with_evidence_controlled(
++                    PreprocessPath::Render,
++                    directive_recovery,
++                    &control,
++                )?;
++                let ready = match captured.outcome {
++                    PreparedPreprocessOutcome::Ready(code, meta) => Ok(Some((code, meta))),
++                    PreparedPreprocessOutcome::Failed(Error::DetectType(_))
++                        if self.options.suppress_errors =>
++                    {
++                        Ok(None)
++                    }
++                    PreparedPreprocessOutcome::Failed(error) => Err(error),
++                    PreparedPreprocessOutcome::Panicked(panic) => {
++                        std::panic::resume_unwind(panic.into_payload())
++                    }
++                };
++                (ready, Some(captured.source_config))
++            } else {
++                (
++                    self.preprocess_for_with_directive_recovery_controlled(
++                        PreprocessPath::Render,
++                        directive_recovery,
++                        &control,
++                    )?,
++                    None,
++                )
++            };
+             let Some((code, meta)) = (match preprocessed {
+                 Ok(preprocessed) => preprocessed,
+                 Err(error) => return Ok(Err(error)),
+@@ -616,6 +647,37 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -9917,9 +10365,143 @@ index f4d33957..337bb1ad 100644
 +                    }
 +                }
 +            }
++            if let (RenderSemanticModel::State(model), Some(evidence)) =
++                (output.model_mut(), source_config.as_ref())
++            {
++                if let Some(key) = evidence
++                    .keys()
++                    .iter()
++                    .find(|key| key.matches_path(&["title"]))
++                {
++                    if let (Some(value), Some(label)) = (key.value_span(), key.value_selection()) {
++                        model.source_occurrences.push(serde_json::json!({"kind":"control","semanticId":"title","domId":"state:title","span":SourceSpan::new(key.span().start, value.end),"labelSpan":label}));
++                    }
++                }
++            }
              let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
              output
                  .model_mut()
+diff --git a/crates/merman-core/src/preprocess/mod.rs b/crates/merman-core/src/preprocess/mod.rs
+index f34006a4..11cc87c1 100644
+--- a/crates/merman-core/src/preprocess/mod.rs
++++ b/crates/merman-core/src/preprocess/mod.rs
+@@ -81,6 +81,8 @@ impl SourceConfigCaptureMode {
+ struct LocalConfigKeyEvidence {
+     path: SourceConfigPath,
+     span: Option<SourceSpan>,
++    value_span: Option<SourceSpan>,
++    value_selection: Option<SourceSpan>,
+     rewrite_safe: bool,
+ }
+ 
+@@ -532,13 +534,21 @@ fn append_frontmatter_evidence(
+         let Some(span) = exact_span.or_else(|| source.try_map_enclosing_span(local_span)) else {
+             continue;
+         };
+-        evidence.push_key(SourceConfigKeyEvidence::new(
+-            SourceConfigOrigin::Frontmatter,
+-            key.path.clone(),
+-            span,
+-            evidence.keys().len(),
+-            key.rewrite_safe && exact_span.is_some(),
+-        ));
++        evidence.push_key(
++            SourceConfigKeyEvidence::new(
++                SourceConfigOrigin::Frontmatter,
++                key.path.clone(),
++                span,
++                evidence.keys().len(),
++                key.rewrite_safe && exact_span.is_some(),
++            )
++            .with_value_spans(
++                key.value_span
++                    .and_then(|span| source.try_map_enclosing_span(span)),
++                key.value_selection
++                    .and_then(|span| source.try_map_enclosing_span(span)),
++            ),
++        );
+     }
+     control.checkpoint()
+ }
+@@ -1166,6 +1176,22 @@ fn process_frontmatter_controlled(
+             keys.push(LocalConfigKeyEvidence {
+                 path: key.path,
+                 span,
++                value_span: key.value_span.and_then(|range| {
++                    map_frontmatter_yaml_span_to_preprocessed_source(
++                        &yaml_input,
++                        location.body.start,
++                        range,
++                    )
++                    .map(|(span, _)| span)
++                }),
++                value_selection: key.value_selection.and_then(|range| {
++                    map_frontmatter_yaml_span_to_preprocessed_source(
++                        &yaml_input,
++                        location.body.start,
++                        range,
++                    )
++                    .map(|(span, _)| span)
++                }),
+                 rewrite_safe,
+             });
+         }
+@@ -1732,6 +1758,8 @@ fn process_directives_controlled(
+                                 block.raw_start.saturating_add(span.end),
+                             )
+                         }),
++                        value_span: None,
++                        value_selection: None,
+                         rewrite_safe: key.rewrite_safe,
+                     })
+                     .collect();
+diff --git a/crates/merman-core/src/preprocess/source_config.rs b/crates/merman-core/src/preprocess/source_config.rs
+index b8af3454..c16ea401 100644
+--- a/crates/merman-core/src/preprocess/source_config.rs
++++ b/crates/merman-core/src/preprocess/source_config.rs
+@@ -198,6 +198,8 @@ impl Eq for SourceConfigPath {}
+ /// but are intentionally absent from this collection rather than receiving a guessed span.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct SourceConfigKeyEvidence {
++    value_span: Option<SourceSpan>,
++    value_selection: Option<SourceSpan>,
+     origin: SourceConfigOrigin,
+     path: SourceConfigPath,
+     span: SourceSpan,
+@@ -214,6 +216,8 @@ impl SourceConfigKeyEvidence {
+         rewrite_safe: bool,
+     ) -> Self {
+         Self {
++            value_span: None,
++            value_selection: None,
+             origin,
+             path,
+             span,
+@@ -222,6 +226,24 @@ impl SourceConfigKeyEvidence {
+         }
+     }
+ 
++    pub(super) fn with_value_spans(
++        mut self,
++        span: Option<SourceSpan>,
++        selection: Option<SourceSpan>,
++    ) -> Self {
++        self.value_span = span;
++        self.value_selection = selection;
++        self
++    }
++
++    /// Original YAML scalar token and payload bounds, captured by the owning parser.
++    pub const fn value_span(&self) -> Option<SourceSpan> {
++        self.value_span
++    }
++    pub const fn value_selection(&self) -> Option<SourceSpan> {
++        self.value_selection
++    }
++
+     pub const fn origin(&self) -> SourceConfigOrigin {
+         self.origin
+     }
 diff --git a/crates/merman-core/src/preprocess/source_edit_map.rs b/crates/merman-core/src/preprocess/source_edit_map.rs
 index 9d3f459c..ba84cf12 100644
 --- a/crates/merman-core/src/preprocess/source_edit_map.rs
@@ -9953,6 +10535,74 @@ index 757532f5..9ba70e61 100644
              nodes: ["section", "lane", "card"]
                  .into_iter()
                  .enumerate()
+diff --git a/crates/merman-core/src/yaml_config.rs b/crates/merman-core/src/yaml_config.rs
+index 17ec4d62..e8b1115a 100644
+--- a/crates/merman-core/src/yaml_config.rs
++++ b/crates/merman-core/src/yaml_config.rs
+@@ -37,6 +37,8 @@ pub(crate) fn parse_yaml_value_controlled(
+ pub(crate) struct YamlConfigKeyEvidence {
+     pub(crate) path: SourceConfigPath,
+     pub(crate) span: Option<std::ops::Range<usize>>,
++    pub(crate) value_span: Option<std::ops::Range<usize>>,
++    pub(crate) value_selection: Option<std::ops::Range<usize>>,
+     pub(crate) rewrite_safe: bool,
+ }
+ 
+@@ -224,6 +226,22 @@ impl YamlValueBuilder {
+             Event::Alias(anchor_id) => {
+                 self.rewrite_safe = false;
+                 let role = self.reserve_role()?;
++                if self.capture_keys {
++                    if let Role::MappingValue(MappingKey::String {
++                        path: Some(path), ..
++                    }) = &role
++                    {
++                        if let Some(key) = self
++                            .key_evidence
++                            .iter_mut()
++                            .rev()
++                            .find(|key| key.path == *path)
++                        {
++                            key.value_span = span.byte_range();
++                            key.value_selection = span.byte_range();
++                        }
++                    }
++                }
+                 let node = self
+                     .anchors
+                     .get(&anchor_id)
+@@ -239,6 +257,22 @@ impl YamlValueBuilder {
+                     self.rewrite_safe = false;
+                 }
+                 let role = self.reserve_role()?;
++                if self.capture_keys {
++                    if let Role::MappingValue(MappingKey::String {
++                        path: Some(path), ..
++                    }) = &role
++                    {
++                        if let Some(key) = self
++                            .key_evidence
++                            .iter_mut()
++                            .rev()
++                            .find(|key| key.path == *path)
++                        {
++                            key.value_span = span.byte_range();
++                            key.value_selection = yaml_key_span(input, span, style);
++                        }
++                    }
++                }
+                 let value = scalar_to_value(raw.as_ref(), style, tag.as_deref())?;
+                 let key_source = self.capture_keys.then(|| YamlKeySource {
+                     span: yaml_key_span(input, span, style),
+@@ -403,6 +437,8 @@ impl YamlValueBuilder {
+                             self.key_evidence.push(YamlConfigKeyEvidence {
+                                 path: key_path.clone(),
+                                 span: span.clone(),
++                                value_span: None,
++                                value_selection: None,
+                                 rewrite_safe: *rewrite_safe,
+                             });
+                             *path = Some(key_path);
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
@@ -10035,10 +10685,22 @@ index a80d80c0..a3608f6d 100644
              acc_descr: None,
              title: None,
 diff --git a/crates/merman-render/src/svg/fallback.rs b/crates/merman-render/src/svg/fallback.rs
-index b6a2c102..fba3aaba 100644
+index b6a2c102..a66456a1 100644
 --- a/crates/merman-render/src/svg/fallback.rs
 +++ b/crates/merman-render/src/svg/fallback.rs
-@@ -217,6 +217,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+@@ -179,8 +179,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+                 let y = parse_attr_f64(tag, "y", checkpoint)?.unwrap_or(0.0);
+                 let base = sum_translate(&g_stack, checkpoint)?;
+ 
+-                let abs_x = base.x + x;
+-                let abs_y = base.y + y;
++                let local = sum_translate(&[GFrame::from_g_tag(tag, checkpoint)?], checkpoint)?;
++                let abs_x = base.x + local.x + x;
++                let abs_y = base.y + local.y + y;
+                 let (anchor, text_x) = match extract_exact_double_quoted_attr_with_checkpoints(
+                     tag,
+                     "text-anchor",
+@@ -217,6 +218,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                      } else {
                          ""
                      };
@@ -10054,7 +10716,7 @@ index b6a2c102..fba3aaba 100644
                      let source_classes = source_class_attr_tokens(&g_stack, inner, checkpoint)?;
                      let source_classes_attr = source_classes
                          .as_deref()
-@@ -225,7 +234,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
+@@ -225,7 +235,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                      push_generated_fmt(
                          &mut overlays,
                          format_args!(
@@ -10063,11 +10725,28 @@ index b6a2c102..fba3aaba 100644
                              source = source_attr,
                              source_classes = source_classes_attr,
                          ),
+@@ -1554,3 +1564,16 @@ mod tests {
+         );
+     }
+ }
++
++#[cfg(test)]
++mod trace_state_regressions {
++    #[test]
++    fn foreign_object_translation_keeps_state_description_rows_separate() {
++        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(20,5)"><foreignObject transform="translate(30,7)" width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">Row</div></foreignObject></g></svg>"#;
++        let out = super::foreign_object_label_fallback_svg_text(
++            svg,
++            &crate::text::DeterministicTextMeasurer::default(),
++        );
++        assert!(out.contains(r#"<text x="70" y="22""#), "{out}");
++    }
++}
 diff --git a/crates/merman-render/src/svg/parity.rs b/crates/merman-render/src/svg/parity.rs
-index 1fb7fe45..470bb0c4 100644
+index 1fb7fe45..2d3e8544 100644
 --- a/crates/merman-render/src/svg/parity.rs
 +++ b/crates/merman-render/src/svg/parity.rs
-@@ -1401,3 +1401,26 @@ mod diagram_id_projection_tests {
+@@ -1401,3 +1401,32 @@ mod diagram_id_projection_tests {
          assert_eq!(details.max, 5);
      }
  }
@@ -10075,6 +10754,12 @@ index 1fb7fe45..470bb0c4 100644
 +fn source_attrs(occurrences: &[serde_json::Value], key: &str, label: bool) -> String {
 +    if !occurrences.iter().any(|p| p["domId"] == key) {
 +        return String::new();
++    }
++    if occurrences
++        .iter()
++        .any(|p| p["domId"] == key && p["kind"] == "decoration")
++    {
++        return " data-mt-generated=\"true\"".to_string();
 +    }
 +    format!(
 +        " data-mt-key=\"{}\"{}",
@@ -10978,7 +11663,7 @@ index 630c554c..c3074114 100644
          let _ = write!(
              out,
 diff --git a/crates/merman-render/src/svg/parity/state/edge.rs b/crates/merman-render/src/svg/parity/state/edge.rs
-index bd37985c..007ece90 100644
+index bd37985c..8e0ecc0c 100644
 --- a/crates/merman-render/src/svg/parity/state/edge.rs
 +++ b/crates/merman-render/src/svg/parity/state/edge.rs
 @@ -492,12 +492,17 @@ fn write_state_edge_path(
@@ -11013,7 +11698,7 @@ index bd37985c..007ece90 100644
              let _ = write!(
                  out,
 -                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-+                r#"<g{trace} class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
++                r#"<g{trace} class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{trace} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                  fmt_display(label_pos.x),
                  fmt_display(label_pos.y),
                  escape_attr(id),
@@ -11051,10 +11736,10 @@ index 69251972..8af7fea0 100644
      diagram_look: String,
      hand_drawn_seed: roughr::core::RoughRandomness,
 diff --git a/crates/merman-render/src/svg/parity/state/node.rs b/crates/merman-render/src/svg/parity/state/node.rs
-index 45f59ab5..e1eb991e 100644
+index 45f59ab5..0a71dd16 100644
 --- a/crates/merman-render/src/svg/parity/state/node.rs
 +++ b/crates/merman-render/src/svg/parity/state/node.rs
-@@ -21,6 +21,11 @@ pub(super) fn render_state_node_svg(
+@@ -21,6 +21,20 @@ pub(super) fn render_state_node_svg(
      if ln.is_cluster {
          return;
      }
@@ -11063,10 +11748,19 @@ index 45f59ab5..e1eb991e 100644
 +        &format!("state:node:{node_id}"),
 +        false,
 +    );
++    let label_trace = if node.shape == "note" {
++        source_attrs(
++            ctx.source_occurrences,
++            &format!("state:node:{node_id}"),
++            true,
++        )
++    } else {
++        state_html_label_attrs(ctx, node_id, 0)
++    };
      let cx = ln.x - origin_x;
      let cy = ln.y - origin_y;
      let w = ln.width.max(1.0);
-@@ -77,7 +82,7 @@ pub(super) fn render_state_node_svg(
+@@ -77,7 +91,7 @@ pub(super) fn render_state_node_svg(
              let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
              let _ = write!(
                  out,
@@ -11075,7 +11769,7 @@ index 45f59ab5..e1eb991e 100644
                  node_dom_id,
                  escape_xml_display(data_look),
                  fmt_display(cx),
-@@ -134,7 +139,7 @@ pub(super) fn render_state_node_svg(
+@@ -134,7 +148,7 @@ pub(super) fn render_state_node_svg(
              let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
              let _ = write!(
                  out,
@@ -11084,7 +11778,7 @@ index 45f59ab5..e1eb991e 100644
                  node_dom_id.attr(),
                  escape_attr(data_look),
                  fmt(cx),
-@@ -189,7 +194,7 @@ pub(super) fn render_state_node_svg(
+@@ -189,7 +203,7 @@ pub(super) fn render_state_node_svg(
              let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
              let _ = write!(
                  out,
@@ -11093,7 +11787,7 @@ index 45f59ab5..e1eb991e 100644
                  escape_xml_display(&node_class),
                  node_dom_id,
                  escape_xml_display(data_look),
-@@ -241,7 +246,7 @@ pub(super) fn render_state_node_svg(
+@@ -241,7 +255,7 @@ pub(super) fn render_state_node_svg(
              let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
              let _ = write!(
                  out,
@@ -11102,16 +11796,16 @@ index 45f59ab5..e1eb991e 100644
                  escape_xml_display(&node_class),
                  node_dom_id,
                  escape_xml_display(data_look),
-@@ -330,7 +335,7 @@ pub(super) fn render_state_node_svg(
+@@ -330,7 +344,7 @@ pub(super) fn render_state_node_svg(
                  };
                  let _ = write!(
                      out,
 -                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
-+                    r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
++                    r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject{label_trace} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                      escape_xml_display(&node_class),
                      node_dom_id,
                      escape_xml_display(data_look),
-@@ -350,7 +355,7 @@ pub(super) fn render_state_node_svg(
+@@ -350,7 +364,7 @@ pub(super) fn render_state_node_svg(
              } else {
                  let _ = write!(
                      out,
@@ -11120,16 +11814,68 @@ index 45f59ab5..e1eb991e 100644
                      escape_xml_display(&node_class),
                      node_dom_id,
                      escape_xml_display(data_look),
-@@ -416,7 +421,7 @@ pub(super) fn render_state_node_svg(
+@@ -401,22 +415,47 @@ pub(super) fn render_state_node_svg(
+             let (title_dom, desc_dom) = if ctx.html_labels {
+                 (
+                     state_node_label_plain_html(&title),
+-                    state_node_label_plain_html(&desc),
++                    state_description_html(
++                        ctx,
++                        node_id,
++                        node.description.as_deref().unwrap_or(&[]),
++                        desc_w,
++                        geometry.description_x,
++                        geometry.description_y,
++                    ),
+                 )
+             } else {
+                 (
+-                    state_svg_text_label(&title, false, None),
+-                    state_svg_text_label(&desc, false, None),
++                    state_svg_text_label_with_keys(
++                        &title,
++                        false,
++                        None,
++                        &state_label_keys(ctx, node_id, &[title.clone()], 0),
++                        ctx.source_occurrences,
++                    ),
++                    state_svg_text_label_with_keys(
++                        &desc,
++                        false,
++                        None,
++                        &state_label_keys(
++                            ctx,
++                            node_id,
++                            node.description.as_deref().unwrap_or(&[]),
++                            1,
++                        ),
++                        ctx.source_occurrences,
++                    ),
+                 )
+             };
+             if let Some(s) = label_html_start {
+                 details.leaf_nodes_label_html += s.elapsed();
+             }
++            let title_trace = state_html_label_attrs(ctx, node_id, 0);
+             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
              if ctx.html_labels {
                  let _ = write!(
                      out,
 -                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g></g>"#,
-+                    r#"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g></g>"#,
++                    r#"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject{title_trace} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject>{}</g></g>"#,
                      escape_xml_display(&node_class),
                      node_dom_id,
                      escape_xml_display(data_look),
-@@ -445,7 +450,7 @@ pub(super) fn render_state_node_svg(
+@@ -436,16 +475,12 @@ pub(super) fn render_state_node_svg(
+                     fmt_display(title_h),
+                     fmt_display(geometry.title_x),
+                     title_dom,
+-                    fmt_display(desc_w),
+-                    fmt_display(desc_h),
+-                    fmt_display(geometry.description_x),
+-                    fmt_display(geometry.description_y),
+                     desc_dom
+                 );
              } else {
                  let _ = write!(
                      out,
@@ -11138,16 +11884,31 @@ index 45f59ab5..e1eb991e 100644
                      escape_xml_display(&node_class),
                      node_dom_id,
                      escape_xml_display(data_look),
-@@ -625,7 +630,7 @@ pub(super) fn render_state_node_svg(
+@@ -597,7 +632,13 @@ pub(super) fn render_state_node_svg(
+             let label_dom = if ctx.html_labels {
+                 state_node_label_html_with_style(&label, label_span_style, ctx.text_style.font_size)
+             } else {
+-                state_svg_text_label(&label, false, label_span_style)
++                state_svg_text_label_with_keys(
++                    &label,
++                    false,
++                    label_span_style,
++                    &state_label_keys(ctx, node_id, &[label.clone()], 0),
++                    ctx.source_occurrences,
++                )
+             };
+             if let Some(s) = label_html_start {
+                 details.leaf_nodes_label_html += s.elapsed();
+@@ -625,7 +666,7 @@ pub(super) fn render_state_node_svg(
                  if ctx.html_labels {
                      let _ = write!(
                          out,
 -                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
-+                        r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
++                        r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{label_trace} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                          link_open,
                          escape_xml_display(&node_class),
                          node_dom_id,
-@@ -652,7 +657,7 @@ pub(super) fn render_state_node_svg(
+@@ -652,7 +693,7 @@ pub(super) fn render_state_node_svg(
                  } else {
                      let _ = write!(
                          out,
@@ -11156,16 +11917,16 @@ index 45f59ab5..e1eb991e 100644
                          link_open,
                          escape_xml_display(&node_class),
                          node_dom_id,
-@@ -708,7 +713,7 @@ pub(super) fn render_state_node_svg(
+@@ -708,7 +749,7 @@ pub(super) fn render_state_node_svg(
              if ctx.html_labels {
                  let _ = write!(
                      out,
 -                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
-+                    r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
++                    r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{label_trace} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                      link_open,
                      escape_xml_display(&node_class),
                      node_dom_id,
-@@ -735,7 +740,7 @@ pub(super) fn render_state_node_svg(
+@@ -735,7 +776,7 @@ pub(super) fn render_state_node_svg(
              } else {
                  let _ = write!(
                      out,
@@ -11175,7 +11936,7 @@ index 45f59ab5..e1eb991e 100644
                      escape_xml_display(&node_class),
                      node_dom_id,
 diff --git a/crates/merman-render/src/svg/parity/state/render.rs b/crates/merman-render/src/svg/parity/state/render.rs
-index 2d4d906e..670b9983 100644
+index 2d4d906e..9d86830d 100644
 --- a/crates/merman-render/src/svg/parity/state/render.rs
 +++ b/crates/merman-render/src/svg/parity/state/render.rs
 @@ -101,6 +101,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
@@ -11194,7 +11955,19 @@ index 2d4d906e..670b9983 100644
      if has_acc_title {
          let _ = write!(
              &mut out,
-@@ -764,6 +766,11 @@ fn render_state_cluster(
+@@ -386,9 +388,10 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+         content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
+ 
+         title_svg = String::with_capacity(title.len() + 128);
++        let trace = source_attrs(&model.source_occurrences, "state:title", true);
+         let _ = write!(
+             &mut title_svg,
+-            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
++            r#"<text{trace} text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
+             fmt(title_x),
+             fmt(title_y),
+             escape_xml_display(title)
+@@ -764,6 +767,11 @@ fn render_state_cluster(
          return;
      };
  
@@ -11206,7 +11979,7 @@ index 2d4d906e..670b9983 100644
      let data_look = state_data_look(ctx);
  
      let shape = ctx
-@@ -790,7 +797,7 @@ fn render_state_cluster(
+@@ -790,7 +798,7 @@ fn render_state_cluster(
      if shape == "divider" {
          let _ = write!(
              out,
@@ -11215,17 +11988,31 @@ index 2d4d906e..670b9983 100644
              escape_attr(class),
              dom_id.attr(),
              escape_attr(data_look),
-@@ -813,7 +820,7 @@ fn render_state_cluster(
+@@ -810,10 +818,11 @@ fn render_state_cluster(
+         .map(state_node_label_text)
+         .unwrap_or_else(|| cluster_id.to_string());
+ 
++    let label_trace = state_html_label_attrs(ctx, cluster_id, 0);
      if ctx.html_labels {
          let _ = write!(
              out,
 -            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-+            r#"<g{trace} class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
++            r#"<g{trace} class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject{label_trace} width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
              escape_attr(class),
              dom_id.attr(),
              escape_attr(cluster_id),
-@@ -836,7 +843,7 @@ fn render_state_cluster(
-         let title_dom = state_svg_text_label(&title, false, None);
+@@ -833,10 +842,16 @@ fn render_state_cluster(
+             fmt((cluster.height - 30.0).max(1.0))
+         );
+     } else {
+-        let title_dom = state_svg_text_label(&title, false, None);
++        let title_dom = state_svg_text_label_with_keys(
++            &title,
++            false,
++            None,
++            &state_label_keys(ctx, cluster_id, &[title.clone()], 0),
++            ctx.source_occurrences,
++        );
          let _ = write!(
              out,
 -            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
@@ -11233,6 +12020,106 @@ index 2d4d906e..670b9983 100644
              escape_attr(class),
              dom_id.attr(),
              escape_attr(cluster_id),
+diff --git a/crates/merman-render/src/svg/parity/state/style.rs b/crates/merman-render/src/svg/parity/state/style.rs
+index be0592cb..56cc21a0 100644
+--- a/crates/merman-render/src/svg/parity/state/style.rs
++++ b/crates/merman-render/src/svg/parity/state/style.rs
+@@ -817,6 +817,16 @@ pub(super) fn state_svg_text_label(
+     raw: &str,
+     center_text: bool,
+     style_attr: Option<&str>,
++) -> String {
++    state_svg_text_label_with_keys(raw, center_text, style_attr, &[], &[])
++}
++
++pub(super) fn state_svg_text_label_with_keys(
++    raw: &str,
++    center_text: bool,
++    style_attr: Option<&str>,
++    keys: &[String],
++    occurrences: &[serde_json::Value],
+ ) -> String {
+     let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+     let normalized = state_normalize_br_tags(decoded.as_ref());
+@@ -833,9 +843,13 @@ pub(super) fn state_svg_text_label(
+     let mut out = format!(r#"<text y="-10.1"{text_anchor}{style_attr}>"#);
+     for (idx, line) in normalized.split('\n').enumerate() {
+         let y = idx as f64 * 1.1 - 0.1;
++        let trace = keys
++            .get(idx)
++            .map(|key| source_attrs(occurrences, key, true))
++            .unwrap_or_default();
+         let _ = write!(
+             &mut out,
+-            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">{}</tspan></tspan>"#,
++            r#"<tspan{trace} class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">{}</tspan></tspan>"#,
+             fmt_display(y),
+             escape_xml_display(line)
+         );
+@@ -1006,3 +1020,63 @@ mod tests {
+         ));
+     }
+ }
++
++pub(super) fn state_label_keys(
++    ctx: &StateRenderCtx<'_>,
++    node_id: &str,
++    values: &[String],
++    offset: usize,
++) -> Vec<String> {
++    let mut keys = Vec::new();
++    for (index, value) in values.iter().enumerate() {
++        let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(value);
++        let rows = state_normalize_br_tags(decoded.as_ref())
++            .split('\n')
++            .count();
++        keys.extend(std::iter::repeat_n(
++            format!("state:label:{node_id}:{}", index + offset),
++            rows,
++        ));
++    }
++    if ctx.source_occurrences.is_empty() {
++        keys.clear();
++    }
++    keys
++}
++
++pub(super) fn state_html_label_attrs(ctx: &StateRenderCtx<'_>, id: &str, index: usize) -> String {
++    source_attrs(
++        ctx.source_occurrences,
++        &format!("state:label:{id}:{index}"),
++        true,
++    )
++}
++
++pub(super) fn state_description_html(
++    ctx: &StateRenderCtx<'_>,
++    id: &str,
++    values: &[String],
++    width: f64,
++    x: f64,
++    y: f64,
++) -> String {
++    let mut out = String::new();
++    let mut offset = y;
++    for (index, value) in values.iter().enumerate() {
++        let trace = state_html_label_attrs(ctx, id, index + 1);
++        let metrics =
++            ctx.measurer
++                .measure_wrapped(value, &ctx.text_style, None, WrapMode::HtmlLike);
++        let body = state_node_label_plain_html(value);
++        let _ = write!(
++            out,
++            r#"<foreignObject{trace} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{body}</div></foreignObject>"#,
++            fmt_display(width),
++            fmt_display(metrics.height),
++            fmt_display(x),
++            fmt_display(offset)
++        );
++        offset += metrics.height;
++    }
++    out
++}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
 index 00000000..739c43d9
