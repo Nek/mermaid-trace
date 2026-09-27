@@ -13073,9 +13073,18 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..cb2ff117 100644
+index 68bde024..7a314824 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
+@@ -1,6 +1,6 @@
+ use crate::diagrams::scan::{
+-    LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
+-    starts_with_case_insensitive,
++    LineCursor, is_ecmascript_whitespace, leading_whitespace_len,
++    split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
+ };
+ use crate::{
+     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
 @@ -10,7 +10,7 @@ use crate::{
  use serde_json::{Value, json};
  #[cfg(test)]
@@ -13098,7 +13107,7 @@ index 68bde024..cb2ff117 100644
      #[serde(default, rename = "scoreIsNaN", skip_serializing_if = "is_false")]
      pub score_is_nan: bool,
      #[serde(default)]
-@@ -54,8 +58,130 @@ pub struct JourneyRenderTask {
+@@ -54,8 +58,136 @@ pub struct JourneyRenderTask {
      pub task: String,
  }
  
@@ -13140,13 +13149,8 @@ index 68bde024..cb2ff117 100644
 +    }
 +}
 +
-+fn is_score_whitespace(c: char) -> bool {
-+    // ECMAScript WhiteSpace and LineTerminator, not Rust's broader Unicode whitespace.
-+    matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
-+}
-+
 +fn number_score(text: &str) -> f64 {
-+    let text = text.trim_matches(is_score_whitespace);
++    let text = text.trim_matches(is_ecmascript_whitespace);
 +    if text.is_empty() {
 +        return 0.0;
 +    }
@@ -13222,6 +13226,17 @@ index 68bde024..cb2ff117 100644
 +    significand as f64 * 2_f64.powi((bits - 53) as i32)
 +}
 +
++/// Derives unique actor names in Mermaid's JavaScript UTF-16 sort order.
++pub fn actors_from_tasks(tasks: &[JourneyRenderTask]) -> Vec<String> {
++    let mut actors: Vec<String> = tasks
++        .iter()
++        .flat_map(|task| task.people.iter().cloned())
++        .collect();
++    actors.sort_unstable_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
++    actors.dedup();
++    actors
++}
++
  #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
  pub struct JourneyDiagramRenderModel {
 +    #[serde(skip)]
@@ -13229,7 +13244,7 @@ index 68bde024..cb2ff117 100644
      pub title: Option<String>,
      #[serde(rename = "accTitle")]
      pub acc_title: Option<String>,
-@@ -121,21 +247,10 @@ impl JourneyDb {
+@@ -121,21 +253,10 @@ impl JourneyDb {
          let pieces: Vec<&str> = rest.split(':').collect();
  
          let score_str = pieces.first().copied().unwrap_or("");
@@ -13255,6 +13270,30 @@ index 68bde024..cb2ff117 100644
  
          let people = if pieces.len() == 1 {
              Vec::new()
+@@ -145,7 +266,7 @@ impl JourneyDb {
+                 .copied()
+                 .unwrap_or("")
+                 .split(',')
+-                .map(|s| s.trim().to_string())
++                .map(|s| s.trim_matches(is_ecmascript_whitespace).to_string())
+                 .collect()
+         };
+ 
+@@ -162,13 +283,7 @@ impl JourneyDb {
+     }
+ 
+     fn actors_sorted(&self) -> Vec<String> {
+-        let mut set = BTreeSet::<String>::new();
+-        for t in &self.tasks {
+-            for p in &t.people {
+-                set.insert(p.clone());
+-            }
+-        }
+-        set.into_iter().collect()
++        actors_from_tasks(&self.tasks)
+     }
+ }
+ 
 @@ -394,6 +509,14 @@ fn parse_journey_semantic_source(
      control.checkpoint()?;
      let mut db = JourneyDb::default();
@@ -13356,11 +13395,11 @@ index 68bde024..cb2ff117 100644
  
 +        let task_id = db.tasks.len();
 +        if trace_source {
-+            source_occurrences.push(json!({"kind":"node","semanticId":format!("task:{task_id}"),"domId":format!("journey:task:{task_id}"),"span":SourceSpan::new(task_start,line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(task_start,task_end)}));
++            source_occurrences.push(json!({"kind":"node","semanticId":format!("task:{task_id}"),"domId":format!("journey:task:{task_id}"),"span":SourceSpan::new(task_start,line_start+stripped.trim_end_matches(is_ecmascript_whitespace).len()),"labelSpan":SourceSpan::new(task_start,task_end)}));
 +        }
          let rest_source = &stripped[colon + ':'.len_utf8()..];
 -        let rest = rest_source.trim_start();
-+        let rest = rest_source.trim_start_matches(is_score_whitespace);
++        let rest = rest_source.trim_start_matches(is_ecmascript_whitespace);
          let rest_start =
              line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
          if rest.is_empty() {
@@ -13369,7 +13408,7 @@ index 68bde024..cb2ff117 100644
          }
          let score_end = rest.find(':').unwrap_or(rest.len());
 -        let score_text = rest[..score_end].trim();
-+        let score_text = rest[..score_end].trim_matches(is_score_whitespace);
++        let score_text = rest[..score_end].trim_matches(is_ecmascript_whitespace);
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
 +            if trace_source {
@@ -13378,27 +13417,35 @@ index 68bde024..cb2ff117 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +775,32 @@ fn parse_journey_semantic_source(
+@@ -605,13 +775,35 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
 -            let people_source = &rest[score_end + ':'.len_utf8()..];
+-            let people = people_source.trim();
 +            // Match JourneyDb::add_task: only the first people field is semantic.
 +            let people_source = rest[score_end + ':'.len_utf8()..]
 +                .split(':')
 +                .next()
 +                .unwrap_or("");
-             let people = people_source.trim();
++            let people = people_source.trim_matches(is_ecmascript_whitespace);
              if !people.is_empty() {
-                 let people_start = rest_start
-                     + score_end
-                     + ':'.len_utf8()
-                     + people_source.find(people).unwrap_or(0);
+-                let people_start = rest_start
+-                    + score_end
+-                    + ':'.len_utf8()
+-                    + people_source.find(people).unwrap_or(0);
++                let people_start = rest_start + score_end + ':'.len_utf8() + people_source.len()
++                    - people_source
++                        .trim_start_matches(is_ecmascript_whitespace)
++                        .len();
 +                if trace_source {
 +                    let mut offset = people_start;
 +                    for (slot, actor_source) in people.split(',').enumerate() {
-+                        let actor = actor_source.trim();
-+                        let start = offset + leading_whitespace_len(actor_source);
++                        let actor = actor_source.trim_matches(is_ecmascript_whitespace);
++                        let start = offset + actor_source.len()
++                            - actor_source
++                                .trim_start_matches(is_ecmascript_whitespace)
++                                .len();
 +                        if !actor.is_empty() {
 +                            let span = SourceSpan::new(start, start + actor.len());
 +                            source_occurrences.push(json!({"kind":"control","semanticId":format!("task:{task_id}:actor:{slot}"),"domId":format!("journey:actor:{task_id}:{slot}"),"span":span,"relation":"actor-reference","target":actor,"parentId":format!("task:{task_id}"),"property":"people","index":slot}));
@@ -13412,7 +13459,7 @@ index 68bde024..cb2ff117 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +828,86 @@ fn parse_journey_semantic_source(
+@@ -639,9 +831,86 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13499,7 +13546,7 @@ index 68bde024..cb2ff117 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-@@ -674,7 +940,7 @@ fn spanned_keyword_value<'a>(
+@@ -674,7 +943,7 @@ fn spanned_keyword_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13508,7 +13555,7 @@ index 68bde024..cb2ff117 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -697,7 +963,7 @@ fn spanned_colon_value<'a>(
+@@ -697,7 +966,7 @@ fn spanned_colon_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13517,7 +13564,61 @@ index 68bde024..cb2ff117 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -1210,7 +1476,7 @@ R task: 5:\n",
+@@ -1189,6 +1458,53 @@ R task: 5:\n",
+         assert!(compat["tasks"][0].get("sectionIndex").is_none());
+     }
+ 
++    #[test]
++    fn journey_actor_names_preserve_ecmascript_whitespace_and_utf16_order() {
++        let mut db = JourneyDb::default();
++        db.add_task(
++            "First",
++            ":5:\u{feff}😀\u{feff}, \u{0085}A\u{0085}, \u{e000}, 😀, A, \u{feff}",
++        )
++        .unwrap();
++        assert_eq!(
++            db.tasks[0].people,
++            ["😀", "\u{0085}A\u{0085}", "\u{e000}", "😀", "A", ""]
++        );
++        assert_eq!(
++            db.actors_sorted(),
++            ["", "A", "\u{0085}A\u{0085}", "😀", "\u{e000}"]
++        );
++        let source = "journey\nTask : 5 : \u{0085}A\u{0085}\n";
++        let parsed = Engine::new()
++            .with_site_config(crate::MermaidConfig::from_value(
++                json!({"traceSource":true}),
++            ))
++            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
++            .unwrap()
++            .unwrap();
++        let crate::RenderSemanticModel::Journey(model) = parsed.model() else {
++            panic!("journey")
++        };
++        for id in ["journey:task:0", "journey:actor:0:0"] {
++            let piece = model
++                .source_occurrences
++                .iter()
++                .find(|p| p["domId"] == id)
++                .unwrap();
++            let span = &piece["span"];
++            let text = &source
++                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize];
++            assert_eq!(
++                text,
++                if id == "journey:task:0" {
++                    "Task : 5 : \u{0085}A\u{0085}"
++                } else {
++                    "\u{0085}A\u{0085}"
++                }
++            );
++        }
++    }
++
+     #[test]
+     fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
+         let mut db = JourneyDb::default();
+@@ -1210,7 +1526,7 @@ R task: 5:\n",
                  .iter()
                  .map(|t| {
                      json!({
@@ -28447,10 +28548,38 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
-index c8ebca79..28cbaa6b 100644
+index c8ebca79..9e778388 100644
 --- a/crates/merman-render/src/journey.rs
 +++ b/crates/merman-render/src/journey.rs
-@@ -36,7 +36,6 @@ fn wrap_actor_label_lines(
+@@ -5,9 +5,9 @@ use crate::model::{
+     JourneyTaskLayout,
+ };
+ use crate::text::{TextMeasurer, TextStyle};
+-use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
++use merman_core::diagrams::journey::{JourneyDiagramRenderModel, actors_from_tasks};
+ use serde_json::Value;
+-use std::collections::{BTreeMap, BTreeSet};
++use std::collections::BTreeMap;
+ 
+ mod config;
+ 
+@@ -20,23 +20,12 @@ pub(crate) const JOURNEY_FACE_RADIUS_PX: f64 = 15.0;
+ const JOURNEY_FACE_BASE_Y_PX: f64 = 300.0;
+ const JOURNEY_FACE_SCORE_STEP_Y_PX: f64 = 30.0;
+ 
+-fn actors_from_tasks(tasks: &[JourneyRenderTask]) -> Vec<String> {
+-    let mut set = BTreeSet::<String>::new();
+-    for t in tasks {
+-        for p in &t.people {
+-            set.insert(p.to_string());
+-        }
+-    }
+-    set.into_iter().collect()
+-}
+-
+ fn wrap_actor_label_lines(
+     person: &str,
+     max_label_width: f64,
      measurer: &dyn TextMeasurer,
      style: &TextStyle,
  ) -> Vec<String> {
@@ -28458,7 +28587,7 @@ index c8ebca79..28cbaa6b 100644
      let full_text_width =
          journey_actor_legend_text_bounding_client_rect_width_px(person, measurer, style);
      if full_text_width <= max_label_width {
-@@ -75,9 +74,12 @@ fn wrap_actor_label_lines(
+@@ -75,9 +64,12 @@ fn wrap_actor_label_lines(
                      if candidate_width > max_label_width {
                          let mut head = broken_word.clone();
                          head.pop();
@@ -28473,7 +28602,7 @@ index c8ebca79..28cbaa6b 100644
                          broken_word = ch.to_string();
                      }
                  }
-@@ -92,11 +94,7 @@ fn wrap_actor_label_lines(
+@@ -92,11 +84,7 @@ fn wrap_actor_label_lines(
          lines.push(current_line);
      }
  
@@ -28486,7 +28615,7 @@ index c8ebca79..28cbaa6b 100644
  }
  
  fn journey_actor_legend_text_style(effective_config: &Value) -> TextStyle {
-@@ -224,6 +222,7 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -224,6 +212,7 @@ pub(crate) fn layout_journey_diagram_typed(
      let mut current_fill = "#CCC".to_string();
      let mut current_num: i64 = 0;
  
@@ -28494,7 +28623,7 @@ index c8ebca79..28cbaa6b 100644
      let mut stopx = left_margin;
      for (i, task) in model.tasks.iter().enumerate() {
          let x = (i as f64) * cfg.task_margin + (i as f64) * cfg.cell_width + left_margin;
-@@ -250,11 +249,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -250,11 +239,12 @@ pub(crate) fn layout_journey_diagram_typed(
                  cfg.cell_width * (count as f64) + cfg.diagram_margin_x * ((count - 1) as f64);
  
              sections.push(JourneySectionLayout {
@@ -28508,7 +28637,7 @@ index c8ebca79..28cbaa6b 100644
                  height: cfg.cell_height,
                  fill: current_fill.clone(),
                  task_count: count,
-@@ -269,16 +269,13 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -269,16 +259,13 @@ pub(crate) fn layout_journey_diagram_typed(
          let face_cy = if task.score_is_nan {
              None
          } else {
@@ -28528,7 +28657,7 @@ index c8ebca79..28cbaa6b 100644
              JourneyMouthKind::Sad
          } else {
              JourneyMouthKind::Ambivalent
-@@ -286,11 +283,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -286,11 +273,12 @@ pub(crate) fn layout_journey_diagram_typed(
  
          let mut actor_circles = Vec::new();
          let mut cx = x + 14.0;
@@ -28542,7 +28671,7 @@ index c8ebca79..28cbaa6b 100644
                  actor: p.to_string(),
                  pos,
                  color,
-@@ -325,13 +323,15 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -325,13 +313,15 @@ pub(crate) fn layout_journey_diagram_typed(
              mouth,
          });
  
@@ -28560,7 +28689,7 @@ index c8ebca79..28cbaa6b 100644
      });
  
      let height = (stopy - 0.0 + 2.0 * cfg.diagram_margin_y).max(1.0);
-@@ -350,9 +350,9 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -350,9 +340,9 @@ pub(crate) fn layout_journey_diagram_typed(
  
      let viewbox_top_pad = JOURNEY_VIEWBOX_TOP_PAD_PX;
      let bounds = Bounds {
@@ -28572,10 +28701,51 @@ index c8ebca79..28cbaa6b 100644
          max_y: -viewbox_top_pad + height + extra_vert_for_title,
      };
  
-@@ -389,6 +389,86 @@ mod tests {
+@@ -389,6 +379,127 @@ mod tests {
      use merman_core::diagrams::journey::JourneyDiagramRenderModel;
      use serde_json::json;
  
++    #[test]
++    fn journey_actor_fallback_uses_the_same_utf16_order_as_parsed_models() {
++        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
++        let parsed = Engine::new()
++            .parse_diagram_for_render_model_sync(
++                "journey\nTask : 5 : \u{e000}, 😀, A, 😀\n",
++                ParseOptions::strict(),
++            )
++            .unwrap()
++            .unwrap();
++        let RenderSemanticModel::Journey(model) = parsed.model() else {
++            panic!("journey")
++        };
++        let mut fallback = model.clone();
++        fallback.actors.clear();
++        for model in [model, &fallback] {
++            let layout = super::layout_journey_diagram_typed(
++                model,
++                &json!({}),
++                &DeterministicTextMeasurer::default(),
++            )
++            .unwrap();
++            assert_eq!(
++                layout
++                    .actor_legend
++                    .iter()
++                    .map(|a| a.actor.as_str())
++                    .collect::<Vec<_>>(),
++                ["A", "😀", "\u{e000}"]
++            );
++            assert_eq!(
++                layout.tasks[0]
++                    .actor_circles
++                    .iter()
++                    .map(|a| a.pos)
++                    .collect::<Vec<_>>(),
++                [2, 1, 0, 1]
++            );
++        }
++    }
++
 +    #[test]
 +    fn journey_bounds_normalize_signed_endpoints_and_large_task_start_y() {
 +        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
@@ -28659,7 +28829,7 @@ index c8ebca79..28cbaa6b 100644
      #[test]
      fn journey_layout_carries_use_max_width_config() {
          let model = JourneyDiagramRenderModel::default();
-@@ -459,6 +539,33 @@ mod tests {
+@@ -459,6 +570,33 @@ mod tests {
          );
      }
  

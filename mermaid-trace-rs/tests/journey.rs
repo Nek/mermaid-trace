@@ -11,6 +11,157 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_actor_unicode_preserves_js_names_order_and_source_ownership() {
+    use merman::{Engine, ParseOptions, RenderSemanticModel};
+    let engine = Engine::new();
+    let renderer = mermaid_trace_rs::renderer();
+    let whitespace = [
+        '\t', '\u{000b}', '\u{000c}', ' ', '\u{00a0}', '\u{1680}', '\u{2000}', '\u{2001}',
+        '\u{2002}', '\u{2003}', '\u{2004}', '\u{2005}', '\u{2006}', '\u{2007}', '\u{2008}',
+        '\u{2009}', '\u{200a}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}',
+        '\u{feff}',
+    ];
+    let people = [
+        "Alpha",
+        "Alpha",
+        "\u{0085}Alpha\u{0085}",
+        "😀",
+        "\u{e000}",
+        "😀",
+        "",
+    ];
+    let actors = ["", "Alpha", "\u{0085}Alpha\u{0085}", "😀", "\u{e000}"];
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for ws in whitespace {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\n%% 😀\r\nFirst : 5 : {ws}Alpha{ws}, Alpha, \u{0085}Alpha\u{0085}, \u{feff}😀\u{feff}, \u{e000}, 😀, {ws}\r\nSecond : 3 : Alpha, 😀\r\n"
+                );
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let RenderSemanticModel::Journey(model) = parsed.model() else {
+                    panic!("journey model")
+                };
+                assert_eq!(
+                    model.tasks[0].people, people,
+                    "ECMAScript trimming for {ws:?}"
+                );
+                assert_eq!(model.actors, actors, "unique names sort by UTF-16 units");
+                let RenderOutput::LayoutJson(Some(output)) = renderer
+                    .render(RenderRequest::layout_json(
+                        &source,
+                        OperationControl::new(),
+                        SvgRequest::default(),
+                    ))
+                    .unwrap()
+                else {
+                    panic!("journey layout")
+                };
+                let layout = &output.layout()["layout"]["JourneyDiagram"];
+                let legend = layout["actor_legend"].as_array().unwrap();
+                assert_eq!(
+                    legend
+                        .iter()
+                        .map(|a| a["actor"].as_str().unwrap())
+                        .collect::<Vec<_>>(),
+                    actors
+                );
+                for (pos, item) in legend.iter().enumerate() {
+                    assert_eq!(item["pos"], json!(pos));
+                    assert_eq!(
+                        item["color"],
+                        ["#8FBC8F", "#7CFC00", "#00FFFF", "#20B2AA", "#B0E0E6"][pos]
+                    );
+                }
+                for (slot, actor) in people.iter().enumerate() {
+                    let circle = &layout["tasks"][0]["actor_circles"][slot];
+                    let pos = actors.iter().position(|name| name == actor).unwrap();
+                    assert_eq!(circle["actor"], *actor);
+                    assert_eq!(circle["pos"], json!(pos));
+                    assert_eq!(circle["color"], legend[pos]["color"]);
+                }
+                let result =
+                    mermaid_trace_rs::render_with(&renderer, "unicode-actors", &source).unwrap();
+                let plain = mermaid_trace_rs::render_with(
+                    &merman::Renderer::new(),
+                    "unicode-actors",
+                    &source,
+                )
+                .unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(plain["svg"].as_str().unwrap())
+                );
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let mut offset = source.find("First : 5 : ").unwrap() + "First : 5 : ".len();
+                for (slot, actor) in people.iter().enumerate() {
+                    let key = format!("journey:actor:0:{slot}");
+                    let found = pieces
+                        .iter()
+                        .filter(|p| p["domId"] == key)
+                        .collect::<Vec<_>>();
+                    if actor.is_empty() {
+                        assert!(found.is_empty());
+                    } else {
+                        let byte = offset + source[offset..].find(actor).unwrap();
+                        let start = source[..byte].encode_utf16().count();
+                        assert_eq!(found.len(), 1);
+                        assert_eq!(
+                            found[0]["span"],
+                            json!({"start":start,"end":start+actor.encode_utf16().count()})
+                        );
+                        assert_eq!(selected(&source, &found[0]["span"]), *actor);
+                        assert_eq!(found[0]["target"], *actor);
+                        assert_eq!(
+                            svg.descendants()
+                                .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+                                .count(),
+                            1
+                        );
+                        let declaration = pieces
+                            .iter()
+                            .find(|p| p["domId"] == format!("journey:actor:{actor}"))
+                            .unwrap();
+                        if [0, 2, 3, 4].contains(&slot) {
+                            assert_eq!(declaration["span"], found[0]["span"]);
+                        } else {
+                            assert_ne!(declaration["span"], found[0]["span"]);
+                        }
+                    }
+                    if slot < people.len() - 1 {
+                        offset += source[offset..].find(',').unwrap() + 1;
+                    }
+                }
+                assert!(!pieces.iter().any(|p| p["domId"] == "journey:actor:"));
+            }
+        }
+    }
+    for (raw, actor, statement) in [
+        (
+            "\u{0085}Alpha\u{0085}",
+            "\u{0085}Alpha\u{0085}",
+            "Task : 5 : \u{0085}Alpha\u{0085}",
+        ),
+        ("\u{feff}Alpha\u{feff}", "Alpha", "Task : 5 : \u{feff}Alpha"),
+    ] {
+        let source = format!("journey\r\nTask : 5 : {raw}\r\n");
+        let result = mermaid_trace_rs::render_with(&renderer, "terminal-actor", &source).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        for (id, expected) in [("journey:task:0", statement), ("journey:actor:0:0", actor)] {
+            let piece = pieces.iter().find(|p| p["domId"] == id).unwrap();
+            assert_eq!(
+                selected(&source, &piece["span"]),
+                expected,
+                "terminal whitespace preserves exact original CRLF ownership"
+            );
+        }
+    }
+}
+
+#[test]
 fn journey_2_legend_empty_actor_retains_generated_geometry_without_invented_labels() {
     let renderer = mermaid_trace_rs::renderer();
     let source = "---\r\nconfig:\r\n  journey:\r\n    maxLabelWidth: -1\r\n---\r\njourney\r\nFirst : 5 :\r\n";

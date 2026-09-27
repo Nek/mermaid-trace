@@ -536,7 +536,7 @@ test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection',
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });
 
-test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and legend grouping', { timeout: 120_000 }, async () => {
+test('OWN-JOURNEY-ACTOR / JOURNEY-2-ACTOR-UNICODE: saved and live actor slots preserve local ownership and legend grouping', { timeout: 120_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-journey-owner-'));
   const filename = join(directory, 'journey.md');
   const producer = await createMermanProducer();
@@ -547,13 +547,17 @@ test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and
   try {
     const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
-    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const sectionMode of [0, 1, 2, 3]) {
-      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n---\r\njourney\r\n%% 😀\r\n${sectionMode === 1 || sectionMode === 2 ? 'section Day\r\n' : ''}First : 5 : Alice 😀, Alice 😀, , Bob, Alice 😀\r\n${sectionMode >= 2 ? 'section Day\r\n' : ''}Second : 2 : Alice 😀, Bob, Carol : Ignored\r\nThird : 3 : Carol\r\n`;
+    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const sectionMode of [0, 1, 2, 3, 4]) {
+      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n---\r\njourney\r\n%% 😀\r\n` + (sectionMode === 4
+        ? 'First : 5 : \uFEFF😀\uFEFF, \u0085Alpha\u0085, \uE000, 😀, Alpha, \uFEFF\r\nSecond : 3 : Alpha, 😀\r\n'
+        : `${sectionMode === 1 || sectionMode === 2 ? 'section Day\r\n' : ''}First : 5 : Alice 😀, Alice 😀, , Bob, Alice 😀\r\n${sectionMode >= 2 ? 'section Day\r\n' : ''}Second : 2 : Alice 😀, Bob, Carol : Ignored\r\nThird : 3 : Carol\r\n`);
       const { svg, mapping } = await producer.render('journey-owner', source);
       const actors = mapping.pieces.filter((piece: any) => piece.relation === 'actor-reference');
-      assert.equal(actors.length, 8);
-      const groupSize = (piece: typeof actors[number]) => source.indexOf(source.slice(piece.span.start, piece.span.end)) === piece.span.start ? 3 : 1;
+      assert.equal(actors.length, sectionMode === 4 ? 7 : 8);
+      if (sectionMode === 4) assert.deepEqual(actors.map(piece => source.slice(piece.span.start, piece.span.end)), ['😀', '\u0085Alpha\u0085', '\uE000', '😀', 'Alpha', 'Alpha', '😀']);
+      const groupSize = (piece: typeof actors[number]) => mapping.pieces.some((declaration: any) => declaration.relation !== 'actor-reference' && declaration.domId?.startsWith('journey:actor:') && declaration.span.start === piece.span.start && declaration.span.end === piece.span.end) ? 3 : 1;
       await page.setContent(svg + svg.replaceAll('journey-owner', 'journey-copy'));
+      const savedMarkup = await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML));
       await page.evaluate(async activation => {
         const { activateSvg } = await import(activation);
         Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
@@ -583,6 +587,7 @@ test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and
       }
       await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
       assert.equal(await page.locator('[tabindex], [data-mt-selected]').count(), 0);
+      assert.deepEqual(await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML)), savedMarkup, 'disposal restores the exact host SVG');
       const fence = '```mermaid\r\n' + source + '```\r\n';
       const markdown = '# Journey\r\n\r\n' + fence + '\r\n' + fence;
       await writeFile(filename, markdown);
@@ -601,12 +606,23 @@ test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and
         assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
         const target = diagrams.first().locator(`[data-mt-key="${piece.domId}"]`);
         await target.click();
+        if (groupSize(piece) === 3) {
+          const group = diagrams.first().locator(`[data-mt-start="${await target.getAttribute('data-mt-start')}"][data-mt-end="${await target.getAttribute('data-mt-end')}"]`);
+          assert.equal(await group.count(), 3);
+          assert.equal(await group.locator(':scope[tabindex="0"]').count(), 1);
+          for (const member of await group.all()) {
+            await clickExposedTarget(member);
+            assert.equal(await diagrams.first().locator('[data-mt-selected=true]').count(), 3);
+            assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+          }
+        }
         await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), source.slice(piece.span.start, piece.span.end));
-        const before = await page.evaluate(() => navigator.clipboard.readText());
+        await page.evaluate(() => navigator.clipboard.writeText('before-actor-keyboard'));
         await target.focus();
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before, 'focus does not copy');
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'before-actor-keyboard', 'focus does not copy');
         await target.press(piece.span.start % 2 ? 'Space' : 'Enter');
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
         assert.equal(await diagrams.first().locator('[data-mt-selected=true]').count(), groupSize(piece));
       }
       await preview.close(); preview = undefined;
