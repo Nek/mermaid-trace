@@ -172,3 +172,15 @@ test('FLOW AC4/6: nested subgraph frames, repeated titles and YAML title work in
     ]);
   }
 });
+
+test('FLOW AC5/6: native ELK header and configuration retain saved and live selections', { timeout: 120_000 }, async () => {
+  for (const config of [false, true]) {
+    const group = 'subgraph G[Group]\nA["Actor 😀"] -->|go| B\nend';
+    const source = (config ? '---\nconfig:\n  layout: elk\n  htmlLabels: true\n---\nflowchart LR\n' : 'flowchart-elk LR\n') + group + '\n';
+    await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [
+      ['flowchart:subgraph:G', group],
+      ['flowchart:subgraph:G', 'Group', 'control-label'],
+      ['edge:L_A_B_0', 'go', 'edge-label'],
+    ]);
+  }
+});

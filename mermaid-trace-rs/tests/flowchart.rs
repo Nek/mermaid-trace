@@ -224,3 +224,57 @@ fn flow_ac4_subgraph_frames_and_titles_have_native_original_ranges() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_elk_and_math_render_without_a_browser_and_preserve_source() {
+    for (name, source, label) in [
+        (
+            "flow-elk-header",
+            "flowchart-elk LR\nsubgraph G[Group]\nA[Actor] --> B\nend\n",
+            "Actor",
+        ),
+        (
+            "flow-elk-config",
+            "---\nconfig:\n  layout: elk\n---\nflowchart LR\nsubgraph G[Group]\nA[Actor] --> B\nend\n",
+            "Actor",
+        ),
+        (
+            "flow-math",
+            "flowchart LR\nA[\"$$x^2$$\"] -->|\"$$\\sqrt{x}$$\"| B\n",
+            "$$x^2$$",
+        ),
+    ] {
+        let result =
+            mermaid_trace_rs::render(name, source).expect("required native renderer capability");
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let a = pieces.iter().find(|p| p["domId"] == "node:A").unwrap();
+        let span = &a["labelSpan"];
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            label
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        assert!(
+            svg.descendants()
+                .any(|n| n.attribute("data-mt-role") == Some("node-label")
+                    && n.ancestors()
+                        .any(|a| a.attribute("data-mt-key") == Some("node:A"))),
+            "missing {name} node label"
+        );
+        if name.contains("elk") {
+            assert!(
+                svg.descendants().any(|n| n.attribute("data-mt-key")
+                    == Some("flowchart:subgraph:G")
+                    && n.attribute("data-mt-role") == Some("control")),
+                "missing native ELK subgraph mapping"
+            );
+        }
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, name, source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
