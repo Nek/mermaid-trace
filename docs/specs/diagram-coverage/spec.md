@@ -6,6 +6,8 @@ Contracts: [S6](../source-mapping/spec.md#s6--complete-mermaid-diagram-coverage)
 
 ## Definition of support
 
+User clarification, 2026-09-27: “implement diagram support” requests the complete family by default. A narrower slice requires explicit user agreement. Deliver in small verified commits, but keep the family incomplete until all required coverage passes; close its known gaps before starting another family unless the user explicitly changes priority. See [full feature coverage](../../DESIGN.md#full-feature-coverage).
+
 Every source-backed semantic piece and label must map through native parser/AST provenance to exact original source, and source selection must identify corresponding visuals. Verify click/keyboard selection, copied original locations, multiple occurrences/instances, Markdown embedding and saved static SVG consumption without the renderer. Include valid syntax variants and relevant nested constructs for each family. Distinguish genuinely generated decoration from a source-backed visual whose mapping is missing. Whole-diagram selection belongs to the background gesture.
 
 A diagram family is complete only when those checks pass. A render smoke test is insufficient; all rows must pass before the first usable release. The diagnostic `info` diagram has no ordinary node/edge DSL, so its generated version text needs explicit generated-content classification rather than invented source spans. Broken-input error diagrams and the `---` frontmatter sentinel are diagnostics, not authoring DSLs.

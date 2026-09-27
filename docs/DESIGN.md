@@ -70,6 +70,12 @@ User decision, 2026-09-26: every built-in Mermaid diagram family is required for
 
 Implement native provenance export in Merman and preserve identities through each renderer. The earlier Mermaid fork is historical reference tooling. Share coordinate handling, artifact validation and activation across types; keep type-specific grammar and rendering bindings at their native boundaries. The current node/edge projection and flowchart SVG selectors are not a universal model. Generalize that contract around actual semantic kinds and visual bindings as coverage is implemented; do not add a parallel text-matching parser or estimate spans from SVG labels. Syntax transformations need exact original-source provenance, not just line offsets. Whole-diagram activation remains an explicit background gesture, not a substitute for missing element mappings.
 
+## Full feature coverage
+
+User decision, 2026-09-27: a request to implement diagram support means the complete diagram family by default. A narrower slice requires explicit user agreement. Cover valid syntax/configuration and renderer variants, nesting, repeated declarations/references and edge cases. Every source-backed visual and label needs exact provenance and bidirectional selection, with saved SVG, Markdown, keyboard and clipboard behavior verified where applicable.
+
+Small TDD steps and atomic commits remain mandatory, but a passing implementation slice does not make a feature complete. Track gaps against explicit acceptance tests; close known gaps in the current diagram family before starting another unless the user explicitly changes priority. Do not move required behavior into a later conformance phase, weaken tests or substitute whole-diagram selection for missing mappings. Report partial implementations as incomplete. Generated decorations must be classified honestly rather than assigned fabricated source spans.
+
 ## Merman migration
 
 User decision, 2026-09-26: adopt Merman on `feat/merman-backend` in the existing repository. See [MERMAN-1](specs/merman-backend/spec.md) for the selected story, package boundary and tests. Preserve the mapping core, static artifact, activation, Markdown and CLI. Isolate the Chromium producer from the native adapter and keep official Mermaid snapshots as reference evidence. Do not build a generic plugin layer or split the product repository.

@@ -9,6 +9,12 @@
 
 All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs/`, including feature specs.
 
+## Full feature coverage
+
+- A request to implement diagram support means the complete diagram family by default, including valid syntax/configuration and renderer variants, nesting, repeated occurrences and edge cases. A narrower slice requires explicit user agreement; do not silently choose one.
+- Small TDD steps and atomic commits are delivery units, not permission to reduce scope. Representative examples, happy-path tests or whole-diagram fallback do not establish complete support. Keep a feature incomplete until its full acceptance coverage passes.
+- Close known coverage gaps before moving on to another diagram family unless the user explicitly changes priority. Do not defer required behavior as future conformance work or use shortcuts that lose exact source provenance. Follow [the development principle](docs/DESIGN.md#full-feature-coverage).
+
 ## Behavior-preserving migrations
 
 - A backend or language migration must preserve every working user behavior. Record the existing behavior and keep its acceptance tests mandatory; implement equivalent behavior in the replacement before removing the working route. A request to focus on the new implementation does not authorize regressions.

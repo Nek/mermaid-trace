@@ -4,7 +4,11 @@ Delivery order: state → class → ER, following the completed planning diagram
 
 As a diagram author, I want to select structural diagram pieces and locate their exact original source, including in Markdown and saved SVG.
 
-## Ready story: STATE-1
+## Current feature: state diagrams (incomplete)
+
+Decision, 2026-09-27: implementing diagram support means the complete family, not a representative slice. STATE-1 below records the delivered mapping slice, not completion of state support. Close state occurrence, concurrency and syntax/configuration/renderer gaps before CLASS-1 or ER-1. Enumerate remaining constructs and variants from the native grammar, renderer and upstream fixtures, give each exact-source and interaction expectations, then implement them through failing acceptance tests. Full state support requires every applicable coverage check to pass; wider syntax is not deferred work.
+
+### Delivered slice: STATE-1
 
 Scope: state declarations and references, quoted aliases, start/end/choice/fork/join states, composite states, transitions with or without labels, and attached notes. A node selects its declaration (or first reference); its label selects the authored label. A transition selects its complete statement; its label selects the description. Attached notes select their statement or note text. Generated note connectors and layout decorations have no fabricated source. Repeated declarations/descriptions and concurrency variants need explicit occurrence conformance before claiming the family complete.
 
@@ -30,4 +34,4 @@ STATE-1 implemented. Native tests cover original UTF-16 ranges through CRLF/fron
 
 Verification: `make typecheck`, `make test` (12 Rust, 28 TypeScript/browser tests), 184 native state parser/render checks, 35 native ASCII state-model checks and generated-parser verification pass. The shared containment check currently scans matching pieces; an interval index is warranted only if large artifacts show a performance issue.
 
-CLASS-1 and ER-1 follow STATE-1; they are not implemented yet. Repeated state descriptions/declarations, concurrency and wider syntax/configuration conformance remain pending; STATE-1 does not close the all-family gate.
+CLASS-1 and ER-1 follow complete state support; they are not implemented yet. Repeated state descriptions/declarations, concurrency and wider syntax/configuration/renderer conformance are unfinished state requirements. STATE-1 does not close the state-family or all-family gate.
