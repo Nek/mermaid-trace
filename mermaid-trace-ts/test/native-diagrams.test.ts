@@ -77,6 +77,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
     }
     let event = await page.evaluate(() => (window as any).events.at(-1));
+    const nodeSpan = event.span;
     assert.equal(source.slice(event.span.start, event.span.end), expected);
     if (key.startsWith('state:node:')) {
       await shape.first().focus(); await shape.first().press('Enter');
@@ -93,8 +94,9 @@ async function verifyNative(source: string, key: string, expected: string, label
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     const labelSpan = event.span;
+    const sharedLabelSpan = nodeSpan.start === labelSpan.start && nodeSpan.end === labelSpan.end;
     await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
-    assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
+    assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), sharedLabelSpan ? 1 : 0, 'equal-span node and label form one selection; distinct labels remain separate');
     assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), 'true', 'the authored label remains selected');
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
@@ -117,6 +119,24 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
       if (controlKey.startsWith('state:note:')) {
+        const body = first.locator(`[data-mt-role=control][data-mt-start="${control.span.start}"][data-mt-end="${control.span.end}"]`);
+        assert.equal(await body.getAttribute('data-mt-selected'), 'true', 'connector click selects the whole note');
+        await body.scrollIntoViewIfNeeded();
+        const point = await body.evaluate(element => {
+          const box = element.getBoundingClientRect();
+          for (const x of [0.1, 0.5, 0.9]) for (const y of [0.1, 0.5, 0.9]) {
+            const point = { x: box.x + box.width * x, y: box.y + box.height * y };
+            if (element.ownerDocument.elementFromPoint(point.x, point.y)?.closest('[data-mt-role]') === element) return point;
+          }
+          throw new Error('note body has no exposed pointer target');
+        });
+        await page.mouse.click(point.x, point.y);
+        assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'note body click selects its connector too');
+        assert.equal(await body.getAttribute('data-mt-selected'), 'true');
+        assert.equal(await body.evaluate(element => Number(element.getAttribute('tabindex') === '0')), 1);
+        assert.equal(await target.getAttribute('tabindex'), '-1', 'one keyboard stop for the note object');
+        const group = await page.evaluate(() => (window as any).events.at(-1).pieces);
+        assert.ok(group.some((piece: any) => piece.kind === 'edge') && group.some((piece: any) => piece.kind === 'control'), 'the selection keeps both native AST bindings');
         await page.evaluate(span => (window as any).handles[0].highlight([span]), control.span);
         assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'full note source selects its connector');
         const attachmentStart = control.span.start + source.slice(control.span.start, control.span.end).indexOf(' of ') + 4;
@@ -149,7 +169,7 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=control][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its group');
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'a group directive must not select its contained node');
       }
-      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a source occurrence without this label binding must not select the displayed label');
+      assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
@@ -174,7 +194,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
     }, { start, end });
     await page.waitForSelector('[data-mt-role=node-label][data-mt-selected=true]');
-    assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'native original-source label selection excludes enclosing nodes');
+    assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), sharedLabelSpan ? 1 : 0, 'original source respects equal-span visual equivalence');
     if (reverseNodeSource !== undefined) {
       const offset = source.indexOf(reverseNodeSource);
       await original.evaluate((element, span) => {
@@ -184,7 +204,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
       await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reversePrimaryKey === key ? 'node' : 'control'}][data-mt-selected=true]`);
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
-      assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), null);
+      assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), sharedLabelSpan && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
@@ -206,6 +226,10 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true], [data-mt-role=node-label][data-mt-selected=true]').count(), 0, 'source note attachment must not select its referenced state');
         const point = await noteConnectorPoint(target);
         await page.mouse.click(point.x, point.y);
+        const body = page.locator(`[data-mt-role=control][data-mt-selected=true]`);
+        assert.equal(await body.count(), 1, 'live connector activation selects the note body');
+        assert.equal(await body.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'selection has one visual treatment');
+        assert.equal(await target.getAttribute('data-mt-selected'), 'true');
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
       }
       if (controlKey === 'state:region:last') {
@@ -511,7 +535,7 @@ test('STATE NOTE: dashed connectors preserve saved/live source and clipboard acr
 });
 
 
-test('STATE AC4/6: implicit state labels reverse-select only their label despite equal declaration ranges', { timeout: 120_000 }, async () => {
+test('STATE AC4/6: implicit state bodies and labels share selection when their ranges are equal', { timeout: 120_000 }, async () => {
   for (const header of ['stateDiagram', 'stateDiagram-v2']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
     const source = `---\nconfig:\n  look: ${look}\n  handDrawnSeed: 42\n  htmlLabels: ${html}\n---\n${header}\n%% 😀\n[*] --> Indexing\nIndexing --> [*] : indexed\n`;
     await verifyNative(source, 'state:node:Indexing', 'Indexing', 'Indexing');

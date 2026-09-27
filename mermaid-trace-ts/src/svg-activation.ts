@@ -29,6 +29,18 @@ export function activateSvg(svg: SVGSVGElement, options: {
   });
   const hitTargets = new Map<Element, Element>();
   const refs = (element: Element) => element.getAttribute('data-mt-refs')!.split(' ');
+  const spanKey = (element: Element) => `${element.getAttribute('data-mt-start')}:${element.getAttribute('data-mt-end')}`;
+  const groups = new Map<string, Element[]>();
+  for (const element of elements) {
+    const key = spanKey(element);
+    const members = groups.get(key) ?? [];
+    members.push(element);
+    groups.set(key, members);
+  }
+  const primary = (element: Element) => {
+    const members = groups.get(spanKey(element))!;
+    return members.find(member => ['node', 'control'].includes(member.getAttribute('data-mt-role')!)) ?? members[0]!;
+  };
   const labelIds = new Set(elements.filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
   const changes = new Map<Element, Map<string, { before: string | null; after: string | null }>>();
   const set = (element: Element, name: string, value: string | null) => {
@@ -70,15 +82,24 @@ export function activateSvg(svg: SVGSVGElement, options: {
       label.kind === piece.kind && label.semanticId === piece.semanticId
       && range.start >= label.labelSpan!.start && range.start < label.labelSpan!.end && range.end <= label.labelSpan!.end)))
       .map(piece => piece.id));
-    for (const element of elements) {
-      const label = element.getAttribute('data-mt-role')!.endsWith('-label');
-      const match = refs(element).some(id => selected.has(id) && (label || !labelOnly.has(id)));
-      set(element, 'data-mt-selected', match ? 'true' : null);
-      set(element, 'aria-pressed', String(match));
+    for (const members of groups.values()) {
+      const match = members.some(element => {
+        const label = element.getAttribute('data-mt-role')!.endsWith('-label');
+        return refs(element).some(id => selected.has(id) && (label || !labelOnly.has(id)));
+      });
+      for (const element of members) {
+        set(element, 'data-mt-selected', match ? 'true' : null);
+        set(element, 'aria-pressed', String(match));
+      }
     }
     return pieces;
   };
   const emit = (selection: Selection) => {
+    const members = groups.get(`${selection.span.start}:${selection.span.end}`);
+    if (selection.role !== 'diagram' && members) {
+      const ids = new Set([...selection.pieces.map(piece => piece.id), ...members.flatMap(refs)]);
+      selection = { ...selection, pieces: [...ids].map(id => byId.get(id)!) };
+    }
     highlight([selection.span], new Set(selection.pieces.map(piece => piece.id)));
     options.onSelect(selection);
   };
@@ -93,15 +114,20 @@ export function activateSvg(svg: SVGSVGElement, options: {
     if (!element || event.button !== 0) return;
     pointerTarget = element;
     event.preventDefault();
-    element.focus({ preventScroll: true });
+    (element === svg ? svg : primary(element) as SVGElement).focus({ preventScroll: true });
   };
   const gesture = (event: Event) => {
     if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
-    const element = event instanceof MouseEvent && event.type === 'click' && event.detail > 0
+    const target = event instanceof MouseEvent && event.type === 'click' && event.detail > 0
       && pointerTarget && event.target instanceof Node && event.target.contains(pointerTarget)
       ? pointerTarget : targetFor(event);
     if (event.type === 'click') pointerTarget = null;
-    if (!element) return;
+    if (!target) return;
+    const element = (target === svg ? svg : primary(target)) as SVGElement;
+    if (event.type === 'focusin' && element !== target) {
+      element.focus({ preventScroll: true });
+      return;
+    }
     if (event.type !== 'focusin') {
       event.preventDefault();
       element.focus({ preventScroll: true });
@@ -119,7 +145,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
   for (const helper of svg.querySelectorAll('[data-mt-generated="bounds"]')) set(helper, 'pointer-events', 'none');
   for (const element of elements) {
     const piece = byId.get(refs(element)[0]!)!;
-    set(element, 'tabindex', '0');
+    set(element, 'tabindex', primary(element) === element ? '0' : '-1');
     set(element, 'role', 'button');
     set(element, 'aria-label', `Select ${element.getAttribute('data-mt-role')} ${piece.semanticId}`);
     set(element, 'aria-pressed', 'false');

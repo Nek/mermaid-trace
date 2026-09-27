@@ -42,7 +42,7 @@ pre{height:100%;margin:0;padding:14px;overflow:auto;white-space:pre;color:#172c3
 [data-mt-role=node][data-mt-selected=true] rect{stroke:#007c8a!important;stroke-width:3px!important}[data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;stroke-width:3px!important}
 body:has(#source-frame){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}body:has(#source-frame) article{width:100%;min-width:0;margin:0 auto}aside{position:sticky;top:0;height:100vh;padding:28px;min-width:0;border-left:1px solid #d9e2e9;display:flex;flex-direction:column;gap:12px}#source-frame{width:100%;flex:1;min-height:0;border:1px solid #c9d6e0}
 @media(max-width:850px){body:has(#source-frame){display:block}aside{position:static;height:50vh;border-left:0;border-top:1px solid #d9e2e9}}
-:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}::selection{background:#a9e0e5;color:#172c3e}
+:focus-visible{outline:3px solid #2d65d3;outline-offset:3px}svg [data-mt-selected=true]:focus-visible{outline:none}::selection{background:#a9e0e5;color:#172c3e}
 </style></head><body><article aria-label="Rendered Markdown">${view.html}</article>${sourcePane}<script id="trace-data" type="application/json">${payload}</script><script type="module" src="/@mermaid-trace/viewer.js"></script></body></html>`;
 }
 
