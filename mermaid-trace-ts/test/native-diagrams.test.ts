@@ -10,7 +10,7 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = []) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = [], reversePrimaryKey = key) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -84,7 +84,12 @@ async function verifyNative(source: string, key: string, expected: string, label
     if (reverseNodeSource !== undefined) {
       const start = source.indexOf(reverseNodeSource);
       await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + reverseNodeSource.length });
-      assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
+      if (reversePrimaryKey === key) {
+        assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
+      } else {
+        assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=control][data-mt-selected=true]`).count(), 1, 'source occurrence maps to its group');
+        assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'a group directive must not select its contained node');
+      }
       assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a source occurrence without this label binding must not select the displayed label');
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
@@ -110,7 +115,8 @@ async function verifyNative(source: string, key: string, expected: string, label
         range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
         doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
       }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
-      await page.waitForSelector(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`);
+      await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reversePrimaryKey === key ? 'node' : 'control'}][data-mt-selected=true]`);
+      if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
       assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), null);
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
@@ -320,5 +326,16 @@ test('FLOW AC4/6: classes, links and identified connectors retain saved and live
       await verifyNative(source, 'node:A', 'A["Actor 😀"]:::hot', 'Actor 😀', [], 'classDef hot fill:#eee', ['edge:e1', 'flowchart:subgraph:G']);
       await verifyNative(source, 'node:A', 'A["Actor 😀"]:::hot', 'Actor 😀', [], 'click A href "https://example.com" "go"');
     }
+  }
+});
+
+
+test('FLOW AC4/6: scoped directions select their group in saved and live Markdown', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
+    const group = 'subgraph G[Group]\ndirection TB\nA["Actor 😀"] --> B\ndirection RL\nend';
+    const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\n${group}\n`;
+    await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:subgraph:G', group]], 'direction RL', [], 'flowchart:subgraph:G');
+    const collapsed = 'subgraph H[Collapsed]\ndirection BT\nC --> D\nend';
+    await verifyNative(source + collapsed + '\nH@{view: collapsed}\n', 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:subgraph:H', collapsed]], 'direction BT', [], 'flowchart:subgraph:H');
   }
 });

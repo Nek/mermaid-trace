@@ -1153,3 +1153,70 @@ fn flow_ac4_repeated_directives_preserve_distinct_occurrences_and_native_inherit
         && p["relation"] == "click"
         && slice(p) == "click A callback \"go 😀\""));
 }
+
+#[test]
+fn flow_ac4_scoped_direction_occurrences_keep_native_groups_and_exact_ranges() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\ndirection BT\r\nsubgraph G[Outer]\r\ndirection TB\r\nsubgraph \"Inner 😀\"\r\ndirection RL\r\nA --> B\r\nend\r\ndirection LR\r\nend\r\nsubgraph E[Empty]\r\ndirection TD\r\nend\r\nE --> G\r\nsubgraph Z[Collapsed]\r\ndirection BT\r\nC --> D\r\nend\r\nZ@{{view: collapsed}}\r\nZ --> E\r\n"
+            );
+            let result = mermaid_trace_rs::render("directions", &source).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let text: Vec<_> = source.encode_utf16().collect();
+            let slice = |span: &Value| {
+                String::from_utf16(
+                    &text[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            for (key, authored) in [
+                ("flowchart:subgraph:G", "direction TB"),
+                ("flowchart:subgraph:G", "direction LR"),
+                ("flowchart:subgraph:subGraph0", "direction RL"),
+                ("flowchart:subgraph:E", "direction TD"),
+                ("flowchart:subgraph:Z", "direction BT"),
+            ] {
+                assert!(
+                    pieces.iter().any(|p| p["domId"] == key
+                        && p["relation"] == "direction"
+                        && slice(&p["span"]) == authored),
+                    "missing {key}: {authored}"
+                );
+            }
+            assert!(!pieces.iter().any(|p| {
+                p["relation"] == "direction"
+                    && p["span"]["start"].as_u64().unwrap()
+                        < source[..source.find("subgraph G").unwrap()]
+                            .encode_utf16()
+                            .count() as u64
+            }));
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let byte_slice = |span: &Value| {
+                &source[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize]
+            };
+            for (classification, authored) in [
+                ("diagram-header", header),
+                ("ignored-root-direction", "direction BT"),
+            ] {
+                assert!(native.iter().any(|p| p["kind"] == "nonvisual"
+                    && p["classification"] == classification
+                    && byte_slice(&p["span"]) == authored));
+            }
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "directions", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
