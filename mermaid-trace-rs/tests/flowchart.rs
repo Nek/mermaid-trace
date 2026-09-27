@@ -1823,30 +1823,22 @@ fn flow_ac5_every_pinned_public_shape_keeps_native_node_and_label_bindings() {
         146,
         "review the pinned public-shape inventory when updating Merman"
     );
-    // These native shapes deliberately omit/clear their labels, as Mermaid does.
-    let no_label = [
-        "anchor",
-        "choice",
-        "cross-circ",
-        "crossed-circle",
-        "summary",
-        "f-circ",
-        "filled-circle",
-        "junction",
-        "fork",
-        "join",
-        "fr-circ",
-        "framed-circle",
-        "stop",
-        "bolt",
-        "com-link",
-        "lightning-bolt",
-        "sm-circ",
-        "small-circle",
-        "start",
-        "hourglass",
-        "collate",
-    ];
+    let inventory: Value = serde_json::from_str(
+        &std::fs::read_to_string("../mermaid-trace-ts/test/fixtures/flowchart/public-shapes.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        inventory["shapes"],
+        serde_json::json!(shapes),
+        "refresh the shared shape inventory explicitly"
+    );
+    let no_label: Vec<_> = inventory["withoutLabels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|shape| shape.as_str().unwrap())
+        .collect();
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
     for header in ["flowchart LR", "flowchart-elk LR"] {
