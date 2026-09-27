@@ -12961,7 +12961,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..518d61f5 100644
+index 68bde024..f7e1e68b 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -56,6 +56,8 @@ pub struct JourneyRenderTask {
@@ -12973,7 +12973,7 @@ index 68bde024..518d61f5 100644
      pub title: Option<String>,
      #[serde(rename = "accTitle")]
      pub acc_title: Option<String>,
-@@ -394,6 +396,13 @@ fn parse_journey_semantic_source(
+@@ -394,6 +396,14 @@ fn parse_journey_semantic_source(
      control.checkpoint()?;
      let mut db = JourneyDb::default();
      db.clear();
@@ -12984,10 +12984,11 @@ index 68bde024..518d61f5 100644
 +        .and_then(Value::as_bool)
 +        == Some(true);
 +    let mut source_occurrences = Vec::new();
++    let mut declared_actors = BTreeSet::new();
      let mut editor_facts = EditorSemanticFacts::new();
      let mut lines = LineCursor::new(code);
      let mut header_seen = false;
-@@ -443,6 +452,10 @@ fn parse_journey_semantic_source(
+@@ -443,6 +453,10 @@ fn parse_journey_semantic_source(
              editor_facts.push_directive_prefix("title");
              let value = spanned_keyword_value(line, line_start, "title");
              if let Some(value) = value {
@@ -12998,7 +12999,7 @@ index 68bde024..518d61f5 100644
                  push_journey_payload_fact(
                      &mut editor_facts,
                      value,
-@@ -513,6 +526,9 @@ fn parse_journey_semantic_source(
+@@ -513,6 +527,9 @@ fn parse_journey_semantic_source(
                  let section_text = value.text.split(':').next().unwrap_or("").trim();
                  if !section_text.is_empty() {
                      let section_start = value.start + value.text.find(section_text).unwrap_or(0);
@@ -13008,7 +13009,7 @@ index 68bde024..518d61f5 100644
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,6 +593,10 @@ fn parse_journey_semantic_source(
+@@ -577,6 +594,10 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13019,7 +13020,7 @@ index 68bde024..518d61f5 100644
          let rest_source = &stripped[colon + ':'.len_utf8()..];
          let rest = rest_source.trim_start();
          let rest_start =
-@@ -591,6 +611,9 @@ fn parse_journey_semantic_source(
+@@ -591,6 +612,9 @@ fn parse_journey_semantic_source(
          let score_text = rest[..score_end].trim();
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
@@ -13029,21 +13030,32 @@ index 68bde024..518d61f5 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -612,6 +635,22 @@ fn parse_journey_semantic_source(
+@@ -605,13 +629,32 @@ fn parse_journey_semantic_source(
+         }
+ 
+         if score_end < rest.len() {
+-            let people_source = &rest[score_end + ':'.len_utf8()..];
++            // Match JourneyDb::add_task: only the first people field is semantic.
++            let people_source = rest[score_end + ':'.len_utf8()..]
++                .split(':')
++                .next()
++                .unwrap_or("");
+             let people = people_source.trim();
+             if !people.is_empty() {
+                 let people_start = rest_start
                      + score_end
                      + ':'.len_utf8()
                      + people_source.find(people).unwrap_or(0);
 +                if trace_source {
 +                    let mut offset = people_start;
-+                    for actor_source in people.split(',') {
++                    for (slot, actor_source) in people.split(',').enumerate() {
 +                        let actor = actor_source.trim();
 +                        let start = offset + leading_whitespace_len(actor_source);
 +                        if !actor.is_empty() {
-+                            for key in [
-+                                format!("journey:actor:{task_id}:{actor}"),
-+                                format!("journey:actor:{actor}"),
-+                            ] {
-+                                source_occurrences.push(json!({"kind":"control","semanticId":actor,"domId":key,"span":SourceSpan::new(start,start+actor.len())}));
++                            let span = SourceSpan::new(start, start + actor.len());
++                            source_occurrences.push(json!({"kind":"control","semanticId":format!("task:{task_id}:actor:{slot}"),"domId":format!("journey:actor:{task_id}:{slot}"),"span":span,"relation":"actor-reference","target":actor,"parentId":format!("task:{task_id}"),"property":"people","index":slot}));
++                            if declared_actors.insert(actor.to_string()) {
++                                source_occurrences.push(json!({"kind":"control","semanticId":actor,"domId":format!("journey:actor:{actor}"),"span":span}));
 +                            }
 +                        }
 +                        offset += actor_source.len() + 1;
@@ -13052,7 +13064,7 @@ index 68bde024..518d61f5 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -642,6 +681,7 @@ fn parse_journey_semantic_source(
+@@ -642,6 +685,7 @@ fn parse_journey_semantic_source(
      control.checkpoint()?;
      let actors = db.actors_sorted();
      let model = header_seen.then(|| JourneyDiagramRenderModel {
@@ -27965,6 +27977,24 @@ index bb421711..4b3af1e7 100644
  
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
+diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
+index c8ebca79..edc5b3a0 100644
+--- a/crates/merman-render/src/journey.rs
++++ b/crates/merman-render/src/journey.rs
+@@ -286,11 +286,12 @@ pub(crate) fn layout_journey_diagram_typed(
+ 
+         let mut actor_circles = Vec::new();
+         let mut cx = x + 14.0;
+-        for p in &task.people {
++        for (source_index, p) in task.people.iter().enumerate() {
+             let Some((pos, color)) = actor_map.get(p).cloned() else {
+                 continue;
+             };
+             actor_circles.push(JourneyTaskActorCircleLayout {
++                source_index,
+                 actor: p.to_string(),
+                 pos,
+                 color,
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
@@ -28034,6 +28064,20 @@ index 027dfe7d..adf538ae 100644
              nodes: vec![section("todo", "Todo")],
          };
          let measurer = DeterministicTextMeasurer {
+diff --git a/crates/merman-render/src/model.rs b/crates/merman-render/src/model.rs
+index b2f2c2e3..3b55e14b 100644
+--- a/crates/merman-render/src/model.rs
++++ b/crates/merman-render/src/model.rs
+@@ -941,6 +941,9 @@ pub enum JourneyMouthKind {
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct JourneyTaskActorCircleLayout {
++    /// Native people-property slot, retained through layout for source identity.
++    #[serde(skip)]
++    pub source_index: usize,
+     pub actor: String,
+     pub pos: i64,
+     pub color: String,
 diff --git a/crates/merman-render/src/sequence/message_metrics.rs b/crates/merman-render/src/sequence/message_metrics.rs
 index a80d80c0..a3608f6d 100644
 --- a/crates/merman-render/src/sequence/message_metrics.rs
@@ -29299,7 +29343,7 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..3338bc9e 100644
+index 61faa868..fe4113d4 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
 @@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
@@ -29355,7 +29399,17 @@ index 61faa868..3338bc9e 100644
                  x = fmt(line.x),
                  y = fmt(line.y),
                  tx = fmt(line.tspan_x),
-@@ -424,7 +436,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -415,7 +427,8 @@ pub(crate) fn render_journey_diagram_svg_model(
+     }
+ 
+     let mut section_iter = layout.sections.iter();
+-    let mut last_section: Option<&str> = None;
++    // Match native layout and Mermaid drawTasks: initial tasks have no section.
++    let mut last_section: Option<&str> = Some("");
+     for task in &layout.tasks {
+         if last_section != Some(task.section.as_str()) {
+             let Some(section) = section_iter.next() else {
+@@ -424,7 +437,12 @@ pub(crate) fn render_journey_diagram_svg_model(
              let section_class = format!("journey-section section-type-{}", section.num);
              let _ = write!(
                  &mut out,
@@ -29369,7 +29423,7 @@ index 61faa868..3338bc9e 100644
                  x = fmt(section.x),
                  y = fmt(section.y),
                  fill = escape_attr(&section.fill),
-@@ -447,6 +464,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -447,6 +465,11 @@ pub(crate) fn render_journey_diagram_svg_model(
                      task_font_family,
                  },
                  &theme.text_color,
@@ -29381,7 +29435,7 @@ index 61faa868..3338bc9e 100644
              );
              out.push_str("</g>");
          }
-@@ -455,7 +477,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -455,7 +478,12 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29395,7 +29449,7 @@ index 61faa868..3338bc9e 100644
              id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
              x1 = fmt(task.line_x1),
              y1 = fmt(task.line_y1),
-@@ -466,12 +493,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -466,12 +494,25 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29423,7 +29477,7 @@ index 61faa868..3338bc9e 100644
          let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
          let eye_r = 1.5;
          let _ = write!(
-@@ -534,7 +574,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -534,7 +575,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for c in &task.actor_circles {
              let _ = write!(
                  &mut out,
@@ -29431,13 +29485,13 @@ index 61faa868..3338bc9e 100644
 +                r##"<circle{trace} cx="{cx}" cy="{cy}" class="actor-{pos}" fill="{fill}" stroke="#000" r="{r}"><title>{title}</title></circle>"##,
 +                trace = crate::svg::parity::source_attrs(
 +                    &model.source_occurrences,
-+                    &format!("journey:actor:{}:{}", task.index, c.actor),
++                    &format!("journey:actor:{}:{}", task.index, c.source_index),
 +                    false
 +                ),
                  cx = fmt(c.cx),
                  cy = fmt(c.cy),
                  pos = c.pos,
-@@ -559,6 +604,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -559,6 +605,11 @@ pub(crate) fn render_journey_diagram_svg_model(
                  task_font_family,
              },
              &theme.text_color,
@@ -29449,7 +29503,7 @@ index 61faa868..3338bc9e 100644
          );
  
          out.push_str("</g>");
-@@ -567,7 +617,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +618,9 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
@@ -30916,6 +30970,77 @@ index 00000000..56b40c23
 +    assert_eq!(
 +        style["labelSpan"],
 +        json!({"start":label_start,"end":label_start+1})
++    );
++}
+diff --git a/crates/merman/tests/journey_source_provenance.rs b/crates/merman/tests/journey_source_provenance.rs
+new file mode 100644
+index 00000000..a4ffe505
+--- /dev/null
++++ b/crates/merman/tests/journey_source_provenance.rs
+@@ -0,0 +1,65 @@
++#![cfg(feature = "svg")]
++use merman::{
++    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
++};
++use serde_json::{Value, json};
++
++#[test]
++fn journey_actor_property_slots_own_their_circles_and_only_first_origin_owns_legend() {
++    let source = "journey\r\n%% 😀\r\nFirst : 5 : Alice, Alice, , Bob\r\nSecond : 2 : Alice, Bob : Ignored\r\n";
++    let renderer = Renderer::new().with_engine(
++        Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":true}))),
++    );
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("no SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let pieces: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|n| n.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let actors: Vec<_> = pieces
++        .iter()
++        .filter(|p| p["relation"] == "actor-reference")
++        .collect();
++    assert_eq!(actors.len(), 5);
++    let mut starts = Vec::new();
++    for piece in actors {
++        let start = piece["span"]["start"].as_u64().unwrap() as usize;
++        let end = piece["span"]["end"].as_u64().unwrap() as usize;
++        assert_eq!(&source[start..end], piece["target"].as_str().unwrap());
++        starts.push(start);
++        let key = piece["domId"].as_str().unwrap();
++        assert_eq!(
++            svg.descendants()
++                .filter(|n| n.attribute("data-mt-key") == Some(key))
++                .count(),
++            1
++        );
++    }
++    starts.sort_unstable();
++    starts.dedup();
++    assert_eq!(starts.len(), 5);
++    for actor in ["Alice", "Bob"] {
++        let legend: Vec<_> = pieces
++            .iter()
++            .filter(|p| p["domId"] == format!("journey:actor:{actor}"))
++            .collect();
++        assert_eq!(legend.len(), 1);
++        assert_eq!(legend[0]["span"]["start"], source.find(actor).unwrap());
++    }
++    assert!(!pieces.iter().any(|p| p["target"] == "Ignored"));
++    assert!(
++        !svg.descendants()
++            .any(|n| n.attribute("data-mt-key") == Some("journey:actor:0:2"))
 +    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs

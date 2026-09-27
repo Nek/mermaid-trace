@@ -99,14 +99,14 @@ fn journey_plan_ac1_2_tasks_scores_people_and_sections_keep_original_spans() {
     assert!(
         pieces
             .iter()
-            .any(|p| p["domId"] == "journey:actor:1:Alice" && slice(&p["span"]) == "Alice")
+            .any(|p| p["domId"] == "journey:actor:1:0" && slice(&p["span"]) == "Alice")
     );
     assert_eq!(
         pieces
             .iter()
             .filter(|p| p["domId"] == "journey:actor:Alice")
             .count(),
-        2
+        1
     );
     assert!(
         pieces
@@ -122,6 +122,112 @@ fn journey_plan_ac1_2_tasks_scores_people_and_sections_keep_original_spans() {
 }
 
 const KANBAN: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\nkanban\r\n%% 😀\r\n  todo[Todo]\r\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\r\n    b[Same 😀]\r\n  done[Done]\r\n    c[Ship]\r\n";
+
+#[test]
+fn own_journey_actor_slots_keep_references_local_and_first_legend_origin() {
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for section_mode in [0, 1, 2, 3] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\n%% 😀\r\n{}First : 5 : Alice 😀, Alice 😀, , Bob, Alice 😀\r\n{}Second : 2 : Alice 😀, Bob, Carol : Ignored\r\nThird : 3 : Carol\r\n",
+                    if section_mode == 0 || section_mode == 3 {
+                        ""
+                    } else {
+                        "section Day\r\n"
+                    },
+                    if section_mode >= 2 {
+                        "section Day\r\n"
+                    } else {
+                        ""
+                    }
+                );
+                let result = mermaid_trace_rs::render("journey-owner", &source).unwrap();
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                for actor in ["Alice 😀", "Bob", "Carol"] {
+                    let legends: Vec<_> = pieces
+                        .iter()
+                        .filter(|p| p["domId"] == format!("journey:actor:{actor}"))
+                        .collect();
+                    assert_eq!(
+                        legends.len(),
+                        1,
+                        "legend owns only its first genuine declaration: {source}"
+                    );
+                    let start = source[..source.find(actor).unwrap()].encode_utf16().count();
+                    assert_eq!(
+                        legends[0]["span"],
+                        serde_json::json!({"start":start,"end":start+actor.encode_utf16().count()})
+                    );
+                }
+                for (task, statement, actors) in [
+                    (
+                        0,
+                        "First : 5 : Alice 😀, Alice 😀, , Bob, Alice 😀",
+                        vec!["Alice 😀", "Alice 😀", "", "Bob", "Alice 😀"],
+                    ),
+                    (
+                        1,
+                        "Second : 2 : Alice 😀, Bob, Carol : Ignored",
+                        vec!["Alice 😀", "Bob", "Carol"],
+                    ),
+                    (2, "Third : 3 : Carol", vec!["Carol"]),
+                ] {
+                    let mut offset =
+                        source.find(statement).unwrap() + statement.find(" : ").unwrap() + 3;
+                    offset += source[offset..].find(':').unwrap() + 1;
+                    for (slot, actor) in actors.iter().enumerate() {
+                        let key = format!("journey:actor:{task}:{slot}");
+                        let local: Vec<_> = pieces.iter().filter(|p| p["domId"] == key).collect();
+                        if actor.is_empty() {
+                            assert!(
+                                local.is_empty(),
+                                "empty slots have no fabricated source token"
+                            );
+                        } else {
+                            let token = offset + source[offset..].find(actor).unwrap();
+                            let start = source[..token].encode_utf16().count();
+                            assert_eq!(
+                                local.len(),
+                                1,
+                                "one exact owner per native task property slot"
+                            );
+                            assert_eq!(
+                                local[0]["span"],
+                                serde_json::json!({"start":start,"end":start+actor.encode_utf16().count()})
+                            );
+                            assert_eq!(local[0]["relation"], "actor-reference");
+                            assert_eq!(local[0]["target"], *actor);
+                            assert_eq!(local[0]["parentId"], format!("task:{task}"));
+                            assert_eq!(local[0]["index"], slot);
+                            assert_eq!(
+                                svg.descendants()
+                                    .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()))
+                                    .count(),
+                                1
+                            );
+                        }
+                        if let Some(comma) = source[offset..].find(',') {
+                            offset += comma + 1;
+                        }
+                    }
+                }
+                assert!(
+                    !pieces
+                        .iter()
+                        .any(|p| p["semanticId"] == "Ignored" || p["target"] == "Ignored")
+                );
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-owner", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {

@@ -407,7 +407,85 @@ test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard,
 });
 
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
-  await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:Alice', 'Alice'], ['journey:actor:Alice', 'Alice']]);
+  await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
+});
+
+test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and legend grouping', { timeout: 120_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-journey-owner-'));
+  const filename = join(directory, 'journey.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const sectionMode of [0, 1, 2, 3]) {
+      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n---\r\njourney\r\n%% 😀\r\n${sectionMode === 1 || sectionMode === 2 ? 'section Day\r\n' : ''}First : 5 : Alice 😀, Alice 😀, , Bob, Alice 😀\r\n${sectionMode >= 2 ? 'section Day\r\n' : ''}Second : 2 : Alice 😀, Bob, Carol : Ignored\r\nThird : 3 : Carol\r\n`;
+      const { svg, mapping } = await producer.render('journey-owner', source);
+      const actors = mapping.pieces.filter((piece: any) => piece.relation === 'actor-reference');
+      assert.equal(actors.length, 8);
+      const groupSize = (piece: typeof actors[number]) => source.indexOf(source.slice(piece.span.start, piece.span.end)) === piece.span.start ? 3 : 1;
+      await page.setContent(svg + svg.replaceAll('journey-owner', 'journey-copy'));
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
+      }, activation);
+      const first = page.locator('svg').first();
+      for (const piece of actors) {
+        const target = first.locator(`[data-mt-key="${piece.domId}"]`);
+        const related = await page.evaluate(span => (window as any).handles[0].highlight([span]), piece.span);
+        assert.equal(related.length, groupSize(piece) === 3 ? 2 : 1, 'reference and implicit declaration retain separate AST identities');
+        assert.equal(await first.locator('[data-mt-selected=true]').count(), groupSize(piece));
+        assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+        await target.click();
+        let event = await page.evaluate(() => (window as any).events.at(-1));
+        assert.deepEqual(event.span, piece.span);
+        assert.equal(await first.locator('[data-mt-selected=true]').count(), groupSize(piece));
+        if (groupSize(piece) === 3) {
+          const group = first.locator(`[data-mt-start="${piece.span.start}"][data-mt-end="${piece.span.end}"]`);
+          assert.equal(await group.locator(':scope[tabindex="0"]').count(), 1, 'one keyboard stop for legend and first circle');
+          for (const member of await group.all()) {
+            await member.click();
+            assert.equal(await first.locator('[data-mt-selected=true]').count(), 3, 'every constituent selects the complete group');
+          }
+        }
+        await target.focus(); await target.press('Enter');
+        event = await page.evaluate(() => (window as any).events.at(-1));
+        assert.deepEqual(event.span, piece.span);
+      }
+      await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+      assert.equal(await page.locator('[tabindex], [data-mt-selected]').count(), 0);
+      const fence = '```mermaid\r\n' + source + '```\r\n';
+      const markdown = '# Journey\r\n\r\n' + fence + '\r\n' + fence;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      for (const piece of actors) {
+        const span = { start: markdown.indexOf(source) + piece.span.start, end: markdown.indexOf(source) + piece.span.end };
+        await original.evaluate((element, span) => {
+          const doc = element.ownerDocument, range = doc.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+        }, span);
+        await page.waitForFunction(count => document.querySelector('svg[data-mt-map]')!.querySelectorAll('[data-mt-selected=true]').length === count, groupSize(piece));
+        const diagrams = page.locator('svg[data-mt-map]');
+        assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+        const target = diagrams.first().locator(`[data-mt-key="${piece.domId}"]`);
+        await target.click();
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), source.slice(piece.span.start, piece.span.end));
+        const before = await page.evaluate(() => navigator.clipboard.readText());
+        await target.focus();
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before, 'focus does not copy');
+        await target.press(piece.span.start % 2 ? 'Space' : 'Enter');
+        assert.equal(await diagrams.first().locator('[data-mt-selected=true]').count(), groupSize(piece));
+      }
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
