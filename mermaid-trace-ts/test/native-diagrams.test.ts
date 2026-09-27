@@ -10,8 +10,8 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyPlanning(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string])[] = []) {
-  const directory = await mkdtemp(join(tmpdir(), 'trace-planning-'));
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = []) {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
   const browser = await chromium.launch();
@@ -41,14 +41,16 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
     await first.locator(`[data-mt-key="${key}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`).first().click();
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
+    await page.evaluate(() => (window as any).handles[0].highlight([(window as any).events.at(-1).span]));
+    assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0, 'a source label selection must not select enclosing nodes');
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
-    for (const [controlKey, text] of controls) {
-      const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`).first();
-      const background = controlKey.startsWith('kanban:column:') ? target.locator(':scope > rect') : target.locator(':scope > rect[width]');
-      if (await target.evaluate(element => element.tagName === 'line')) {
+    for (const [controlKey, text, role = 'control'] of controls) {
+      const target = first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > path[fill]:not([fill=none])');
+      if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
         const point = await target.evaluate(element => {
-          const line = element as SVGLineElement;
-          const point = new DOMPoint(line.x1.baseVal.value, (line.y1.baseVal.value + line.y2.baseVal.value) / 2).matrixTransform(line.getScreenCTM()!);
+          const shape = element as SVGGeometryElement;
+          const point = shape.getPointAtLength(shape.getTotalLength() * (element.tagName === 'path' ? 0.2 : 0.5)).matrixTransform(shape.getScreenCTM()!);
           return { x: point.x, y: point.y };
         });
         await page.mouse.click(point.x, point.y);
@@ -81,13 +83,27 @@ async function verifyPlanning(source: string, key: string, expected: string, lab
 }
 
 test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard, source and saves', { timeout: 60_000 }, async () => {
-  await verifyPlanning(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
+  await verifyNative(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
 });
 
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
-  await verifyPlanning('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:Alice', 'Alice'], ['journey:actor:Alice', 'Alice']]);
+  await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:Alice', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });
 
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
-  await verifyPlanning("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
+  await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
+});
+
+
+test('STATE STRUCT-AC2/3: saved native SVG and original Markdown state selection', { timeout: 60_000 }, async () => {
+  const block = 'state Group {\nstate "Same 😀" as A\nstate "Same 😀" as B\nA --> B : review\nB --> A\nnote right of A : Annotation\n}';
+  await verifyNative('stateDiagram-v2\n' + block + '\n', 'state:node:A', 'state "Same 😀" as A', 'Same 😀', [
+    ['state:edge:edge0', 'A --> B : review', 'edge'],
+    ['state:edge:edge0', 'review', 'edge-label'],
+    ['state:edge:edge1', 'B --> A', 'edge'],
+    ['state:node:A----note-2', 'Annotation', 'control-label'],
+    ['state:node:A----note-2', 'note right of A : Annotation'],
+    ['state:node:Group', 'Group', 'node-label'],
+    ['state:node:Group', block, 'node'],
+  ]);
 });

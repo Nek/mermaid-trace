@@ -65,3 +65,23 @@ kanban
   done[Done]
     publish[Publish]
 ```
+
+## State diagram
+
+Select states, their labels, composite frames, transitions or attached notes.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Editing
+  state Editing {
+    state "Draft" as Draft
+    state "Review" as Review
+    [*] --> Draft
+    Draft --> Review : submit
+    Review --> Draft : revise
+    Review --> [*] : approve
+  }
+  Editing --> Published : publish
+  Published --> [*]
+  note right of Published : Available to readers
+```

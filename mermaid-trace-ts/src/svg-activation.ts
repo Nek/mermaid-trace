@@ -42,7 +42,12 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const overlaps = (span: Span, range: Span) => range.start === range.end
       ? span.start <= range.start && range.start < span.end
       : span.start < range.end && span.end > range.start;
-    const pieces = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)))
+    const matching = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)));
+    // ponytail: quadratic containment check for bounded diagrams; use an interval index if large maps make it slow.
+    const pieces = matching.filter(piece => !ranges.filter(range => overlaps(piece.span, range)).every(range => matching.some(child =>
+      child.span.start >= piece.span.start && child.span.end <= piece.span.end
+      && (child.span.start > piece.span.start || child.span.end < piece.span.end)
+      && range.start >= child.span.start && range.start < child.span.end && range.end <= child.span.end)))
       .sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
     const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
     set(svg, 'data-mt-selected', whole ? 'true' : null);

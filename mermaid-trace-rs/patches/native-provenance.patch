@@ -1,3 +1,71 @@
+diff --git a/crates/merman-ascii/src/state/adapter.rs b/crates/merman-ascii/src/state/adapter.rs
+index 7612e640..e6e2db62 100644
+--- a/crates/merman-ascii/src/state/adapter.rs
++++ b/crates/merman-ascii/src/state/adapter.rs
+@@ -1249,6 +1249,7 @@ mod tests {
+     #[test]
+     fn state_projection_cancellation_precedes_the_first_resource_debit() {
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: vec![state_node("a")],
+             ..StateDiagramRenderModel::default()
+@@ -1280,6 +1281,7 @@ mod tests {
+     #[test]
+     fn state_projection_accepts_exact_work_and_rejects_max_minus_one() {
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: vec![state_node("a")],
+             ..StateDiagramRenderModel::default()
+@@ -1294,6 +1296,7 @@ mod tests {
+         node.css_styles = vec!["fill:transparent".to_string()];
+         node.label_style = "border:#445566".to_string();
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: vec![node],
+             ..StateDiagramRenderModel::default()
+@@ -1309,6 +1312,7 @@ mod tests {
+         let mut node = state_node("AB");
+         node.parent_id = Some(group.id.clone());
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: vec![group, node],
+             ..StateDiagramRenderModel::default()
+@@ -1349,6 +1353,7 @@ mod tests {
+         note.parent_id = Some("note-group".to_string());
+         note.position = Some("right of".to_string());
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: vec![state_node("a"), note_group, note],
+             edges: vec![StateDiagramRenderEdge {
+@@ -1369,6 +1374,7 @@ mod tests {
+         const NODE_COUNT: usize = 4_096;
+ 
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes: (0..NODE_COUNT)
+                 .map(|index| state_node(&format!("state-{index}")))
+@@ -1447,6 +1453,7 @@ mod tests {
+         }
+         nodes.reverse();
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes,
+             ..StateDiagramRenderModel::default()
+@@ -1487,6 +1494,7 @@ mod tests {
+         }
+         nodes.reverse();
+         let model = StateDiagramRenderModel {
++            source_occurrences: Vec::new(),
+             direction: "TB".to_string(),
+             nodes,
+             ..StateDiagramRenderModel::default()
 diff --git a/crates/merman-ascii/tests/new_family_models/kanban.rs b/crates/merman-ascii/tests/new_family_models/kanban.rs
 index fc4325ea..5c37835f 100644
 --- a/crates/merman-ascii/tests/new_family_models/kanban.rs
@@ -82,11 +150,79 @@ index 7d5d02b6..5fb38f79 100644
          acc_title: None,
          acc_descr: None,
          title: None,
+diff --git a/crates/merman-ascii/tests/state_model.rs b/crates/merman-ascii/tests/state_model.rs
+index 49708676..b855ea20 100644
+--- a/crates/merman-ascii/tests/state_model.rs
++++ b/crates/merman-ascii/tests/state_model.rs
+@@ -374,6 +374,7 @@ fn direct_state_model_keeps_multiline_compartment_boundary_after_bt_mirroring()
+     titled.label = Some("Title one<br>Title two".into());
+     titled.description = Some(vec!["Body one<br>Body two".to_string()]);
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "BT".to_string(),
+         nodes: vec![titled],
+         ..StateDiagramRenderModel::default()
+@@ -558,6 +559,7 @@ fn direct_state_model_preserves_compartments_and_note_side_constraints() {
+     let mut titled = direct_state_node("Primary", "rectWithTitle", None, None);
+     titled.description = Some(vec!["Details".to_string()]);
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![
+             titled,
+@@ -620,6 +622,7 @@ fn direct_state_model_rejects_duplicate_node_ids_before_graph_projection() {
+     let mut second = direct_state_node("A", "rect", None, None);
+     second.label = Some("Second A".into());
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![first, second],
+         edges: vec![StateDiagramRenderEdge {
+@@ -650,6 +653,7 @@ fn direct_state_model_rejects_duplicate_node_ids_before_graph_projection() {
+ #[test]
+ fn direct_state_model_rejects_edges_with_missing_endpoint_nodes() {
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![direct_state_node("A", "rect", None, None)],
+         edges: vec![StateDiagramRenderEdge {
+@@ -682,6 +686,7 @@ fn direct_state_model_rejects_non_string_label_values() {
+     let mut node = direct_state_node("A", "rect", None, None);
+     node.label = Some(false.into());
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![node],
+         ..StateDiagramRenderModel::default()
+@@ -704,6 +709,7 @@ fn direct_state_model_rejects_non_string_label_values() {
+ #[test]
+ fn direct_state_model_rejects_unknown_parent_ids() {
+     let model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![direct_state_node("Child", "rect", Some("Missing"), None)],
+         ..StateDiagramRenderModel::default()
+@@ -726,6 +732,7 @@ fn direct_state_model_rejects_unknown_parent_ids() {
+ #[test]
+ fn direct_state_model_rejects_non_group_and_cyclic_parents() {
+     let non_group_model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![
+             direct_state_node("Leaf", "rect", None, None),
+@@ -753,6 +760,7 @@ fn direct_state_model_rejects_non_group_and_cyclic_parents() {
+     inner.is_group = true;
+     inner.node_type = Some("group".to_string());
+     let cyclic_model = StateDiagramRenderModel {
++        source_occurrences: Vec::new(),
+         direction: "TB".to_string(),
+         nodes: vec![outer, inner],
+         ..StateDiagramRenderModel::default()
 diff --git a/crates/merman-core/src/diagram/mod.rs b/crates/merman-core/src/diagram/mod.rs
-index fe6e3b0e..dd11f347 100644
+index fe6e3b0e..fee9cbb1 100644
 --- a/crates/merman-core/src/diagram/mod.rs
 +++ b/crates/merman-core/src/diagram/mod.rs
-@@ -525,6 +525,21 @@ impl RenderSemanticParseOutput {
+@@ -525,6 +525,22 @@ impl RenderSemanticParseOutput {
          &self.model
      }
  
@@ -96,6 +232,7 @@ index fe6e3b0e..dd11f347 100644
 +            RenderSemanticModel::Gantt(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Journey(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Kanban(model) => Some(&mut model.source_occurrences),
++            RenderSemanticModel::State(model) => Some(&mut model.source_occurrences),
 +            RenderSemanticModel::Flowchart(_) => self
 +                .context
 +                .flowchart
@@ -1021,6 +1158,366 @@ index ad743fd1..138c6d67 100644
      v.extend(rest);
      v
    },
+diff --git a/crates/merman-core/src/diagrams/state/ast.rs b/crates/merman-core/src/diagrams/state/ast.rs
+index 2d861649..003a9f32 100644
+--- a/crates/merman-core/src/diagrams/state/ast.rs
++++ b/crates/merman-core/src/diagrams/state/ast.rs
+@@ -15,6 +15,8 @@ pub(crate) struct ClickStmt {
+ 
+ #[derive(Debug, Clone)]
+ pub(crate) struct StateStmt {
++    pub span: Option<SourceSpan>,
++    pub label_span: Option<SourceSpan>,
+     pub id: String,
+     pub id_span: Option<SourceSpan>,
+     pub ty: String,
+@@ -31,6 +33,8 @@ pub(crate) struct StateStmt {
+ impl StateStmt {
+     pub(crate) fn new(id: String) -> Self {
+         Self {
++            span: None,
++            label_span: None,
+             id,
+             id_span: None,
+             ty: "default".to_string(),
+@@ -55,6 +59,8 @@ impl StateStmt {
+ 
+ #[derive(Debug, Clone)]
+ pub(crate) struct RelationStmt {
++    pub span: Option<SourceSpan>,
++    pub label_span: Option<SourceSpan>,
+     pub state1: StateStmt,
+     pub state2: StateStmt,
+     pub description: Option<String>,
+diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
+index 46e623f8..06ddfa49 100644
+--- a/crates/merman-core/src/diagrams/state/db.rs
++++ b/crates/merman-core/src/diagrams/state/db.rs
+@@ -391,7 +391,7 @@ impl StateDb {
+         &self,
+         meta: &ParseMetadata,
+     ) -> Result<StateDiagramRenderModel> {
+-        let (nodes, edges) = build_layout_data_typed(
++        let (nodes, edges, source_occurrences) = build_layout_data_typed(
+             &self.root_doc,
+             &self.states,
+             &self.style_classes,
+@@ -477,6 +477,7 @@ impl StateDb {
+             .collect();
+ 
+         Ok(StateDiagramRenderModel {
++            source_occurrences,
+             direction: self.direction.clone().unwrap_or_else(|| "TB".to_string()),
+             acc_title: self.acc_title.clone(),
+             acc_descr: self.acc_descr.clone(),
+@@ -717,7 +718,15 @@ fn build_layout_data_typed(
+     states: &HashMap<String, StateRecord>,
+     classes: &IndexMap<String, StyleClass>,
+     config: &MermaidConfig,
+-) -> std::result::Result<(Vec<StateDiagramRenderNode>, Vec<StateDiagramRenderEdge>), String> {
++) -> std::result::Result<
++    (
++        Vec<StateDiagramRenderNode>,
++        Vec<StateDiagramRenderEdge>,
++        Vec<Value>,
++    ),
++    String,
++> {
++    let mut source_occurrences = Vec::new();
+     let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
+     let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
+     let mut node_index: HashMap<String, usize> = HashMap::new();
+@@ -726,6 +735,7 @@ fn build_layout_data_typed(
+     let mut graph_item_count: usize = 0;
+ 
+     struct TypedLayoutContext<'a> {
++        source_occurrences: &'a mut Vec<Value>,
+         states: &'a HashMap<String, StateRecord>,
+         classes: &'a IndexMap<String, StyleClass>,
+         config: &'a MermaidConfig,
+@@ -784,6 +794,22 @@ fn build_layout_data_typed(
+ 
+                     let edge_label_raw = relation.description.clone().unwrap_or_default();
+                     let edge_label = sanitize_text(&edge_label_raw, ctx.config);
++                    if ctx
++                        .config
++                        .as_value()
++                        .get("traceSource")
++                        .and_then(Value::as_bool)
++                        .unwrap_or(false)
++                    {
++                        if let Some(span) = relation.span {
++                            let id = format!("edge{}", *ctx.graph_item_count);
++                            let mut piece = json!({"kind":"edge","semanticId":id,"domId":format!("state:edge:{id}"),"from":relation.state1.id,"to":relation.state2.id,"span":span});
++                            if let Some(label) = relation.label_span {
++                                piece["labelSpan"] = json!(label);
++                            }
++                            ctx.source_occurrences.push(piece);
++                        }
++                    }
+                     ctx.edges.push(StateDiagramRenderEdge {
+                         id: format!("edge{}", *ctx.graph_item_count),
+                         start: relation.state1.id.clone(),
+@@ -807,6 +833,30 @@ fn build_layout_data_typed(
+         parsed_item: &StateStmt,
+         alt_flag: bool,
+     ) -> std::result::Result<(), String> {
++        if ctx
++            .config
++            .as_value()
++            .get("traceSource")
++            .and_then(Value::as_bool)
++            .unwrap_or(false)
++        {
++            if let Some(span) = if parsed_item.note.is_some() {
++                parsed_item.id_span
++            } else {
++                parsed_item.span.or(parsed_item.id_span)
++            } {
++                let mut piece = json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span});
++                if parsed_item.note.is_none() {
++                    if let Some(label) = parsed_item.label_span {
++                        piece["labelSpan"] = json!(label);
++                    }
++                }
++                if let Some(parent) = parent {
++                    piece["parentId"] = json!(parent.id);
++                }
++                ctx.source_occurrences.push(piece);
++            }
++        }
+         let item_id = parsed_item.id.clone();
+         if item_id == "root" || item_id.is_empty() {
+             return Ok(());
+@@ -932,6 +982,21 @@ fn build_layout_data_typed(
+             n.text = sanitize_text(&n.text, config);
+ 
+             let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
++            if ctx
++                .config
++                .as_value()
++                .get("traceSource")
++                .and_then(Value::as_bool)
++                .unwrap_or(false)
++            {
++                if let Some(span) = parsed_item.span {
++                    let mut piece = json!({"kind":"control","semanticId":note_id,"domId":format!("state:node:{note_id}"),"span":span});
++                    if let Some(label) = parsed_item.label_span {
++                        piece["labelSpan"] = json!(label);
++                    }
++                    ctx.source_occurrences.push(piece);
++                }
++            }
+             let parent_base_id = format!("{item_id}{PARENT_ID}");
+             let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
+                 || ctx.states.contains_key(&parent_base_id)
+@@ -1028,6 +1093,7 @@ fn build_layout_data_typed(
+ 
+     {
+         let mut ctx = TypedLayoutContext {
++            source_occurrences: &mut source_occurrences,
+             states,
+             classes,
+             config,
+@@ -1064,7 +1130,7 @@ fn build_layout_data_typed(
+         node.description = Some(rest);
+     }
+ 
+-    Ok((nodes, edges))
++    Ok((nodes, edges, source_occurrences))
+ }
+ 
+ fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
+diff --git a/crates/merman-core/src/diagrams/state/parse.rs b/crates/merman-core/src/diagrams/state/parse.rs
+index a335e8d3..0be3a782 100644
+--- a/crates/merman-core/src/diagrams/state/parse.rs
++++ b/crates/merman-core/src/diagrams/state/parse.rs
+@@ -201,6 +201,7 @@ fn construct_state_semantic_source(
+         }
+     };
+ 
++    normalize_state_source_spans(&mut doc, code, control)?;
+     let mut divider_cnt = 0usize;
+     assign_divider_ids(&mut doc, &mut divider_cnt, control)?;
+ 
+@@ -210,6 +211,72 @@ fn construct_state_semantic_source(
+     Ok(Ok(StateSemanticSource { db, editor_facts }))
+ }
+ 
++fn normalize_state_source_spans(
++    doc: &mut [Stmt],
++    code: &str,
++    control: &OperationControl,
++) -> OperationControlResult<()> {
++    fn label_span(span: SourceSpan, code: &str, note: bool) -> SourceSpan {
++        let raw = &code[span.start..span.end];
++        let (offset, value) = if let Some(value) = raw.strip_prefix(':') {
++            (1, value)
++        } else if let Some(value) = raw.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
++            (1, value)
++        } else if note {
++            (
++                0,
++                super::note_block_terminator_range(raw).map_or(raw, |(start, _)| &raw[..start]),
++            )
++        } else {
++            (0, raw)
++        };
++        let trimmed = value.trim();
++        let start = span.start + offset + value.len() - value.trim_start().len();
++        SourceSpan::new(start, start + trimmed.len())
++    }
++    let mut stack = vec![doc.iter_mut()];
++    while let Some(iter) = stack.last_mut() {
++        control.checkpoint()?;
++        let Some(stmt) = iter.next() else {
++            stack.pop();
++            continue;
++        };
++        match stmt {
++            Stmt::State(state) => {
++                if let Some(span) = &mut state.span {
++                    let boundary = code[..span.start]
++                        .rfind(['\n', '\r', ';'])
++                        .map_or(0, |p| p + 1);
++                    let prefix = &code[boundary..span.start];
++                    if prefix.trim() == "state" {
++                        span.start = boundary + prefix.len() - prefix.trim_start().len();
++                    }
++                    span.end = span.start + code[span.start..span.end].trim_end().len();
++                }
++                if let Some(span) = state.label_span {
++                    state.label_span = Some(label_span(span, code, state.note.is_some()));
++                }
++                if state.doc.is_some() && state.label_span.is_none() {
++                    state.label_span = state.id_span;
++                }
++                if let Some(doc) = &mut state.doc {
++                    stack.push(doc.iter_mut());
++                }
++            }
++            Stmt::Relation(relation) => {
++                if let Some(span) = relation.label_span {
++                    relation.label_span = Some(label_span(span, code, false));
++                }
++                if let Some(span) = &mut relation.span {
++                    span.end = span.start + code[span.start..span.end].trim_end().len();
++                }
++            }
++            _ => {}
++        }
++    }
++    Ok(())
++}
++
+ fn assign_divider_ids(
+     stmts: &mut [Stmt],
+     cnt: &mut usize,
+diff --git a/crates/merman-core/src/diagrams/state/render_model.rs b/crates/merman-core/src/diagrams/state/render_model.rs
+index 1607cf60..6b3ba347 100644
+--- a/crates/merman-core/src/diagrams/state/render_model.rs
++++ b/crates/merman-core/src/diagrams/state/render_model.rs
+@@ -12,6 +12,8 @@ fn default_state_direction() -> String {
+ #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+ #[serde(rename_all = "camelCase")]
+ pub struct StateDiagramRenderModel {
++    #[serde(skip)]
++    pub source_occurrences: Vec<Value>,
+     #[serde(default = "default_state_direction")]
+     pub direction: String,
+     #[serde(default, rename = "accTitle")]
+diff --git a/crates/merman-core/src/diagrams/state_grammar.lalrpop b/crates/merman-core/src/diagrams/state_grammar.lalrpop
+index 280e3b85..f61c9000 100644
+--- a/crates/merman-core/src/diagrams/state_grammar.lalrpop
++++ b/crates/merman-core/src/diagrams/state_grammar.lalrpop
+@@ -78,6 +78,17 @@ Item: Option<Stmt> = {
+ };
+ 
+ Statement: Stmt = {
++  <l:@L> <mut stmt:StatementInner> <r:@R> => {
++    match &mut stmt {
++      Stmt::State(state) => state.span = Some(SourceSpan::new(l, r)),
++      Stmt::Relation(relation) => relation.span = Some(SourceSpan::new(l, r)),
++      _ => {},
++    }
++    stmt
++  }
++};
++
++StatementInner: Stmt = {
+   <s:ClassDefStatement> => s,
+   <s:StyleStatement> => s,
+   <s:CssClassStatement> => s,
+@@ -91,11 +102,14 @@ Statement: Stmt = {
+   <s1:IdStatement> "-->" <s2:IdStatement> <d:OptDescr> => Stmt::Relation(Box::new(RelationStmt {
+     state1: s1,
+     state2: s2,
+-    description: d,
++    span: None,
++    label_span: d.as_ref().map(|(_, span)| *span),
++    description: d.map(|(text, _)| text),
+   })),
+ 
+   <mut s:IdStatement> <d:OptDescr> => {
+-    s.description = d;
++    s.label_span = d.as_ref().map(|(_, span)| *span);
++    s.description = d.map(|(text, _)| text);
+     Stmt::State(s)
+   },
+ 
+@@ -103,7 +117,8 @@ Statement: Stmt = {
+   <_id:CompositState> => Stmt::Noop,
+ 
+   <l:@L> <id:CompositState> <r:@R> <doc:Block> => Stmt::State(StateStmt {
+-    id,
++    span: None,
++    label_span: None,    id,
+     id_span: Some(SourceSpan::new(l, r)),
+     ty: "default".to_string(),
+     description: None,
+@@ -116,7 +131,7 @@ Statement: Stmt = {
+     start: None,
+   }),
+ 
+-  <descr:StateDescr> "as" <l:@L> <id:Id> <doc:OptBlock> => {
++  <dl:@L> <descr:StateDescr> <dr:@R> "as" <l:@L> <id:Id> <doc:OptBlock> => {
+     let trimmed = descr.trim().to_string();
+     let mut state_id = id;
+     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
+@@ -133,7 +148,8 @@ Statement: Stmt = {
+       }
+     }
+     Stmt::State(StateStmt {
+-      id: state_id,
++    span: None,
++    label_span: Some(SourceSpan::new(dl, dr)),      id: state_id,
+       id_span,
+       ty: "default".to_string(),
+       description: Some(description),
+@@ -166,8 +182,9 @@ Statement: Stmt = {
+ };
+ 
+ NoteStatement: Stmt = {
+-  Note <pos:NotePosition> <l:@L> <id:Id> <r:@R> <text:NoteTextTok> => Stmt::State(StateStmt {
+-    id,
++  Note <pos:NotePosition> <l:@L> <id:Id> <r:@R> <tl:@L> <text:NoteTextTok> <tr:@R> => Stmt::State(StateStmt {
++    span: None,
++    label_span: Some(SourceSpan::new(tl, tr)),    id,
+     id_span: Some(SourceSpan::new(l, r)),
+     ty: "default".to_string(),
+     description: None,
+@@ -192,9 +209,9 @@ NotePosition: String = {
+   RightOf => "right of".to_string(),
+ };
+ 
+-OptDescr: Option<String> = {
++OptDescr: Option<(String, SourceSpan)> = {
+   => None,
+-  <d:Descr> => Some(d),
++  <l:@L> <d:Descr> <r:@R> => Some((d, SourceSpan::new(l, r))),
+ };
+ 
+ Block: Vec<Stmt> = {
 diff --git a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs b/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
 index 979d9b43..9d6db5ce 100644
 --- a/crates/merman-core/src/generated/lalrpop/flowchart_grammar.rs
@@ -6987,6 +7484,2413 @@ index fd0772ed..acb93440 100644
          __0,
          __1,
          __2,
+diff --git a/crates/merman-core/src/generated/lalrpop/state_grammar.rs b/crates/merman-core/src/generated/lalrpop/state_grammar.rs
+index f5d64403..18699056 100644
+--- a/crates/merman-core/src/generated/lalrpop/state_grammar.rs
++++ b/crates/merman-core/src/generated/lalrpop/state_grammar.rs
+@@ -1,5 +1,5 @@
+ // auto-generated: "lalrpop 0.23.1"
+-// sha3: ad12e290972e53e810834ca98ff6e821e0e24f897673659316ba96ad13468b12
++// sha3: e5c0cc8f8da82607eb96eff0341eaaf58ef9fdd44b3df2064dbfe27194d7441a
+ use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
+ use crate::SourceSpan;
+ #[allow(unused_extern_crates)]
+@@ -35,7 +35,7 @@ mod ___parse___Root {
+         Variant7(Vec<Stmt>),
+         Variant8(StateStmt),
+         Variant9(Option<Vec<Stmt>>),
+-        Variant10(Option<String>),
++        Variant10(Option<(String, SourceSpan)>),
+         Variant11(()),
+     }
+     const ___ACTION: &[i8] = &[
+@@ -44,23 +44,23 @@ mod ___parse___Root {
+         // State 1
+         2, -32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 2
+-        39, 0, 37, 43, 34, 0, 0, 0, 0, 0, 8, 0, 0, 0, 41, 7, 35, 38, 29, 32, 36, 40, 31, 0, 0, 30, 0, 0, 42, 0, 0, 33, 28, 26, 27, 6, 0, 0,
++        40, 0, 38, 44, 35, 0, 0, 0, 0, 0, 8, 0, 0, 0, 42, 7, 36, 39, 30, 33, 37, 41, 32, 0, 0, 31, 0, 0, 43, 0, 0, 34, 29, 27, 28, 6, 0, 0,
+         // State 3
+-        39, 0, 37, 43, 34, 0, 0, 0, -23, 0, 8, 0, 0, 0, 41, 7, 35, 38, 29, 32, 36, 40, 31, 0, 0, 30, 0, 0, 42, 0, 0, 33, 28, 26, 27, 6, 0, 0,
++        40, 0, 38, 44, 35, 0, 0, 0, -23, 0, 8, 0, 0, 0, 42, 7, 36, 39, 30, 33, 37, 41, 32, 0, 0, 31, 0, 0, 43, 0, 0, 34, 29, 27, 28, 6, 0, 0,
+         // State 4
+-        -30, 0, -30, -30, -30, 46, 9, 0, -30, 0, -30, 0, 0, 0, -30, -30, -30, -30, -30, -30, -30, -30, -30, 0, 0, -30, 0, 0, -30, 0, 0, -30, -30, -30, -30, -30, 0, 0,
++        -30, 0, -30, -30, -30, 47, 9, 0, -30, 0, -30, 0, 0, 0, -30, -30, -30, -30, -30, -30, -30, -30, -30, 0, 0, -30, 0, 0, -30, 0, 0, -30, -30, -30, -30, -30, 0, 0,
+         // State 5
+-        0, 0, 37, 43, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 38, 44, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 6
+-        -46, 0, -46, -46, -46, 0, 0, 10, -46, 0, -46, 0, 0, 0, -46, -46, -46, -46, -46, -46, -46, -46, -46, 0, 0, -46, 0, 0, -46, 0, 0, -46, -46, -46, -46, -46, 0, 0,
++        -47, 0, -47, -47, -47, 0, 0, 10, -47, 0, -47, 0, 0, 0, -47, -47, -47, -47, -47, -47, -47, -47, -47, 0, 0, -47, 0, 0, -47, 0, 0, -47, -47, -47, -47, -47, 0, 0,
+         // State 7
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 54, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 53, 55, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 8
+-        0, 0, 37, 43, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 38, 44, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 9
+-        39, 0, 37, 43, 34, 0, 0, 0, -22, 0, 8, 0, 0, 0, 41, 7, 35, 38, 29, 32, 36, 40, 31, 0, 0, 30, 0, 0, 42, 0, 0, 33, 28, 26, 27, 6, 0, 0,
++        40, 0, 38, 44, 35, 0, 0, 0, -22, 0, 8, 0, 0, 0, 42, 7, 36, 39, 30, 33, 37, 41, 32, 0, 0, 31, 0, 0, 43, 0, 0, 34, 29, 27, 28, 6, 0, 0,
+         // State 10
+-        -30, 0, -30, -30, -30, 46, 0, 0, -30, 0, -30, 0, 0, 0, -30, -30, -30, -30, -30, -30, -30, -30, -30, 0, 0, -30, 0, 0, -30, 0, 0, -30, -30, -30, -30, -30, 0, 0,
++        -30, 0, -30, -30, -30, 47, 0, 0, -30, 0, -30, 0, 0, 0, -30, -30, -30, -30, -30, -30, -30, -30, -30, 0, 0, -30, 0, 0, -30, 0, 0, -30, -30, -30, -30, -30, 0, 0,
+         // State 11
+         -28, 0, -28, -28, -28, 0, 0, 10, -28, 0, -28, 0, 0, 0, -28, -28, -28, -28, -28, -28, -28, -28, -28, 0, 0, -28, 0, 0, -28, 0, 0, -28, -28, -28, -28, -28, 0, 0,
+         // State 12
+@@ -70,119 +70,121 @@ mod ___parse___Root {
+         // State 14
+         0, -33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 15
+-        -39, 0, -39, -39, -39, 0, 0, 0, -39, 0, -39, 0, 0, 0, -39, -39, -39, -39, -39, -39, -39, -39, -39, 0, 0, -39, 0, 0, -39, 0, 0, -39, -39, -39, -39, -39, 0, 0,
++        -40, 0, -40, -40, -40, 0, 0, 0, -40, 0, -40, 0, 0, 0, -40, -40, -40, -40, -40, -40, -40, -40, -40, 0, 0, -40, 0, 0, -40, 0, 0, -40, -40, -40, -40, -40, 0, 0,
+         // State 16
+-        -35, 0, -35, -35, -35, 0, 0, 0, -35, 0, -35, 0, 0, 0, -35, -35, -35, -35, -35, -35, -35, -35, -35, 0, 0, -35, 0, 0, -35, 0, 0, -35, -35, -35, -35, -35, 0, 0,
++        -36, 0, -36, -36, -36, 0, 0, 0, -36, 0, -36, 0, 0, 0, -36, -36, -36, -36, -36, -36, -36, -36, -36, 0, 0, -36, 0, 0, -36, 0, 0, -36, -36, -36, -36, -36, 0, 0,
+         // State 17
+-        -40, 0, -40, -40, -40, 0, 0, 0, -40, 0, -40, 0, 0, 0, -40, -40, -40, -40, -40, -40, -40, -40, -40, 0, 0, -40, 0, 0, -40, 0, 0, -40, -40, -40, -40, -40, 0, 0,
++        -41, 0, -41, -41, -41, 0, 0, 0, -41, 0, -41, 0, 0, 0, -41, -41, -41, -41, -41, -41, -41, -41, -41, 0, 0, -41, 0, 0, -41, 0, 0, -41, -41, -41, -41, -41, 0, 0,
+         // State 18
+-        -37, 0, -37, -37, -37, 0, 0, 0, -37, 0, -37, 0, 0, 0, -37, -37, -37, -37, -37, -37, -37, -37, -37, 0, 0, -37, 0, 0, -37, 0, 0, -37, -37, -37, -37, -37, 0, 0,
+-        // State 19
+         -38, 0, -38, -38, -38, 0, 0, 0, -38, 0, -38, 0, 0, 0, -38, -38, -38, -38, -38, -38, -38, -38, -38, 0, 0, -38, 0, 0, -38, 0, 0, -38, -38, -38, -38, -38, 0, 0,
++        // State 19
++        -39, 0, -39, -39, -39, 0, 0, 0, -39, 0, -39, 0, 0, 0, -39, -39, -39, -39, -39, -39, -39, -39, -39, 0, 0, -39, 0, 0, -39, 0, 0, -39, -39, -39, -39, -39, 0, 0,
+         // State 20
+         -4, 0, -4, -4, -4, 0, 0, 0, -4, 0, -4, 0, 0, 0, -4, -4, -4, -4, -4, -4, -4, -4, -4, 0, 0, -4, 0, 0, -4, 0, 0, -4, -4, -4, -4, -4, 0, 0,
+         // State 21
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 22
+-        -41, 0, -41, -41, -41, 0, 0, 0, -41, 0, -41, 0, 0, 0, -41, -41, -41, -41, -41, -41, -41, -41, -41, 0, 0, -41, 0, 0, -41, 0, 0, -41, -41, -41, -41, -41, 0, 0,
++        -42, 0, -42, -42, -42, 0, 0, 0, -42, 0, -42, 0, 0, 0, -42, -42, -42, -42, -42, -42, -42, -42, -42, 0, 0, -42, 0, 0, -42, 0, 0, -42, -42, -42, -42, -42, 0, 0,
+         // State 23
+         -21, 0, -21, -21, -21, 0, 0, 0, -21, 0, -21, 0, 0, 0, -21, -21, -21, -21, -21, -21, -21, -21, -21, 0, 0, -21, 0, 0, -21, 0, 0, -21, -21, -21, -21, -21, 0, 0,
+         // State 24
+-        -36, 0, -36, -36, -36, 0, 0, 0, -36, 0, -36, 0, 0, 0, -36, -36, -36, -36, -36, -36, -36, -36, -36, 0, 0, -36, 0, 0, -36, 0, 0, -36, -36, -36, -36, -36, 0, 0,
++        -35, 0, -35, -35, -35, 0, 0, 0, -35, 0, -35, 0, 0, 0, -35, -35, -35, -35, -35, -35, -35, -35, -35, 0, 0, -35, 0, 0, -35, 0, 0, -35, -35, -35, -35, -35, 0, 0,
+         // State 25
+-        -9, 0, -9, -9, -9, 0, 0, 0, -9, 0, -9, 0, 0, 0, -9, -9, -9, -9, -9, -9, -9, -9, -9, 0, 0, -9, 0, 0, -9, 0, 0, -9, -9, -9, -9, -9, 0, 0,
++        -37, 0, -37, -37, -37, 0, 0, 0, -37, 0, -37, 0, 0, 0, -37, -37, -37, -37, -37, -37, -37, -37, -37, 0, 0, -37, 0, 0, -37, 0, 0, -37, -37, -37, -37, -37, 0, 0,
+         // State 26
+-        -10, 0, -10, -10, -10, 0, 0, 0, -10, 0, -10, 0, 0, 0, -10, -10, -10, -10, -10, -10, -10, -10, -10, 0, 0, -10, 0, 0, -10, 0, 0, -10, -10, -10, -10, -10, 0, 0,
++        -9, 0, -9, -9, -9, 0, 0, 0, -9, 0, -9, 0, 0, 0, -9, -9, -9, -9, -9, -9, -9, -9, -9, 0, 0, -9, 0, 0, -9, 0, 0, -9, -9, -9, -9, -9, 0, 0,
+         // State 27
+-        -8, 0, -8, -8, -8, 0, 0, 0, -8, 0, -8, 0, 0, 0, -8, -8, -8, -8, -8, -8, -8, -8, -8, 0, 0, -8, 0, 0, -8, 0, 0, -8, -8, -8, -8, -8, 0, 0,
++        -10, 0, -10, -10, -10, 0, 0, 0, -10, 0, -10, 0, 0, 0, -10, -10, -10, -10, -10, -10, -10, -10, -10, 0, 0, -10, 0, 0, -10, 0, 0, -10, -10, -10, -10, -10, 0, 0,
+         // State 28
+-        -51, 0, -51, -51, -51, 0, 0, 0, -51, 0, -51, 0, 0, 0, -51, -51, -51, -51, -51, -51, -51, -51, -51, 0, 0, -51, 0, 0, -51, 0, 0, -51, -51, -51, -51, -51, 0, 0,
++        -8, 0, -8, -8, -8, 0, 0, 0, -8, 0, -8, 0, 0, 0, -8, -8, -8, -8, -8, -8, -8, -8, -8, 0, 0, -8, 0, 0, -8, 0, 0, -8, -8, -8, -8, -8, 0, 0,
+         // State 29
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        -52, 0, -52, -52, -52, 0, 0, 0, -52, 0, -52, 0, 0, 0, -52, -52, -52, -52, -52, -52, -52, -52, -52, 0, 0, -52, 0, 0, -52, 0, 0, -52, -52, -52, -52, -52, 0, 0,
+         // State 30
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 31
+-        -52, 0, -52, -52, -52, 0, 0, 0, -52, 0, -52, 0, 0, 0, -52, -52, -52, -52, -52, -52, -52, -52, -52, 0, 0, -52, 0, 0, -52, 0, 0, -52, -52, -52, -52, -52, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 32
+-        -16, 0, -16, -16, -16, 0, 0, 0, -16, 0, -16, 0, 0, 0, -16, -16, -16, -16, -16, -16, -16, -16, -16, 0, 0, -16, 0, 0, -16, 0, 0, -16, -16, -16, -16, -16, 0, 0,
++        -53, 0, -53, -53, -53, 0, 0, 0, -53, 0, -53, 0, 0, 0, -53, -53, -53, -53, -53, -53, -53, -53, -53, 0, 0, -53, 0, 0, -53, 0, 0, -53, -53, -53, -53, -53, 0, 0,
+         // State 33
+-        -18, 0, -18, -18, -18, -18, -18, 0, -18, 0, -18, 0, 0, 0, -18, -18, -18, -18, -18, -18, -18, -18, -18, 0, 0, -18, 0, 0, -18, 0, 0, -18, -18, -18, -18, -18, -18, -18,
++        -16, 0, -16, -16, -16, 0, 0, 0, -16, 0, -16, 0, 0, 0, -16, -16, -16, -16, -16, -16, -16, -16, -16, 0, 0, -16, 0, 0, -16, 0, 0, -16, -16, -16, -16, -16, 0, 0,
+         // State 34
+-        -49, 0, -49, -49, -49, 0, 0, 0, -49, 0, -49, 0, 0, 0, -49, -49, -49, -49, -49, -49, -49, -49, -49, 0, 0, -49, 0, 0, -49, 0, 0, -49, -49, -49, -49, -49, 0, 0,
++        -18, 0, -18, -18, -18, -18, -18, 0, -18, 0, -18, 0, 0, 0, -18, -18, -18, -18, -18, -18, -18, -18, -18, 0, 0, -18, 0, 0, -18, 0, 0, -18, -18, -18, -18, -18, -18, -18,
+         // State 35
+-        -42, 0, -42, -42, -42, 0, 0, 0, -42, 0, -42, 0, 0, 0, -42, -42, -42, -42, -42, -42, -42, -42, -42, 0, 0, -42, 0, 0, -42, 0, 0, -42, -42, -42, -42, -42, 0, 0,
++        -50, 0, -50, -50, -50, 0, 0, 0, -50, 0, -50, 0, 0, 0, -50, -50, -50, -50, -50, -50, -50, -50, -50, 0, 0, -50, 0, 0, -50, 0, 0, -50, -50, -50, -50, -50, 0, 0,
+         // State 36
+-        -17, 0, -17, -17, -17, -17, -17, 0, -17, 0, -17, 0, 0, 0, -17, -17, -17, -17, -17, -17, -17, -17, -17, 0, 0, -17, 0, 0, -17, 0, 0, -17, -17, -17, -17, -17, -17, -17,
++        -43, 0, -43, -43, -43, 0, 0, 0, -43, 0, -43, 0, 0, 0, -43, -43, -43, -43, -43, -43, -43, -43, -43, 0, 0, -43, 0, 0, -43, 0, 0, -43, -43, -43, -43, -43, 0, 0,
+         // State 37
+-        -50, 0, -50, -50, -50, 0, 0, 0, -50, 0, -50, 0, 0, 0, -50, -50, -50, -50, -50, -50, -50, -50, -50, 0, 0, -50, 0, 0, -50, 0, 0, -50, -50, -50, -50, -50, 0, 0,
++        -17, 0, -17, -17, -17, -17, -17, 0, -17, 0, -17, 0, 0, 0, -17, -17, -17, -17, -17, -17, -17, -17, -17, 0, 0, -17, 0, 0, -17, 0, 0, -17, -17, -17, -17, -17, -17, -17,
+         // State 38
+-        -20, 0, -20, -20, -20, 0, 0, 0, -20, 0, -20, 0, 0, 0, -20, -20, -20, -20, -20, -20, -20, -20, -20, 0, 0, -20, 0, 0, -20, 0, 0, -20, -20, -20, -20, -20, 0, 0,
++        -51, 0, -51, -51, -51, 0, 0, 0, -51, 0, -51, 0, 0, 0, -51, -51, -51, -51, -51, -51, -51, -51, -51, 0, 0, -51, 0, 0, -51, 0, 0, -51, -51, -51, -51, -51, 0, 0,
+         // State 39
+-        -43, 0, -43, -43, -43, 0, 0, 0, -43, 0, -43, 0, 0, 0, -43, -43, -43, -43, -43, -43, -43, -43, -43, 0, 0, -43, 0, 0, -43, 0, 0, -43, -43, -43, -43, -43, 0, 0,
++        -20, 0, -20, -20, -20, 0, 0, 0, -20, 0, -20, 0, 0, 0, -20, -20, -20, -20, -20, -20, -20, -20, -20, 0, 0, -20, 0, 0, -20, 0, 0, -20, -20, -20, -20, -20, 0, 0,
+         // State 40
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        -44, 0, -44, -44, -44, 0, 0, 0, -44, 0, -44, 0, 0, 0, -44, -44, -44, -44, -44, -44, -44, -44, -44, 0, 0, -44, 0, 0, -44, 0, 0, -44, -44, -44, -44, -44, 0, 0,
+         // State 41
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 42
+-        -19, 0, -19, -19, -19, -19, -19, 0, -19, 0, -19, 0, 0, 0, -19, -19, -19, -19, -19, -19, -19, -19, -19, 0, 0, -19, 0, 0, -19, 0, 0, -19, -19, -19, -19, -19, -19, -19,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 43
+-        -5, 0, -5, -5, -5, 0, 0, 0, -5, 0, -5, 0, 0, 0, -5, -5, -5, -5, -5, -5, -5, -5, -5, 0, 0, -5, 0, 0, -5, 0, 0, -5, -5, -5, -5, -5, 0, 0,
++        -19, 0, -19, -19, -19, -19, -19, 0, -19, 0, -19, 0, 0, 0, -19, -19, -19, -19, -19, -19, -19, -19, -19, 0, 0, -19, 0, 0, -19, 0, 0, -19, -19, -19, -19, -19, -19, -19,
+         // State 44
+-        -45, 0, -45, -45, -45, 0, 0, 0, -45, 0, -45, 0, 0, 0, -45, -45, -45, -45, -45, -45, -45, -45, -45, 0, 0, -45, 0, 0, -45, 0, 0, -45, -45, -45, -45, -45, 0, 0,
++        -5, 0, -5, -5, -5, 0, 0, 0, -5, 0, -5, 0, 0, 0, -5, -5, -5, -5, -5, -5, -5, -5, -5, 0, 0, -5, 0, 0, -5, 0, 0, -5, -5, -5, -5, -5, 0, 0,
+         // State 45
+-        -31, 0, -31, -31, -31, 0, 0, 0, -31, 0, -31, 0, 0, 0, -31, -31, -31, -31, -31, -31, -31, -31, -31, 0, 0, -31, 0, 0, -31, 0, 0, -31, -31, -31, -31, -31, 0, 0,
++        -46, 0, -46, -46, -46, 0, 0, 0, -46, 0, -46, 0, 0, 0, -46, -46, -46, -46, -46, -46, -46, -46, -46, 0, 0, -46, 0, 0, -46, 0, 0, -46, -46, -46, -46, -46, 0, 0,
+         // State 46
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        -31, 0, -31, -31, -31, 0, 0, 0, -31, 0, -31, 0, 0, 0, -31, -31, -31, -31, -31, -31, -31, -31, -31, 0, 0, -31, 0, 0, -31, 0, 0, -31, -31, -31, -31, -31, 0, 0,
+         // State 47
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 48
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59, 60,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 49
+-        -47, 0, -47, -47, -47, 0, 0, 0, -47, 0, -47, 0, 0, 0, -47, -47, -47, -47, -47, -47, -47, -47, -47, 0, 0, -47, 0, 0, -47, 0, 0, -47, -47, -47, -47, -47, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 61,
+         // State 50
+-        0, 0, 62, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        -48, 0, -48, -48, -48, 0, 0, 0, -48, 0, -48, 0, 0, 0, -48, -48, -48, -48, -48, -48, -48, -48, -48, 0, 0, -48, 0, 0, -48, 0, 0, -48, -48, -48, -48, -48, 0, 0,
+         // State 51
+-        0, 0, -24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 52
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, -24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 53
+-        0, 0, -25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 54
+-        0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, -25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 55
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 56
+-        -15, 0, -15, -15, -15, 0, 0, 0, -15, 0, -15, 0, 0, 0, -15, -15, -15, -15, -15, -15, -15, -15, -15, 0, 0, -15, 0, 0, -15, 0, 0, -15, -15, -15, -15, -15, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 0, 0,
+         // State 57
+-        -12, 0, -12, -12, -12, 0, 0, 0, -12, 0, -12, 0, 0, 0, -12, -12, -12, -12, -12, -12, -12, -12, -12, 0, 0, -12, 0, 0, -12, 0, 0, -12, -12, -12, -12, -12, 0, 0,
++        -15, 0, -15, -15, -15, 0, 0, 0, -15, 0, -15, 0, 0, 0, -15, -15, -15, -15, -15, -15, -15, -15, -15, 0, 0, -15, 0, 0, -15, 0, 0, -15, -15, -15, -15, -15, 0, 0,
+         // State 58
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 66,
++        -12, 0, -12, -12, -12, 0, 0, 0, -12, 0, -12, 0, 0, 0, -12, -12, -12, -12, -12, -12, -12, -12, -12, 0, 0, -12, 0, 0, -12, 0, 0, -12, -12, -12, -12, -12, 0, 0,
+         // State 59
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 67,
+         // State 60
+-        0, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 68,
+         // State 61
+-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 62
+-        0, 0, 70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 63
+-        -53, 0, -53, -53, -53, 0, 0, 0, -53, 0, -53, 0, 0, 0, -53, -53, -53, -53, -53, -53, -53, -53, -53, 0, 0, -53, 0, 0, -53, 0, 0, -53, -53, -53, -53, -53, 0, 0,
++        0, 0, 71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         // State 64
+-        -44, 0, -44, -44, -44, 0, 0, 0, -44, 0, -44, 0, 0, 0, -44, -44, -44, -44, -44, -44, -44, -44, -44, 0, 0, -44, 0, 0, -44, 0, 0, -44, -44, -44, -44, -44, 0, 0,
++        -54, 0, -54, -54, -54, 0, 0, 0, -54, 0, -54, 0, 0, 0, -54, -54, -54, -54, -54, -54, -54, -54, -54, 0, 0, -54, 0, 0, -54, 0, 0, -54, -54, -54, -54, -54, 0, 0,
+         // State 65
+-        -14, 0, -14, -14, -14, 0, 0, 0, -14, 0, -14, 0, 0, 0, -14, -14, -14, -14, -14, -14, -14, -14, -14, 0, 0, -14, 0, 0, -14, 0, 0, -14, -14, -14, -14, -14, 0, 0,
++        -45, 0, -45, -45, -45, 0, 0, 0, -45, 0, -45, 0, 0, 0, -45, -45, -45, -45, -45, -45, -45, -45, -45, 0, 0, -45, 0, 0, -45, 0, 0, -45, -45, -45, -45, -45, 0, 0,
+         // State 66
+-        -13, 0, -13, -13, -13, 0, 0, 0, -13, 0, -13, 0, 0, 0, -13, -13, -13, -13, -13, -13, -13, -13, -13, 0, 0, -13, 0, 0, -13, 0, 0, -13, -13, -13, -13, -13, 0, 0,
++        -14, 0, -14, -14, -14, 0, 0, 0, -14, 0, -14, 0, 0, 0, -14, -14, -14, -14, -14, -14, -14, -14, -14, 0, 0, -14, 0, 0, -14, 0, 0, -14, -14, -14, -14, -14, 0, 0,
+         // State 67
+-        -11, 0, -11, -11, -11, 0, 0, 0, -11, 0, -11, 0, 0, 0, -11, -11, -11, -11, -11, -11, -11, -11, -11, 0, 0, -11, 0, 0, -11, 0, 0, -11, -11, -11, -11, -11, 0, 0,
++        -13, 0, -13, -13, -13, 0, 0, 0, -13, 0, -13, 0, 0, 0, -13, -13, -13, -13, -13, -13, -13, -13, -13, 0, 0, -13, 0, 0, -13, 0, 0, -13, -13, -13, -13, -13, 0, 0,
+         // State 68
+-        -26, 0, -26, -26, -26, 0, 0, 0, -26, 0, -26, 0, 0, 0, -26, -26, -26, -26, -26, -26, -26, -26, -26, 0, 0, -26, 0, 0, -26, 0, 0, -26, -26, -26, -26, -26, 0, 0,
++        -11, 0, -11, -11, -11, 0, 0, 0, -11, 0, -11, 0, 0, 0, -11, -11, -11, -11, -11, -11, -11, -11, -11, 0, 0, -11, 0, 0, -11, 0, 0, -11, -11, -11, -11, -11, 0, 0,
+         // State 69
+-        -27, 0, -27, -27, -27, 0, 0, 0, -27, 0, -27, 0, 0, 0, -27, -27, -27, -27, -27, -27, -27, -27, -27, 0, 0, -27, 0, 0, -27, 0, 0, -27, -27, -27, -27, -27, 0, 0,
++        -26, 0, -26, -26, -26, 0, 0, 0, -26, 0, -26, 0, 0, 0, -26, -26, -26, -26, -26, -26, -26, -26, -26, 0, 0, -26, 0, 0, -26, 0, 0, -26, -26, -26, -26, -26, 0, 0,
+         // State 70
+-        -29, 0, -29, -29, -29, 0, 0, 0, -29, 0, -29, 0, 0, 0, -29, -29, -29, -29, -29, -29, -29, -29, -29, 0, 0, -29, 0, 0, -29, 0, 0, -29, -29, -29, -29, -29, 0, 0,
++        -27, 0, -27, -27, -27, 0, 0, 0, -27, 0, -27, 0, 0, 0, -27, -27, -27, -27, -27, -27, -27, -27, -27, 0, 0, -27, 0, 0, -27, 0, 0, -27, -27, -27, -27, -27, 0, 0,
+         // State 71
+-        -48, 0, -48, -48, -48, 0, 0, 0, -48, 0, -48, 0, 0, 0, -48, -48, -48, -48, -48, -48, -48, -48, -48, 0, 0, -48, 0, 0, -48, 0, 0, -48, -48, -48, -48, -48, 0, 0,
++        -29, 0, -29, -29, -29, 0, 0, 0, -29, 0, -29, 0, 0, 0, -29, -29, -29, -29, -29, -29, -29, -29, -29, 0, 0, -29, 0, 0, -29, 0, 0, -29, -29, -29, -29, -29, 0, 0,
++        // State 72
++        -49, 0, -49, -49, -49, 0, 0, 0, -49, 0, -49, 0, 0, 0, -49, -49, -49, -49, -49, -49, -49, -49, -49, 0, 0, -49, 0, 0, -49, 0, 0, -49, -49, -49, -49, -49, 0, 0,
+     ];
+     fn ___action(state: i8, integer: usize) -> i8 {
+         ___ACTION[(state as usize) * 38 + integer]
+@@ -201,7 +203,7 @@ mod ___parse___Root {
+         // State 5
+         0,
+         // State 6
+-        -46,
++        -47,
+         // State 7
+         0,
+         // State 8
+@@ -215,81 +217,81 @@ mod ___parse___Root {
+         // State 12
+         0,
+         // State 13
+-        -54,
++        -55,
+         // State 14
+         0,
+         // State 15
+-        -39,
++        -40,
+         // State 16
+-        -35,
++        -36,
+         // State 17
+-        -40,
++        -41,
+         // State 18
+-        -37,
+-        // State 19
+         -38,
++        // State 19
++        -39,
+         // State 20
+         -4,
+         // State 21
+         -34,
+         // State 22
+-        -41,
++        -42,
+         // State 23
+         -21,
+         // State 24
+-        -36,
++        -35,
+         // State 25
+-        -9,
++        -37,
+         // State 26
+-        -10,
++        -9,
+         // State 27
+-        -8,
++        -10,
+         // State 28
+-        -51,
++        -8,
+         // State 29
+-        0,
++        -52,
+         // State 30
+         0,
+         // State 31
+-        -52,
++        0,
+         // State 32
+-        -16,
++        -53,
+         // State 33
+-        -18,
++        -16,
+         // State 34
+-        -49,
++        -18,
+         // State 35
+-        -42,
++        -50,
+         // State 36
+-        -17,
++        -43,
+         // State 37
+-        -50,
++        -17,
+         // State 38
+-        -20,
++        -51,
+         // State 39
+-        -43,
++        -20,
+         // State 40
+-        0,
++        -44,
+         // State 41
+         0,
+         // State 42
+-        -19,
++        0,
+         // State 43
+-        -5,
++        -19,
+         // State 44
+-        -45,
++        -5,
+         // State 45
+-        -31,
++        -46,
+         // State 46
+-        0,
++        -31,
+         // State 47
+         0,
+         // State 48
+         0,
+         // State 49
+-        -47,
+-        // State 50
+         0,
++        // State 50
++        -48,
+         // State 51
+         0,
+         // State 52
+@@ -301,11 +303,11 @@ mod ___parse___Root {
+         // State 55
+         0,
+         // State 56
+-        -15,
++        0,
+         // State 57
+-        -12,
++        -15,
+         // State 58
+-        0,
++        -12,
+         // State 59
+         0,
+         // State 60
+@@ -315,31 +317,33 @@ mod ___parse___Root {
+         // State 62
+         0,
+         // State 63
+-        -53,
++        0,
+         // State 64
+-        -44,
++        -54,
+         // State 65
+-        -14,
++        -45,
+         // State 66
+-        -13,
++        -14,
+         // State 67
+-        -11,
++        -13,
+         // State 68
+-        -26,
++        -11,
+         // State 69
+-        -27,
++        -26,
+         // State 70
+-        -29,
++        -27,
+         // State 71
+-        -48,
++        -29,
++        // State 72
++        -49,
+     ];
+     fn ___goto(state: i8, nt: usize) -> i8 {
+         match nt {
+             2 => 3,
+             5 => 15,
+             6 => match state {
+-                11 => 70,
+-                _ => 49,
++                11 => 71,
++                _ => 50,
+             },
+             7 => 16,
+             8 => 17,
+@@ -347,23 +351,23 @@ mod ___parse___Root {
+             10 => 19,
+             11 => match state {
+                 8 => 10,
+-                5 => 48,
++                5 => 49,
+                 _ => 4,
+             },
+             12 => match state {
+-                3 => 43,
++                3 => 44,
+                 _ => 20,
+             },
+             13 => match state {
+-                9 => 60,
++                9 => 61,
+                 _ => 21,
+             },
+-            14 => 50,
++            14 => 51,
+             15 => 22,
+-            16 => 71,
++            16 => 72,
+             17 => match state {
+-                10 => 64,
+-                _ => 44,
++                10 => 65,
++                _ => 45,
+             },
+             18 => match state {
+                 1 => 14,
+@@ -372,6 +376,7 @@ mod ___parse___Root {
+             19 => 13,
+             20 => 23,
+             21 => 24,
++            22 => 25,
+             _ => 0,
+         }
+     }
+@@ -832,112 +837,118 @@ mod ___parse___Root {
+             35 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             36 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             37 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             38 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             39 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             40 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             41 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             42 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             43 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 4,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 1,
++                    nonterminal_produced: 21,
+                 }
+             }
+             44 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 2,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 4,
++                    nonterminal_produced: 21,
+                 }
+             }
+             45 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 2,
++                    nonterminal_produced: 21,
+                 }
+             }
+             46 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 2,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 1,
++                    nonterminal_produced: 21,
+                 }
+             }
+             47 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 4,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 2,
++                    nonterminal_produced: 21,
+                 }
+             }
+             48 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    states_to_pop: 4,
++                    nonterminal_produced: 21,
+                 }
+             }
+             49 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             50 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             51 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+                     states_to_pop: 1,
+-                    nonterminal_produced: 20,
++                    nonterminal_produced: 21,
+                 }
+             }
+             52 => {
+                 ___state_machine::SimulatedReduce::Reduce {
+-                    states_to_pop: 3,
++                    states_to_pop: 1,
+                     nonterminal_produced: 21,
+                 }
+             }
+-            53 => ___state_machine::SimulatedReduce::Accept,
++            53 => {
++                ___state_machine::SimulatedReduce::Reduce {
++                    states_to_pop: 3,
++                    nonterminal_produced: 22,
++                }
++            }
++            54 => ___state_machine::SimulatedReduce::Accept,
+             _ => panic!("invalid reduction index {___reduce_index}")
+         }
+     }
+@@ -1174,6 +1185,9 @@ mod ___parse___Root {
+                 ___reduce52(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
+             }
+             53 => {
++                ___reduce53(___lookahead_start, ___symbols, core::marker::PhantomData::<()>)
++            }
++            54 => {
+                 // ___Root = Root => ActionFn(0);
+                 let ___sym0 = ___pop_Variant7(___symbols);
+                 let ___start = ___sym0.0.clone();
+@@ -1214,23 +1228,23 @@ mod ___parse___Root {
+             _ => ___symbol_type_mismatch()
+         }
+     }
+-    fn ___pop_Variant4<
++    fn ___pop_Variant10<
+     >(
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+-    ) -> (usize, Option<Stmt>, usize)
++    ) -> (usize, Option<(String, SourceSpan)>, usize)
+      {
+         match ___symbols.pop() {
+-            Some((___l, ___Symbol::Variant4(___v), ___r)) => (___l, ___v, ___r),
++            Some((___l, ___Symbol::Variant10(___v), ___r)) => (___l, ___v, ___r),
+             _ => ___symbol_type_mismatch()
+         }
+     }
+-    fn ___pop_Variant10<
++    fn ___pop_Variant4<
+     >(
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>
+-    ) -> (usize, Option<String>, usize)
++    ) -> (usize, Option<Stmt>, usize)
+      {
+         match ___symbols.pop() {
+-            Some((___l, ___Symbol::Variant10(___v), ___r)) => (___l, ___v, ___r),
++            Some((___l, ___Symbol::Variant4(___v), ___r)) => (___l, ___v, ___r),
+             _ => ___symbol_type_mismatch()
+         }
+     }
+@@ -1321,11 +1335,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // (Item) = Item => ActionFn(50);
++        // (Item) = Item => ActionFn(51);
+         let ___sym0 = ___pop_Variant4(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action50::<>(___sym0);
++        let ___nt = super::___action51::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant4(___nt), ___end));
+         (1, 0)
+     }
+@@ -1336,10 +1350,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // (Item)* =  => ActionFn(48);
++        // (Item)* =  => ActionFn(49);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action48::<>(&___start, &___end);
++        let ___nt = super::___action49::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+         (0, 1)
+     }
+@@ -1350,11 +1364,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // (Item)* = (Item)+ => ActionFn(49);
++        // (Item)* = (Item)+ => ActionFn(50);
+         let ___sym0 = ___pop_Variant5(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action49::<>(___sym0);
++        let ___nt = super::___action50::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+         (1, 1)
+     }
+@@ -1365,11 +1379,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // (Item)+ = Item => ActionFn(53);
++        // (Item)+ = Item => ActionFn(54);
+         let ___sym0 = ___pop_Variant4(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action53::<>(___sym0);
++        let ___nt = super::___action54::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+         (1, 2)
+     }
+@@ -1380,13 +1394,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // (Item)+ = (Item)+, Item => ActionFn(54);
++        // (Item)+ = (Item)+, Item => ActionFn(55);
+         assert!(___symbols.len() >= 2);
+         let ___sym1 = ___pop_Variant4(___symbols);
+         let ___sym0 = ___pop_Variant5(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym1.2.clone();
+-        let ___nt = super::___action54::<>(___sym0, ___sym1);
++        let ___nt = super::___action55::<>(___sym0, ___sym1);
+         ___symbols.push((___start, ___Symbol::Variant5(___nt), ___end));
+         (2, 2)
+     }
+@@ -1397,10 +1411,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // @L =  => ActionFn(47);
++        // @L =  => ActionFn(48);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action47::<>(&___start, &___end);
++        let ___nt = super::___action48::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
+         (0, 3)
+     }
+@@ -1411,10 +1425,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // @R =  => ActionFn(46);
++        // @R =  => ActionFn(47);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action46::<>(&___start, &___end);
++        let ___nt = super::___action47::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant3(___nt), ___end));
+         (0, 4)
+     }
+@@ -1425,11 +1439,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // AccessibilityStatement = AccTitle => ActionFn(38);
++        // AccessibilityStatement = AccTitle => ActionFn(39);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action38::<>(___sym0);
++        let ___nt = super::___action39::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (1, 5)
+     }
+@@ -1440,11 +1454,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // AccessibilityStatement = AccDescr => ActionFn(39);
++        // AccessibilityStatement = AccDescr => ActionFn(40);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action39::<>(___sym0);
++        let ___nt = super::___action40::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (1, 5)
+     }
+@@ -1455,11 +1469,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // AccessibilityStatement = AccDescrMultiline => ActionFn(40);
++        // AccessibilityStatement = AccDescrMultiline => ActionFn(41);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action40::<>(___sym0);
++        let ___nt = super::___action41::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (1, 5)
+     }
+@@ -1470,14 +1484,14 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Block = "{", Items, "}" => ActionFn(31);
++        // Block = "{", Items, "}" => ActionFn(32);
+         assert!(___symbols.len() >= 3);
+         let ___sym2 = ___pop_Variant0(___symbols);
+         let ___sym1 = ___pop_Variant7(___symbols);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym2.2.clone();
+-        let ___nt = super::___action31::<>(___sym0, ___sym1, ___sym2);
++        let ___nt = super::___action32::<>(___sym0, ___sym1, ___sym2);
+         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+         (3, 6)
+     }
+@@ -1488,14 +1502,14 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // ClassDefStatement = ClassDef, ClassDefId, ClassDefStyleOpts => ActionFn(34);
++        // ClassDefStatement = ClassDef, ClassDefId, ClassDefStyleOpts => ActionFn(35);
+         assert!(___symbols.len() >= 3);
+         let ___sym2 = ___pop_Variant1(___symbols);
+         let ___sym1 = ___pop_Variant1(___symbols);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym2.2.clone();
+-        let ___nt = super::___action34::<>(___sym0, ___sym1, ___sym2);
++        let ___nt = super::___action35::<>(___sym0, ___sym1, ___sym2);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (3, 7)
+     }
+@@ -1506,7 +1520,7 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // ClickStatement = Click, IdStatement, StringLit, StringLit => ActionFn(41);
++        // ClickStatement = Click, IdStatement, StringLit, StringLit => ActionFn(42);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant1(___symbols);
+         let ___sym2 = ___pop_Variant1(___symbols);
+@@ -1514,7 +1528,7 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action41::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action42::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (4, 8)
+     }
+@@ -1525,7 +1539,7 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // ClickStatement = Click, IdStatement, Href, StringLit => ActionFn(42);
++        // ClickStatement = Click, IdStatement, Href, StringLit => ActionFn(43);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant1(___symbols);
+         let ___sym2 = ___pop_Variant0(___symbols);
+@@ -1533,7 +1547,7 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action42::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action43::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (4, 8)
+     }
+@@ -1544,14 +1558,14 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // CssClassStatement = Class, ClassEntityIds, StyleClass => ActionFn(36);
++        // CssClassStatement = Class, ClassEntityIds, StyleClass => ActionFn(37);
+         assert!(___symbols.len() >= 3);
+         let ___sym2 = ___pop_Variant1(___symbols);
+         let ___sym1 = ___pop_Variant1(___symbols);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym2.2.clone();
+-        let ___nt = super::___action36::<>(___sym0, ___sym1, ___sym2);
++        let ___nt = super::___action37::<>(___sym0, ___sym1, ___sym2);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (3, 9)
+     }
+@@ -1562,11 +1576,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // DirectionStatement = Direction => ActionFn(37);
++        // DirectionStatement = Direction => ActionFn(38);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action37::<>(___sym0);
++        let ___nt = super::___action38::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (1, 10)
+     }
+@@ -1577,11 +1591,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // IdStatement = Id => ActionFn(66);
++        // IdStatement = Id => ActionFn(69);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action66::<>(___sym0);
++        let ___nt = super::___action69::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+         (1, 11)
+     }
+@@ -1592,11 +1606,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // IdStatement = EdgeState => ActionFn(67);
++        // IdStatement = EdgeState => ActionFn(70);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action67::<>(___sym0);
++        let ___nt = super::___action70::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+         (1, 11)
+     }
+@@ -1607,11 +1621,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // IdStatement = StyledId => ActionFn(59);
++        // IdStatement = StyledId => ActionFn(60);
+         let ___sym0 = ___pop_Variant2(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action59::<>(___sym0);
++        let ___nt = super::___action60::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant8(___nt), ___end));
+         (1, 11)
+     }
+@@ -1652,10 +1666,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Items =  => ActionFn(55);
++        // Items =  => ActionFn(56);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action55::<>(&___start, &___end);
++        let ___nt = super::___action56::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+         (0, 13)
+     }
+@@ -1666,11 +1680,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Items = (Item)+ => ActionFn(56);
++        // Items = (Item)+ => ActionFn(57);
+         let ___sym0 = ___pop_Variant5(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action56::<>(___sym0);
++        let ___nt = super::___action57::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant7(___nt), ___end));
+         (1, 13)
+     }
+@@ -1681,11 +1695,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // NotePosition = LeftOf => ActionFn(27);
++        // NotePosition = LeftOf => ActionFn(28);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action27::<>(___sym0);
++        let ___nt = super::___action28::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant1(___nt), ___end));
+         (1, 14)
+     }
+@@ -1696,11 +1710,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // NotePosition = RightOf => ActionFn(28);
++        // NotePosition = RightOf => ActionFn(29);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action28::<>(___sym0);
++        let ___nt = super::___action29::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant1(___nt), ___end));
+         (1, 14)
+     }
+@@ -1711,7 +1725,7 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // NoteStatement = Note, NotePosition, Id, NoteTextTok => ActionFn(68);
++        // NoteStatement = Note, NotePosition, Id, NoteTextTok => ActionFn(71);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant1(___symbols);
+         let ___sym2 = ___pop_Variant1(___symbols);
+@@ -1719,7 +1733,7 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action68::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action71::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (4, 15)
+     }
+@@ -1730,7 +1744,7 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // NoteStatement = Note, NoteTextTok, "as", Id => ActionFn(26);
++        // NoteStatement = Note, NoteTextTok, "as", Id => ActionFn(27);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant1(___symbols);
+         let ___sym2 = ___pop_Variant0(___symbols);
+@@ -1738,7 +1752,7 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action26::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action27::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (4, 15)
+     }
+@@ -1749,10 +1763,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // OptBlock =  => ActionFn(32);
++        // OptBlock =  => ActionFn(33);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action32::<>(&___start, &___end);
++        let ___nt = super::___action33::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
+         (0, 16)
+     }
+@@ -1763,11 +1777,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // OptBlock = Block => ActionFn(33);
++        // OptBlock = Block => ActionFn(34);
+         let ___sym0 = ___pop_Variant7(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action33::<>(___sym0);
++        let ___nt = super::___action34::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant9(___nt), ___end));
+         (1, 16)
+     }
+@@ -1778,10 +1792,10 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // OptDescr =  => ActionFn(29);
++        // OptDescr =  => ActionFn(30);
+         let ___start = ___lookahead_start.cloned().or_else(|| ___symbols.last().map(|s| s.2)).unwrap_or_default();
+         let ___end = ___start;
+-        let ___nt = super::___action29::<>(&___start, &___end);
++        let ___nt = super::___action30::<>(&___start, &___end);
+         ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+         (0, 17)
+     }
+@@ -1792,11 +1806,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // OptDescr = Descr => ActionFn(30);
++        // OptDescr = Descr => ActionFn(72);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action30::<>(___sym0);
++        let ___nt = super::___action72::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant10(___nt), ___end));
+         (1, 17)
+     }
+@@ -1856,11 +1870,11 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = ClassDefStatement => ActionFn(7);
++        // Statement = StatementInner => ActionFn(73);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action7::<>(___sym0);
++        let ___nt = super::___action73::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+         (1, 20)
+     }
+@@ -1871,13 +1885,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = StyleStatement => ActionFn(8);
++        // StatementInner = ClassDefStatement => ActionFn(8);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action8::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce36<
+     >(
+@@ -1886,13 +1900,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = CssClassStatement => ActionFn(9);
++        // StatementInner = StyleStatement => ActionFn(9);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action9::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce37<
+     >(
+@@ -1901,13 +1915,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = DirectionStatement => ActionFn(10);
++        // StatementInner = CssClassStatement => ActionFn(10);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action10::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce38<
+     >(
+@@ -1916,13 +1930,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = AccessibilityStatement => ActionFn(11);
++        // StatementInner = DirectionStatement => ActionFn(11);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action11::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce39<
+     >(
+@@ -1931,13 +1945,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = ClickStatement => ActionFn(12);
++        // StatementInner = AccessibilityStatement => ActionFn(12);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action12::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce40<
+     >(
+@@ -1946,13 +1960,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = NoteStatement => ActionFn(13);
++        // StatementInner = ClickStatement => ActionFn(13);
+         let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action13::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce41<
+     >(
+@@ -1961,13 +1975,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = HideEmptyDescription => ActionFn(14);
+-        let ___sym0 = ___pop_Variant0(___symbols);
++        // StatementInner = NoteStatement => ActionFn(14);
++        let ___sym0 = ___pop_Variant6(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action14::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce42<
+     >(
+@@ -1976,13 +1990,13 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = ScaleWidth => ActionFn(15);
+-        let ___sym0 = ___pop_Variant3(___symbols);
++        // StatementInner = HideEmptyDescription => ActionFn(15);
++        let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+         let ___nt = super::___action15::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+     fn ___reduce43<
+     >(
+@@ -1991,7 +2005,22 @@ mod ___parse___Root {
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = IdStatement, "-->", IdStatement, OptDescr => ActionFn(16);
++        // StatementInner = ScaleWidth => ActionFn(16);
++        let ___sym0 = ___pop_Variant3(___symbols);
++        let ___start = ___sym0.0.clone();
++        let ___end = ___sym0.2.clone();
++        let ___nt = super::___action16::<>(___sym0);
++        ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
++        (1, 21)
++    }
++    fn ___reduce44<
++    >(
++        ___lookahead_start: Option<&usize>,
++        ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
++        _: core::marker::PhantomData<()>,
++    ) -> (usize, usize)
++    {
++        // StatementInner = IdStatement, "-->", IdStatement, OptDescr => ActionFn(17);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant10(___symbols);
+         let ___sym2 = ___pop_Variant8(___symbols);
+@@ -1999,67 +2028,67 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant8(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action16::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action17::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (4, 20)
++        (4, 21)
+     }
+-    fn ___reduce44<
++    fn ___reduce45<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = IdStatement, OptDescr => ActionFn(17);
++        // StatementInner = IdStatement, OptDescr => ActionFn(18);
+         assert!(___symbols.len() >= 2);
+         let ___sym1 = ___pop_Variant10(___symbols);
+         let ___sym0 = ___pop_Variant8(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym1.2.clone();
+-        let ___nt = super::___action17::<>(___sym0, ___sym1);
++        let ___nt = super::___action18::<>(___sym0, ___sym1);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (2, 20)
++        (2, 21)
+     }
+-    fn ___reduce45<
++    fn ___reduce46<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = CompositState => ActionFn(18);
++        // StatementInner = CompositState => ActionFn(19);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action18::<>(___sym0);
++        let ___nt = super::___action19::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+-    fn ___reduce46<
++    fn ___reduce47<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = CompositState, Block => ActionFn(69);
++        // StatementInner = CompositState, Block => ActionFn(74);
+         assert!(___symbols.len() >= 2);
+         let ___sym1 = ___pop_Variant7(___symbols);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym1.2.clone();
+-        let ___nt = super::___action69::<>(___sym0, ___sym1);
++        let ___nt = super::___action74::<>(___sym0, ___sym1);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (2, 20)
++        (2, 21)
+     }
+-    fn ___reduce47<
++    fn ___reduce48<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = StateDescr, "as", Id, OptBlock => ActionFn(62);
++        // StatementInner = StateDescr, "as", Id, OptBlock => ActionFn(75);
+         assert!(___symbols.len() >= 4);
+         let ___sym3 = ___pop_Variant9(___symbols);
+         let ___sym2 = ___pop_Variant1(___symbols);
+@@ -2067,87 +2096,87 @@ mod ___parse___Root {
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym3.2.clone();
+-        let ___nt = super::___action62::<>(___sym0, ___sym1, ___sym2, ___sym3);
++        let ___nt = super::___action75::<>(___sym0, ___sym1, ___sym2, ___sym3);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (4, 20)
++        (4, 21)
+     }
+-    fn ___reduce48<
++    fn ___reduce49<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = Fork => ActionFn(63);
++        // StatementInner = Fork => ActionFn(66);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action63::<>(___sym0);
++        let ___nt = super::___action66::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+-    fn ___reduce49<
++    fn ___reduce50<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = Join => ActionFn(64);
++        // StatementInner = Join => ActionFn(67);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action64::<>(___sym0);
++        let ___nt = super::___action67::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+-    fn ___reduce50<
++    fn ___reduce51<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = Choice => ActionFn(65);
++        // StatementInner = Choice => ActionFn(68);
+         let ___sym0 = ___pop_Variant1(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action65::<>(___sym0);
++        let ___nt = super::___action68::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+-    fn ___reduce51<
++    fn ___reduce52<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // Statement = Concurrent => ActionFn(24);
++        // StatementInner = Concurrent => ActionFn(25);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym0.2.clone();
+-        let ___nt = super::___action24::<>(___sym0);
++        let ___nt = super::___action25::<>(___sym0);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (1, 20)
++        (1, 21)
+     }
+-    fn ___reduce52<
++    fn ___reduce53<
+     >(
+         ___lookahead_start: Option<&usize>,
+         ___symbols: &mut alloc::vec::Vec<(usize,___Symbol<>,usize)>,
+         _: core::marker::PhantomData<()>,
+     ) -> (usize, usize)
+     {
+-        // StyleStatement = Style, StyleIds, StyleDefStyleOpts => ActionFn(35);
++        // StyleStatement = Style, StyleIds, StyleDefStyleOpts => ActionFn(36);
+         assert!(___symbols.len() >= 3);
+         let ___sym2 = ___pop_Variant1(___symbols);
+         let ___sym1 = ___pop_Variant1(___symbols);
+         let ___sym0 = ___pop_Variant0(___symbols);
+         let ___start = ___sym0.0.clone();
+         let ___end = ___sym2.2.clone();
+-        let ___nt = super::___action35::<>(___sym0, ___sym1, ___sym2);
++        let ___nt = super::___action36::<>(___sym0, ___sym1, ___sym2);
+         ___symbols.push((___start, ___Symbol::Variant6(___nt), ___end));
+-        (3, 21)
++        (3, 22)
+     }
+ }
+ #[allow(unused_imports)]
+@@ -2222,10 +2251,19 @@ fn ___action6<
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+ fn ___action7<
+ >(
+-    (_, s, _): (usize, Stmt, usize),
++    (_, l, _): (usize, usize, usize),
++    (_, mut stmt, _): (usize, Stmt, usize),
++    (_, r, _): (usize, usize, usize),
+ ) -> Stmt
+ {
+-    s
++    {
++    match &mut stmt {
++      Stmt::State(state) => state.span = Some(SourceSpan::new(l, r)),
++      Stmt::Relation(relation) => relation.span = Some(SourceSpan::new(l, r)),
++      _ => {},
++    }
++    stmt
++  }
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+@@ -2284,6 +2322,15 @@ fn ___action13<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+ fn ___action14<
++>(
++    (_, s, _): (usize, Stmt, usize),
++) -> Stmt
++{
++    s
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
++fn ___action15<
+ >(
+     (_, ___0, _): (usize, Tok, usize),
+ ) -> Stmt
+@@ -2292,7 +2339,7 @@ fn ___action14<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action15<
++fn ___action16<
+ >(
+     (_, ___0, _): (usize, usize, usize),
+ ) -> Stmt
+@@ -2301,36 +2348,39 @@ fn ___action15<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action16<
++fn ___action17<
+ >(
+     (_, s1, _): (usize, StateStmt, usize),
+     (_, _, _): (usize, Tok, usize),
+     (_, s2, _): (usize, StateStmt, usize),
+-    (_, d, _): (usize, Option<String>, usize),
++    (_, d, _): (usize, Option<(String, SourceSpan)>, usize),
+ ) -> Stmt
+ {
+     Stmt::Relation(Box::new(RelationStmt {
+     state1: s1,
+     state2: s2,
+-    description: d,
++    span: None,
++    label_span: d.as_ref().map(|(_, span)| *span),
++    description: d.map(|(text, _)| text),
+   }))
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action17<
++fn ___action18<
+ >(
+     (_, mut s, _): (usize, StateStmt, usize),
+-    (_, d, _): (usize, Option<String>, usize),
++    (_, d, _): (usize, Option<(String, SourceSpan)>, usize),
+ ) -> Stmt
+ {
+     {
+-    s.description = d;
++    s.label_span = d.as_ref().map(|(_, span)| *span);
++    s.description = d.map(|(text, _)| text);
+     Stmt::State(s)
+   }
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action18<
++fn ___action19<
+ >(
+     (_, _id, _): (usize, String, usize),
+ ) -> Stmt
+@@ -2339,7 +2389,7 @@ fn ___action18<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action19<
++fn ___action20<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2348,7 +2398,8 @@ fn ___action19<
+ ) -> Stmt
+ {
+     Stmt::State(StateStmt {
+-    id,
++    span: None,
++    label_span: None,    id,
+     id_span: Some(SourceSpan::new(l, r)),
+     ty: "default".to_string(),
+     description: None,
+@@ -2363,9 +2414,11 @@ fn ___action19<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action20<
++fn ___action21<
+ >(
++    (_, dl, _): (usize, usize, usize),
+     (_, descr, _): (usize, String, usize),
++    (_, dr, _): (usize, usize, usize),
+     (_, _, _): (usize, Tok, usize),
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2389,7 +2442,8 @@ fn ___action20<
+       }
+     }
+     Stmt::State(StateStmt {
+-      id: state_id,
++    span: None,
++    label_span: Some(SourceSpan::new(dl, dr)),      id: state_id,
+       id_span,
+       ty: "default".to_string(),
+       description: Some(description),
+@@ -2405,7 +2459,7 @@ fn ___action20<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action21<
++fn ___action22<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2419,7 +2473,7 @@ fn ___action21<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action22<
++fn ___action23<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2433,7 +2487,7 @@ fn ___action22<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action23<
++fn ___action24<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2447,7 +2501,7 @@ fn ___action23<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action24<
++fn ___action25<
+ >(
+     (_, ___0, _): (usize, Tok, usize),
+ ) -> Stmt
+@@ -2456,18 +2510,21 @@ fn ___action24<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action25<
++fn ___action26<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, pos, _): (usize, String, usize),
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+     (_, r, _): (usize, usize, usize),
++    (_, tl, _): (usize, usize, usize),
+     (_, text, _): (usize, String, usize),
++    (_, tr, _): (usize, usize, usize),
+ ) -> Stmt
+ {
+     Stmt::State(StateStmt {
+-    id,
++    span: None,
++    label_span: Some(SourceSpan::new(tl, tr)),    id,
+     id_span: Some(SourceSpan::new(l, r)),
+     ty: "default".to_string(),
+     description: None,
+@@ -2482,7 +2539,7 @@ fn ___action25<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action26<
++fn ___action27<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, _text, _): (usize, String, usize),
+@@ -2494,7 +2551,7 @@ fn ___action26<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action27<
++fn ___action28<
+ >(
+     (_, ___0, _): (usize, Tok, usize),
+ ) -> String
+@@ -2503,7 +2560,7 @@ fn ___action27<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action28<
++fn ___action29<
+ >(
+     (_, ___0, _): (usize, Tok, usize),
+ ) -> String
+@@ -2512,26 +2569,28 @@ fn ___action28<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action29<
++fn ___action30<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+-) -> Option<String>
++) -> Option<(String, SourceSpan)>
+ {
+     None
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action30<
++fn ___action31<
+ >(
++    (_, l, _): (usize, usize, usize),
+     (_, d, _): (usize, String, usize),
+-) -> Option<String>
++    (_, r, _): (usize, usize, usize),
++) -> Option<(String, SourceSpan)>
+ {
+-    Some(d)
++    Some((d, SourceSpan::new(l, r)))
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action31<
++fn ___action32<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, doc, _): (usize, Vec<Stmt>, usize),
+@@ -2542,7 +2601,7 @@ fn ___action31<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action32<
++fn ___action33<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+@@ -2552,7 +2611,7 @@ fn ___action32<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action33<
++fn ___action34<
+ >(
+     (_, b, _): (usize, Vec<Stmt>, usize),
+ ) -> Option<Vec<Stmt>>
+@@ -2561,7 +2620,7 @@ fn ___action33<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action34<
++fn ___action35<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2572,7 +2631,7 @@ fn ___action34<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action35<
++fn ___action36<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, ids, _): (usize, String, usize),
+@@ -2583,7 +2642,7 @@ fn ___action35<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action36<
++fn ___action37<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, ids, _): (usize, String, usize),
+@@ -2594,7 +2653,7 @@ fn ___action36<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action37<
++fn ___action38<
+ >(
+     (_, d, _): (usize, String, usize),
+ ) -> Stmt
+@@ -2603,7 +2662,7 @@ fn ___action37<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action38<
++fn ___action39<
+ >(
+     (_, t, _): (usize, String, usize),
+ ) -> Stmt
+@@ -2612,7 +2671,7 @@ fn ___action38<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action39<
++fn ___action40<
+ >(
+     (_, d, _): (usize, String, usize),
+ ) -> Stmt
+@@ -2621,7 +2680,7 @@ fn ___action39<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action40<
++fn ___action41<
+ >(
+     (_, d, _): (usize, String, usize),
+ ) -> Stmt
+@@ -2630,7 +2689,7 @@ fn ___action40<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action41<
++fn ___action42<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, s, _): (usize, StateStmt, usize),
+@@ -2646,7 +2705,7 @@ fn ___action41<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action42<
++fn ___action43<
+ >(
+     (_, _, _): (usize, Tok, usize),
+     (_, s, _): (usize, StateStmt, usize),
+@@ -2662,7 +2721,7 @@ fn ___action42<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action43<
++fn ___action44<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, id, _): (usize, String, usize),
+@@ -2677,7 +2736,7 @@ fn ___action43<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action44<
++fn ___action45<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, _, _): (usize, Tok, usize),
+@@ -2692,7 +2751,7 @@ fn ___action44<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action45<
++fn ___action46<
+ >(
+     (_, l, _): (usize, usize, usize),
+     (_, pair, _): (usize, (String, String), usize),
+@@ -2708,7 +2767,7 @@ fn ___action45<
+ }
+ 
+ #[allow(clippy::needless_lifetimes)]
+-fn ___action46<
++fn ___action47<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+@@ -2718,7 +2777,7 @@ fn ___action46<
+ }
+ 
+ #[allow(clippy::needless_lifetimes)]
+-fn ___action47<
++fn ___action48<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+@@ -2728,7 +2787,7 @@ fn ___action47<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action48<
++fn ___action49<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+@@ -2738,7 +2797,7 @@ fn ___action48<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action49<
++fn ___action50<
+ >(
+     (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
+ ) -> alloc::vec::Vec<Option<Stmt>>
+@@ -2747,7 +2806,7 @@ fn ___action49<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action50<
++fn ___action51<
+ >(
+     (_, ___0, _): (usize, Option<Stmt>, usize),
+ ) -> Option<Stmt>
+@@ -2756,7 +2815,7 @@ fn ___action50<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action51<
++fn ___action52<
+ >(
+     (_, ___0, _): (usize, Option<Stmt>, usize),
+ ) -> alloc::vec::Vec<Option<Stmt>>
+@@ -2765,7 +2824,7 @@ fn ___action51<
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
+-fn ___action52<
++fn ___action53<
+ >(
+     (_, v, _): (usize, alloc::vec::Vec<Option<Stmt>>, usize),
+     (_, e, _): (usize, Option<Stmt>, usize),
+@@ -2776,25 +2835,25 @@ fn ___action52<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action53<
++fn ___action54<
+ >(
+     ___0: (usize, Option<Stmt>, usize),
+ ) -> alloc::vec::Vec<Option<Stmt>>
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.2;
+-    let ___temp0 = ___action50(
++    let ___temp0 = ___action51(
+         ___0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action51(
++    ___action52(
+         ___temp0,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action54<
++fn ___action55<
+ >(
+     ___0: (usize, alloc::vec::Vec<Option<Stmt>>, usize),
+     ___1: (usize, Option<Stmt>, usize),
+@@ -2802,11 +2861,11 @@ fn ___action54<
+ {
+     let ___start0 = ___1.0;
+     let ___end0 = ___1.2;
+-    let ___temp0 = ___action50(
++    let ___temp0 = ___action51(
+         ___1,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action52(
++    ___action53(
+         ___0,
+         ___temp0,
+     )
+@@ -2814,7 +2873,7 @@ fn ___action54<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action55<
++fn ___action56<
+ >(
+     ___lookbehind: &usize,
+     ___lookahead: &usize,
+@@ -2822,7 +2881,7 @@ fn ___action55<
+ {
+     let ___start0 = *___lookbehind;
+     let ___end0 = *___lookahead;
+-    let ___temp0 = ___action48(
++    let ___temp0 = ___action49(
+         &___start0,
+         &___end0,
+     );
+@@ -2834,14 +2893,14 @@ fn ___action55<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action56<
++fn ___action57<
+ >(
+     ___0: (usize, alloc::vec::Vec<Option<Stmt>>, usize),
+ ) -> Vec<Stmt>
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.2;
+-    let ___temp0 = ___action49(
++    let ___temp0 = ___action50(
+         ___0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+@@ -2852,7 +2911,7 @@ fn ___action56<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action57<
++fn ___action58<
+ >(
+     ___0: (usize, String, usize),
+     ___1: (usize, usize, usize),
+@@ -2860,12 +2919,12 @@ fn ___action57<
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action43(
++    ___action44(
+         ___temp0,
+         ___0,
+         ___1,
+@@ -2874,7 +2933,7 @@ fn ___action57<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action58<
++fn ___action59<
+ >(
+     ___0: (usize, Tok, usize),
+     ___1: (usize, usize, usize),
+@@ -2882,12 +2941,12 @@ fn ___action58<
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action44(
++    ___action45(
+         ___temp0,
+         ___0,
+         ___1,
+@@ -2896,19 +2955,19 @@ fn ___action58<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action59<
++fn ___action60<
+ >(
+     ___0: (usize, (String, String), usize),
+ ) -> StateStmt
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action45(
++    ___action46(
+         ___temp0,
+         ___0,
+     )
+@@ -2916,112 +2975,156 @@ fn ___action59<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action60<
++fn ___action61<
+ >(
+     ___0: (usize, Tok, usize),
+     ___1: (usize, String, usize),
+     ___2: (usize, String, usize),
+     ___3: (usize, usize, usize),
+     ___4: (usize, String, usize),
++    ___5: (usize, usize, usize),
+ ) -> Stmt
+ {
+     let ___start0 = ___1.2;
+     let ___end0 = ___2.0;
+-    let ___temp0 = ___action47(
++    let ___start1 = ___3.2;
++    let ___end1 = ___4.0;
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action25(
++    let ___temp1 = ___action48(
++        &___start1,
++        &___end1,
++    );
++    let ___temp1 = (___start1, ___temp1, ___end1);
++    ___action26(
+         ___0,
+         ___1,
+         ___temp0,
+         ___2,
+         ___3,
++        ___temp1,
+         ___4,
++        ___5,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action61<
++fn ___action62<
+ >(
+     ___0: (usize, String, usize),
+     ___1: (usize, usize, usize),
+-    ___2: (usize, Vec<Stmt>, usize),
++) -> Option<(String, SourceSpan)>
++{
++    let ___start0 = ___0.0;
++    let ___end0 = ___0.0;
++    let ___temp0 = ___action48(
++        &___start0,
++        &___end0,
++    );
++    let ___temp0 = (___start0, ___temp0, ___end0);
++    ___action31(
++        ___temp0,
++        ___0,
++        ___1,
++    )
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
++    clippy::just_underscores_and_digits)]
++fn ___action63<
++>(
++    ___0: (usize, Stmt, usize),
++    ___1: (usize, usize, usize),
+ ) -> Stmt
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action19(
++    ___action7(
+         ___temp0,
+         ___0,
+         ___1,
+-        ___2,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action62<
++fn ___action64<
+ >(
+     ___0: (usize, String, usize),
+-    ___1: (usize, Tok, usize),
+-    ___2: (usize, String, usize),
+-    ___3: (usize, Option<Vec<Stmt>>, usize),
++    ___1: (usize, usize, usize),
++    ___2: (usize, Vec<Stmt>, usize),
+ ) -> Stmt
+ {
+-    let ___start0 = ___1.2;
+-    let ___end0 = ___2.0;
+-    let ___temp0 = ___action47(
++    let ___start0 = ___0.0;
++    let ___end0 = ___0.0;
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+     ___action20(
++        ___temp0,
+         ___0,
+         ___1,
+-        ___temp0,
+         ___2,
+-        ___3,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action63<
++fn ___action65<
+ >(
+     ___0: (usize, String, usize),
++    ___1: (usize, usize, usize),
++    ___2: (usize, Tok, usize),
++    ___3: (usize, String, usize),
++    ___4: (usize, Option<Vec<Stmt>>, usize),
+ ) -> Stmt
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___start1 = ___2.2;
++    let ___end1 = ___3.0;
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
++    let ___temp1 = ___action48(
++        &___start1,
++        &___end1,
++    );
++    let ___temp1 = (___start1, ___temp1, ___end1);
+     ___action21(
+         ___temp0,
+         ___0,
++        ___1,
++        ___2,
++        ___temp1,
++        ___3,
++        ___4,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action64<
++fn ___action66<
+ >(
+     ___0: (usize, String, usize),
+ ) -> Stmt
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+@@ -3034,14 +3137,14 @@ fn ___action64<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action65<
++fn ___action67<
+ >(
+     ___0: (usize, String, usize),
+ ) -> Stmt
+ {
+     let ___start0 = ___0.0;
+     let ___end0 = ___0.0;
+-    let ___temp0 = ___action47(
++    let ___temp0 = ___action48(
+         &___start0,
+         &___end0,
+     );
+@@ -3054,19 +3157,39 @@ fn ___action65<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action66<
++fn ___action68<
++>(
++    ___0: (usize, String, usize),
++) -> Stmt
++{
++    let ___start0 = ___0.0;
++    let ___end0 = ___0.0;
++    let ___temp0 = ___action48(
++        &___start0,
++        &___end0,
++    );
++    let ___temp0 = (___start0, ___temp0, ___end0);
++    ___action24(
++        ___temp0,
++        ___0,
++    )
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
++    clippy::just_underscores_and_digits)]
++fn ___action69<
+ >(
+     ___0: (usize, String, usize),
+ ) -> StateStmt
+ {
+     let ___start0 = ___0.2;
+     let ___end0 = ___0.2;
+-    let ___temp0 = ___action46(
++    let ___temp0 = ___action47(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action57(
++    ___action58(
+         ___0,
+         ___temp0,
+     )
+@@ -3074,19 +3197,19 @@ fn ___action66<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action67<
++fn ___action70<
+ >(
+     ___0: (usize, Tok, usize),
+ ) -> StateStmt
+ {
+     let ___start0 = ___0.2;
+     let ___end0 = ___0.2;
+-    let ___temp0 = ___action46(
++    let ___temp0 = ___action47(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action58(
++    ___action59(
+         ___0,
+         ___temp0,
+     )
+@@ -3094,7 +3217,7 @@ fn ___action67<
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action68<
++fn ___action71<
+ >(
+     ___0: (usize, Tok, usize),
+     ___1: (usize, String, usize),
+@@ -3104,23 +3227,71 @@ fn ___action68<
+ {
+     let ___start0 = ___2.2;
+     let ___end0 = ___3.0;
+-    let ___temp0 = ___action46(
++    let ___start1 = ___3.2;
++    let ___end1 = ___3.2;
++    let ___temp0 = ___action47(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action60(
++    let ___temp1 = ___action47(
++        &___start1,
++        &___end1,
++    );
++    let ___temp1 = (___start1, ___temp1, ___end1);
++    ___action61(
+         ___0,
+         ___1,
+         ___2,
+         ___temp0,
+         ___3,
++        ___temp1,
+     )
+ }
+ 
+ #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+     clippy::just_underscores_and_digits)]
+-fn ___action69<
++fn ___action72<
++>(
++    ___0: (usize, String, usize),
++) -> Option<(String, SourceSpan)>
++{
++    let ___start0 = ___0.2;
++    let ___end0 = ___0.2;
++    let ___temp0 = ___action47(
++        &___start0,
++        &___end0,
++    );
++    let ___temp0 = (___start0, ___temp0, ___end0);
++    ___action62(
++        ___0,
++        ___temp0,
++    )
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
++    clippy::just_underscores_and_digits)]
++fn ___action73<
++>(
++    ___0: (usize, Stmt, usize),
++) -> Stmt
++{
++    let ___start0 = ___0.2;
++    let ___end0 = ___0.2;
++    let ___temp0 = ___action47(
++        &___start0,
++        &___end0,
++    );
++    let ___temp0 = (___start0, ___temp0, ___end0);
++    ___action63(
++        ___0,
++        ___temp0,
++    )
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
++    clippy::just_underscores_and_digits)]
++fn ___action74<
+ >(
+     ___0: (usize, String, usize),
+     ___1: (usize, Vec<Stmt>, usize),
+@@ -3128,15 +3299,41 @@ fn ___action69<
+ {
+     let ___start0 = ___0.2;
+     let ___end0 = ___1.0;
+-    let ___temp0 = ___action46(
++    let ___temp0 = ___action47(
+         &___start0,
+         &___end0,
+     );
+     let ___temp0 = (___start0, ___temp0, ___end0);
+-    ___action61(
++    ___action64(
++        ___0,
++        ___temp0,
++        ___1,
++    )
++}
++
++#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
++    clippy::just_underscores_and_digits)]
++fn ___action75<
++>(
++    ___0: (usize, String, usize),
++    ___1: (usize, Tok, usize),
++    ___2: (usize, String, usize),
++    ___3: (usize, Option<Vec<Stmt>>, usize),
++) -> Stmt
++{
++    let ___start0 = ___0.2;
++    let ___end0 = ___1.0;
++    let ___temp0 = ___action47(
++        &___start0,
++        &___end0,
++    );
++    let ___temp0 = (___start0, ___temp0, ___end0);
++    ___action65(
+         ___0,
+         ___temp0,
+         ___1,
++        ___2,
++        ___3,
+     )
+ }
+ 
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
 index f4d33957..337bb1ad 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
@@ -8073,6 +10977,262 @@ index 630c554c..c3074114 100644
      if let Some(title) = model.acc_title.as_deref() {
          let _ = write!(
              out,
+diff --git a/crates/merman-render/src/svg/parity/state/edge.rs b/crates/merman-render/src/svg/parity/state/edge.rs
+index bd37985c..007ece90 100644
+--- a/crates/merman-render/src/svg/parity/state/edge.rs
++++ b/crates/merman-render/src/svg/parity/state/edge.rs
+@@ -492,12 +492,17 @@ fn write_state_edge_path(
+         return;
+     }
+ 
++    let trace = source_attrs(
++        ctx.source_occurrences,
++        &format!("state:edge:{edge_id}"),
++        false,
++    );
+     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+     let data_points = base64::engine::general_purpose::STANDARD
+         .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
+     let _ = write!(
+         out,
+-        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
++        r#"<path{trace} d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+         geometry.rendered_d,
+         state_scoped_dom_id(ctx, edge_id),
+         escape_xml_display(classes),
+@@ -594,6 +599,7 @@ pub(super) fn render_state_edge_label(
+ 
+     fn write_visible_edge_label(
+         out: &mut String,
++        trace: &str,
+         id: &str,
+         label_text: &str,
+         label_pos: crate::model::LayoutPoint,
+@@ -606,7 +612,7 @@ pub(super) fn render_state_edge_label(
+         if html_labels {
+             let _ = write!(
+                 out,
+-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
++                r#"<g{trace} class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                 fmt_display(label_pos.x),
+                 fmt_display(label_pos.y),
+                 escape_attr(id),
+@@ -621,7 +627,7 @@ pub(super) fn render_state_edge_label(
+             let label_dom = state_svg_text_label(label_text, true, None);
+             let _ = write!(
+                 out,
+-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
++                r#"<g{trace} class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
+                 fmt_display(label_pos.x),
+                 fmt_display(label_pos.y),
+                 escape_attr(id),
+@@ -676,6 +682,11 @@ pub(super) fn render_state_edge_label(
+ 
+     write_visible_edge_label(
+         out,
++        &source_attrs(
++            ctx.source_occurrences,
++            &format!("state:edge:{}", edge.id),
++            true,
++        ),
+         &edge.id,
+         label_text,
+         label_position,
+diff --git a/crates/merman-render/src/svg/parity/state/mod.rs b/crates/merman-render/src/svg/parity/state/mod.rs
+index 69251972..8af7fea0 100644
+--- a/crates/merman-render/src/svg/parity/state/mod.rs
++++ b/crates/merman-render/src/svg/parity/state/mod.rs
+@@ -34,6 +34,7 @@ type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
+ type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
+ type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+ struct StateRenderCtx<'a> {
++    source_occurrences: &'a [serde_json::Value],
+     diagram_id: SvgDiagramId<'a>,
+     diagram_look: String,
+     hand_drawn_seed: roughr::core::RoughRandomness,
+diff --git a/crates/merman-render/src/svg/parity/state/node.rs b/crates/merman-render/src/svg/parity/state/node.rs
+index 45f59ab5..e1eb991e 100644
+--- a/crates/merman-render/src/svg/parity/state/node.rs
++++ b/crates/merman-render/src/svg/parity/state/node.rs
+@@ -21,6 +21,11 @@ pub(super) fn render_state_node_svg(
+     if ln.is_cluster {
+         return;
+     }
++    let trace = source_attrs(
++        ctx.source_occurrences,
++        &format!("state:node:{node_id}"),
++        false,
++    );
+     let cx = ln.x - origin_x;
+     let cy = ln.y - origin_y;
+     let w = ln.width.max(1.0);
+@@ -77,7 +82,7 @@ pub(super) fn render_state_node_svg(
+             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+             let _ = write!(
+                 out,
+-                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
++                r#"<g{trace} class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
+                 node_dom_id,
+                 escape_xml_display(data_look),
+                 fmt_display(cx),
+@@ -134,7 +139,7 @@ pub(super) fn render_state_node_svg(
+             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+             let _ = write!(
+                 out,
+-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
++                r##"<g{trace} class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                 node_dom_id.attr(),
+                 escape_attr(data_look),
+                 fmt(cx),
+@@ -189,7 +194,7 @@ pub(super) fn render_state_node_svg(
+             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+             let _ = write!(
+                 out,
+-                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
++                r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                 escape_xml_display(&node_class),
+                 node_dom_id,
+                 escape_xml_display(data_look),
+@@ -241,7 +246,7 @@ pub(super) fn render_state_node_svg(
+             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+             let _ = write!(
+                 out,
+-                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
++                r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                 escape_xml_display(&node_class),
+                 node_dom_id,
+                 escape_xml_display(data_look),
+@@ -330,7 +335,7 @@ pub(super) fn render_state_node_svg(
+                 };
+                 let _ = write!(
+                     out,
+-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
++                    r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+                     escape_xml_display(data_look),
+@@ -350,7 +355,7 @@ pub(super) fn render_state_node_svg(
+             } else {
+                 let _ = write!(
+                     out,
+-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/>{}</g></g>"##,
++                    r##"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/>{}</g></g>"##,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+                     escape_xml_display(data_look),
+@@ -416,7 +421,7 @@ pub(super) fn render_state_node_svg(
+             if ctx.html_labels {
+                 let _ = write!(
+                     out,
+-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g></g>"#,
++                    r#"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;">{}</div></foreignObject></g></g>"#,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+                     escape_xml_display(data_look),
+@@ -445,7 +450,7 @@ pub(super) fn render_state_node_svg(
+             } else {
+                 let _ = write!(
+                     out,
+-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
++                    r#"<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+                     escape_xml_display(data_look),
+@@ -625,7 +630,7 @@ pub(super) fn render_state_node_svg(
+                 if ctx.html_labels {
+                     let _ = write!(
+                         out,
+-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
++                        r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                         link_open,
+                         escape_xml_display(&node_class),
+                         node_dom_id,
+@@ -652,7 +657,7 @@ pub(super) fn render_state_node_svg(
+                 } else {
+                     let _ = write!(
+                         out,
+-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
++                        r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
+                         link_open,
+                         escape_xml_display(&node_class),
+                         node_dom_id,
+@@ -708,7 +713,7 @@ pub(super) fn render_state_node_svg(
+             if ctx.html_labels {
+                 let _ = write!(
+                     out,
+-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
++                    r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                     link_open,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+@@ -735,7 +740,7 @@ pub(super) fn render_state_node_svg(
+             } else {
+                 let _ = write!(
+                     out,
+-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
++                    r##"{}<g{trace} class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
+                     link_open,
+                     escape_xml_display(&node_class),
+                     node_dom_id,
+diff --git a/crates/merman-render/src/svg/parity/state/render.rs b/crates/merman-render/src/svg/parity/state/render.rs
+index 2d4d906e..670b9983 100644
+--- a/crates/merman-render/src/svg/parity/state/render.rs
++++ b/crates/merman-render/src/svg/parity/state/render.rs
+@@ -101,6 +101,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+ 
+     let mut ctx = StateRenderCtx {
++        source_occurrences: &model.source_occurrences,
+         diagram_id,
+         diagram_look: state_render_settings.diagram_look,
+         hand_drawn_seed,
+@@ -304,6 +305,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+     )?;
+     options.checkpoint_emit()?;
+ 
++    write_source_metadata(&mut out, &model.source_occurrences);
+     if has_acc_title {
+         let _ = write!(
+             &mut out,
+@@ -764,6 +766,11 @@ fn render_state_cluster(
+         return;
+     };
+ 
++    let trace = source_attrs(
++        ctx.source_occurrences,
++        &format!("state:node:{cluster_id}"),
++        false,
++    );
+     let data_look = state_data_look(ctx);
+ 
+     let shape = ctx
+@@ -790,7 +797,7 @@ fn render_state_cluster(
+     if shape == "divider" {
+         let _ = write!(
+             out,
+-            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
++            r#"<g{trace} class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
+             escape_attr(class),
+             dom_id.attr(),
+             escape_attr(data_look),
+@@ -813,7 +820,7 @@ fn render_state_cluster(
+     if ctx.html_labels {
+         let _ = write!(
+             out,
+-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
++            r#"<g{trace} class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+             escape_attr(class),
+             dom_id.attr(),
+             escape_attr(cluster_id),
+@@ -836,7 +843,7 @@ fn render_state_cluster(
+         let title_dom = state_svg_text_label(&title, false, None);
+         let _ = write!(
+             out,
+-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
++            r#"<g{trace} class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+             escape_attr(class),
+             dom_id.attr(),
+             escape_attr(cluster_id),
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
 index 00000000..739c43d9
