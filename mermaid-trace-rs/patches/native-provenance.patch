@@ -13528,7 +13528,7 @@ index 2d861649..11f5a878 100644
 +    }
 +}
 diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
-index 46e623f8..dacb468d 100644
+index 46e623f8..c88aed52 100644
 --- a/crates/merman-core/src/diagrams/state/db.rs
 +++ b/crates/merman-core/src/diagrams/state/db.rs
 @@ -1,9 +1,9 @@
@@ -13827,7 +13827,25 @@ index 46e623f8..dacb468d 100644
              let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
              let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
  
-@@ -1028,6 +1150,7 @@ fn build_layout_data_typed(
+@@ -1010,6 +1132,17 @@ fn build_layout_data_typed(
+                 std::mem::swap(&mut from, &mut to);
+             }
+ 
++            if ctx
++                .config
++                .as_value()
++                .get("traceSource")
++                .and_then(Value::as_bool)
++                .unwrap_or(false)
++                && let Some(span) = parsed_item.span
++            {
++                let id = format!("{from}-{to}");
++                ctx.source_occurrences.push(json!({"kind":"edge","semanticId":id,"domId":format!("state:edge:{id}"),"from":from,"to":to,"span":span,"relationship":"note"}));
++            }
+             ctx.edges.push(StateDiagramRenderEdge {
+                 id: format!("{from}-{to}"),
+                 start: from,
+@@ -1028,6 +1161,7 @@ fn build_layout_data_typed(
  
      {
          let mut ctx = TypedLayoutContext {
@@ -13835,7 +13853,7 @@ index 46e623f8..dacb468d 100644
              states,
              classes,
              config,
-@@ -1040,6 +1163,113 @@ fn build_layout_data_typed(
+@@ -1040,6 +1174,113 @@ fn build_layout_data_typed(
          setup_doc(&mut ctx, None, root_doc, false)?;
      }
  
@@ -13949,7 +13967,7 @@ index 46e623f8..dacb468d 100644
      // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
      for node in nodes.iter_mut() {
          let Some(label_val) = node.label.clone() else {
-@@ -1064,7 +1294,7 @@ fn build_layout_data_typed(
+@@ -1064,7 +1305,7 @@ fn build_layout_data_typed(
          node.description = Some(rest);
      }
  
@@ -13958,7 +13976,7 @@ index 46e623f8..dacb468d 100644
  }
  
  fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
-@@ -1102,6 +1332,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+@@ -1102,6 +1343,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
  
  fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
      match stmt {
@@ -30665,10 +30683,10 @@ index 00000000..91db05f3
 +}
 diff --git a/crates/merman/tests/state_source_provenance.rs b/crates/merman/tests/state_source_provenance.rs
 new file mode 100644
-index 00000000..d153df94
+index 00000000..d0269409
 --- /dev/null
 +++ b/crates/merman/tests/state_source_provenance.rs
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,95 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30719,6 +30737,50 @@ index 00000000..d153df94
 +            .iter()
 +            .any(|p| p["domId"] == separator["domId"] && p["effective"] == true)
 +    );
++}
++
++#[test]
++fn attached_note_connectors_keep_original_note_statement_ranges() {
++    let source = "stateDiagram-v2\r\n%% 😀\r\nstate A\r\nnote left of A : Same 😀\r\nnote right of A\r\n Same 😀\r\n second row\r\nend note\r\n";
++    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++        MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++    ));
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("missing SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let pieces: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|n| n.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let slice = |span: &Value| {
++        &source[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
++    };
++    let connectors: Vec<_> = pieces
++        .iter()
++        .filter(|p| p["relationship"] == "note")
++        .collect();
++    assert_eq!(connectors.len(), 2);
++    for (piece, expected) in connectors.iter().zip([
++        "note left of A : Same 😀",
++        "note right of A\r\n Same 😀\r\n second row\r\nend note",
++    ]) {
++        assert_eq!(piece["kind"], "edge");
++        assert_eq!(slice(&piece["span"]), expected);
++        assert!(piece.get("labelSpan").is_none());
++        assert!(svg.descendants().any(
++            |n| n.has_tag_name("path") && n.attribute("data-mt-key") == piece["domId"].as_str()
++        ));
++    }
 +}
 diff --git a/docs/json5-provenance.md b/docs/json5-provenance.md
 new file mode 100644

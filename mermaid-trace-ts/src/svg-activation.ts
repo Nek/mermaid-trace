@@ -46,11 +46,14 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const matching = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)));
     const matchingLabels = matching.filter(piece => piece.labelSpan && labelIds.has(piece.id) && ranges.filter(range => overlaps(piece.span, range))
       .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end));
+    const labelPieces = new Set(matchingLabels);
     // ponytail: quadratic containment check for bounded diagrams; use an interval index if large maps make it slow.
-    const pieces = matching.filter(piece => matchingLabels.includes(piece) || !ranges.filter(range => overlaps(piece.span, range)).every(range => matching.some(child =>
-      child.span.start >= piece.span.start && child.span.end <= piece.span.end
-      && (child.span.start > piece.span.start || child.span.end < piece.span.end)
-      && range.start >= child.span.start && range.start < child.span.end && range.end <= child.span.end)))
+    const pieces = matching.filter(piece => labelPieces.has(piece) || !ranges.filter(range => overlaps(piece.span, range)).every(range => matching.some(child => {
+      const span = labelPieces.has(child) ? child.labelSpan! : child.span;
+      return span.start >= piece.span.start && span.end <= piece.span.end
+        && (span.start > piece.span.start || span.end < piece.span.end)
+        && range.start >= span.start && range.start < span.end && range.end <= span.end;
+    })))
       .sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
     const whole = ranges.some(range => range.start === 0 && range.end === mapping.source.length);
     set(svg, 'data-mt-selected', whole ? 'true' : null);

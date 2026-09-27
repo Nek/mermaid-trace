@@ -96,6 +96,18 @@ fn state_ac5_pinned_upstream_corpus_has_no_unmapped_semantic_shapes() {
                         ));
                     }
                 }
+                for connector in document.descendants().filter(|n| {
+                    n.has_tag_name("path")
+                        && n.attribute("class")
+                            .is_some_and(|c| c.split_whitespace().any(|c| c == "note-edge"))
+                }) {
+                    assert_eq!(
+                        connector.attribute("data-mt-role"),
+                        Some("edge"),
+                        "{}: note connector lacks activation mapping",
+                        path.display()
+                    );
+                }
                 for piece in result["mapping"]["pieces"].as_array().unwrap() {
                     assert!(
                         !selected(&source, &piece["span"]).is_empty(),
@@ -368,7 +380,13 @@ fn state_struct_ac1_2_native_states_transitions_notes_and_nesting() {
             .iter()
             .map(|p| slice(&p["span"]))
             .collect::<Vec<_>>(),
-        ["[*] --> A", "A --> B : review 😀", "B --> A", "C --> [*]"]
+        [
+            "[*] --> A",
+            "A --> B : review 😀",
+            "B --> A",
+            "note right of A : note 😀",
+            "C --> [*]"
+        ]
     );
     assert_eq!(slice(&transitions[1]["labelSpan"]), "review 😀");
     assert_eq!(transitions[1]["from"], "A");
@@ -503,5 +521,71 @@ fn state_regions_preserve_nested_empty_and_separator_occurrences() {
                 .any(|n| n.attribute("data-mt-key") == piece["domId"].as_str()
                     && n.attribute("data-mt-role") == Some("node"))
         );
+    }
+}
+
+#[test]
+fn state_note_connectors_map_the_owning_note_statement() {
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for position in ["left", "right"] {
+                    for multiline in [false, true] {
+                        let note = if multiline {
+                            format!("note {position} of A\r\n  Same 😀\r\n  second row\r\nend note")
+                        } else {
+                            format!("note {position} of A : Same 😀")
+                        };
+                        let composite = format!("note {position} of Group : Same 😀");
+                        let source = format!(
+                            "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\nstate A\r\nstate Group {{\r\n  B\r\n}}\r\n{note}\r\n{composite}\r\n"
+                        );
+                        let result = mermaid_trace_rs::render("state-note-edges", &source).unwrap();
+                        let svg =
+                            roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        let paths: Vec<_> = svg
+                            .descendants()
+                            .filter(|n| {
+                                n.has_tag_name("path")
+                                    && n.attribute("class").is_some_and(|c| {
+                                        c.split_whitespace().any(|c| c == "note-edge")
+                                    })
+                            })
+                            .collect();
+                        assert_eq!(paths.len(), 2);
+                        let mut spans = Vec::new();
+                        for path in paths {
+                            assert_eq!(
+                                path.attribute("data-mt-role"),
+                                Some("edge"),
+                                "dashed note connector must be selectable"
+                            );
+                            let piece = pieces
+                                .iter()
+                                .find(|p| p["id"] == path.attribute("data-mt-refs").unwrap())
+                                .unwrap();
+                            assert!(
+                                piece.get("labelSpan").is_none(),
+                                "a note connector has no transition label"
+                            );
+                            spans.push(selected(&source, &piece["span"]));
+                        }
+                        spans.sort();
+                        let mut expected = vec![note, composite];
+                        expected.sort();
+                        assert_eq!(spans, expected);
+                        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                        let baseline =
+                            mermaid_trace_rs::render_with(&plain, "state-note-edges", &source)
+                                .unwrap();
+                        assert_eq!(
+                            support::strip_trace(result["svg"].as_str().unwrap()),
+                            support::strip_trace(baseline["svg"].as_str().unwrap())
+                        );
+                    }
+                }
+            }
+        }
     }
 }

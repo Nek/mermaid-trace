@@ -3,10 +3,24 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type Locator } from 'playwright';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
+
+
+async function noteConnectorPoint(target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  return target.evaluate(element => {
+    const path = element as SVGGeometryElement;
+    for (const fraction of [0.2, 0.4, 0.6, 0.8]) {
+      const point = path.getPointAtLength(path.getTotalLength() * fraction).matrixTransform(path.getScreenCTM()!);
+      const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
+      if (hit === element || (hit === element.previousElementSibling && hit?.getAttribute('aria-hidden') === 'true')) return { x: point.x, y: point.y };
+    }
+    throw new Error('note connector has no exposed pointer target');
+  });
+}
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
@@ -80,10 +94,10 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
     for (const [controlKey, text, role = 'control'] of controls) {
-      const target = controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      const target = controlKey === "state:note:first" ? first.locator("path.note-edge").first() : controlKey === "state:note:last" ? first.locator("path.note-edge").last() : controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
-        const point = await target.evaluate(element => {
+        const point = controlKey.startsWith('state:note:') ? await noteConnectorPoint(target) : await target.evaluate(element => {
           const shape = element as SVGGeometryElement;
           const point = shape.getPointAtLength(shape.getTotalLength() * (element.tagName === 'path' ? 0.2 : 0.5)).matrixTransform(shape.getScreenCTM()!);
           return { x: point.x, y: point.y };
@@ -97,6 +111,15 @@ async function verifyNative(source: string, key: string, expected: string, label
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
       controlSpans.push(control.span);
+      if (controlKey.startsWith('state:note:')) {
+        await page.evaluate(span => (window as any).handles[0].highlight([span]), control.span);
+        assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'full note source selects its connector');
+        const noteLabel = await page.evaluate(span => (window as any).handles[0].mapping.pieces.find((piece: any) => piece.kind === 'control' && piece.span.start === span.start && piece.span.end === span.end)?.labelSpan, control.span);
+        assert.ok(noteLabel, 'the note retains its own text range');
+        await page.evaluate(span => (window as any).handles[0].highlight([span]), noteLabel);
+        assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 0, 'note text source selection must not select its connector');
+        assert.ok(await first.locator('[data-mt-role=control-label][data-mt-selected=true]').count());
+      }
       if (controlKey === 'state:region:last') {
         assert.equal(control.role, 'node');
         assert.equal(await first.getAttribute('data-mt-selected'), null, 'region click must not select the diagram');
@@ -152,9 +175,14 @@ async function verifyNative(source: string, key: string, expected: string, label
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
-      const target = controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
+      const target = controlKey === "state:note:first" ? page.locator("path.note-edge").first() : controlKey === "state:note:last" ? page.locator("path.note-edge").last() : controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
         await target.click();
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
+      }
+      if (controlKey.startsWith('state:note:')) {
+        const point = await noteConnectorPoint(target);
+        await page.mouse.click(point.x, point.y);
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text.replaceAll('\n', '\n> '));
       }
       if (controlKey === 'state:region:last') {
@@ -200,6 +228,7 @@ test('STATE STRUCT-AC2/3: saved native SVG and original Markdown state selection
     ['state:edge:edge1', 'B --> A', 'edge'],
     ['state:node:A----note-2', 'Annotation', 'control-label'],
     ['state:node:A----note-2', 'note right of A : Annotation'],
+    ['state:note:last', 'note right of A : Annotation', 'edge'],
     ['state:node:Group', 'Group', 'node-label'],
     ['state:node:Group', block, 'node'],
   ]);
@@ -446,4 +475,14 @@ test('STATE REGION: grey right region selects its own source block in saved SVG 
   const right = '[*] --> Indexing\n    Indexing --> [*] : indexed';
   const source = 'stateDiagram-v2\n  [*] --> Editing\n  state Editing {\n    state "Draft" as Draft: Editable content\n    Draft : Can be revised\n    Draft : Can be revised\n    state "Review" as Review\n    [*] --> Draft\n    Draft --> Review : submit\n    Review --> Draft : revise\n    Review --> [*] : approve\n    --\n    ' + right + '\n  }\n  Editing --> Published : publish\n  Published --> [*]\n  note right of Published : Available to readers\n';
   await verifyNative(source, 'state:node:Draft', 'state "Draft" as Draft: Editable content', 'Draft', [['state:region:last', right, 'node']]);
+});
+
+
+test('STATE NOTE: dashed connectors preserve saved/live source and clipboard across note variants', { timeout: 180_000 }, async () => {
+  for (const header of ['stateDiagram', 'stateDiagram-v2']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const position of ['left', 'right']) for (const multiline of [false, true]) {
+    const note = multiline ? `note ${position} of A\n  Same 😀\n  second row\nend note` : `note ${position} of A : Same 😀`;
+    const composite = `note ${position} of Group : Same 😀`;
+    const source = `---\nconfig:\n  look: ${look}\n  handDrawnSeed: 42\n  htmlLabels: ${html}\n---\n${header}\nstate "Actor 😀" as A\nstate Group {\n  B\n}\n${note}\n${composite}\n`;
+    await verifyNative(source, 'state:node:A', 'state "Actor 😀" as A', 'Actor 😀', [['state:note:first', note, 'edge'], ['state:note:last', composite, 'edge']]);
+  }
 });
