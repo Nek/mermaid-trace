@@ -76,3 +76,5 @@ STATE-NOTE-OWNERSHIP delivery: attachment references no longer produce state/bod
 Final verification: `make test typecheck` passes 52 Rust and 53 TypeScript/browser tests. The pinned native patch applies cleanly and reproduces all 106 changed files. In-app source selection at port 5174 confirms `Published` within the note selects the note/connector while the Published state remains unselected.
 
 Current equal-span selection policy: implicit state body/label and attached note body/connector bindings form one logical selection in shared activation. Distinct authored label subranges remain separately selectable. The former equal-span label-only behavior above records the earlier delivery and is superseded by OWN-AC3.
+
+[OWN-STATE-ENDPOINT](../source-ownership/spec.md#own-state-endpoint-ready) corrects the earlier reference-to-node behavior under C2-OWN: references to existing states inside transitions select their owning transition. Standalone declarations and genuine first implicit creation keep node ownership; notes alone do not declare a state. This supersedes only reference traversal, preserving native semantics, geometry, label ranges and all STATE-2 gates.

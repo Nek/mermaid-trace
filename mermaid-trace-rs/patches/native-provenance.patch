@@ -13605,7 +13605,7 @@ index 2d861649..11f5a878 100644
 +    }
 +}
 diff --git a/crates/merman-core/src/diagrams/state/db.rs b/crates/merman-core/src/diagrams/state/db.rs
-index 46e623f8..d381cf96 100644
+index 46e623f8..6a737b68 100644
 --- a/crates/merman-core/src/diagrams/state/db.rs
 +++ b/crates/merman-core/src/diagrams/state/db.rs
 @@ -1,9 +1,9 @@
@@ -13743,15 +13743,16 @@ index 46e623f8..d381cf96 100644
      let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
      let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
      let mut node_index: HashMap<String, usize> = HashMap::new();
-@@ -726,6 +750,7 @@ fn build_layout_data_typed(
+@@ -726,6 +750,8 @@ fn build_layout_data_typed(
      let mut graph_item_count: usize = 0;
  
      struct TypedLayoutContext<'a> {
 +        source_occurrences: &'a mut Vec<Value>,
++        owned_node_ids: HashSet<String>,
          states: &'a HashMap<String, StateRecord>,
          classes: &'a IndexMap<String, StyleClass>,
          config: &'a MermaidConfig,
-@@ -784,6 +809,22 @@ fn build_layout_data_typed(
+@@ -784,6 +810,22 @@ fn build_layout_data_typed(
  
                      let edge_label_raw = relation.description.clone().unwrap_or_default();
                      let edge_label = sanitize_text(&edge_label_raw, ctx.config);
@@ -13774,7 +13775,7 @@ index 46e623f8..d381cf96 100644
                      ctx.edges.push(StateDiagramRenderEdge {
                          id: format!("edge{}", *ctx.graph_item_count),
                          start: relation.state1.id.clone(),
-@@ -807,6 +848,47 @@ fn build_layout_data_typed(
+@@ -807,6 +849,50 @@ fn build_layout_data_typed(
          parsed_item: &StateStmt,
          alt_flag: bool,
      ) -> std::result::Result<(), String> {
@@ -13805,13 +13806,16 @@ index 46e623f8..d381cf96 100644
 +            }
 +            if parsed_item.note.is_none()
 +                && let Some(span) = parsed_item.span.or(parsed_item.id_span)
++                // A transition reference belongs to its transition. Only declarations or
++                // first implicit creation establish node provenance; note anchors do not.
++                && (parsed_item.span.is_some()
++                    || !ctx.owned_node_ids.contains(&parsed_item.id))
 +            {
++                ctx.owned_node_ids.insert(parsed_item.id.clone());
 +                let mut piece = json!({"kind":"node","semanticId":parsed_item.id,"domId":format!("state:node:{}",parsed_item.id),"span":span});
-+                if parsed_item.note.is_none() {
-+                    piece["declaration"] = json!(parsed_item.span.is_some());
-+                    if let Some(label) = parsed_item.label_span {
-+                        piece["labelSpan"] = json!(label);
-+                    }
++                piece["declaration"] = json!(parsed_item.span.is_some());
++                if let Some(label) = parsed_item.label_span {
++                    piece["labelSpan"] = json!(label);
 +                }
 +                if let Some(parent) = parent {
 +                    piece["parentId"] = json!(parent.id);
@@ -13822,7 +13826,7 @@ index 46e623f8..d381cf96 100644
          let item_id = parsed_item.id.clone();
          if item_id == "root" || item_id.is_empty() {
              return Ok(());
-@@ -842,6 +924,12 @@ fn build_layout_data_typed(
+@@ -842,6 +928,12 @@ fn build_layout_data_typed(
                  id: item_id.clone(),
                  shape,
                  label: json!(sanitize_text(&item_id, config)),
@@ -13835,7 +13839,7 @@ index 46e623f8..d381cf96 100644
                  css_classes,
                  css_styles: styles.clone(),
                  node_type: None,
-@@ -852,11 +940,28 @@ fn build_layout_data_typed(
+@@ -852,11 +944,28 @@ fn build_layout_data_typed(
              }
          });
  
@@ -13864,7 +13868,7 @@ index 46e623f8..d381cf96 100644
              config,
          );
  
-@@ -868,7 +973,10 @@ fn build_layout_data_typed(
+@@ -868,7 +977,10 @@ fn build_layout_data_typed(
              entry.is_group = true;
              let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
              entry.dir = Some(dir);
@@ -13876,7 +13880,7 @@ index 46e623f8..d381cf96 100644
              entry.shape = if parsed_item.ty == "divider" {
                  SHAPE_DIVIDER.to_string()
              } else {
-@@ -932,6 +1040,21 @@ fn build_layout_data_typed(
+@@ -932,6 +1044,21 @@ fn build_layout_data_typed(
              n.text = sanitize_text(&n.text, config);
  
              let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
@@ -13898,7 +13902,7 @@ index 46e623f8..d381cf96 100644
              let parent_base_id = format!("{item_id}{PARENT_ID}");
              let parent_node_id = if ctx.node_index.contains_key(&parent_base_id)
                  || ctx.states.contains_key(&parent_base_id)
-@@ -940,6 +1063,15 @@ fn build_layout_data_typed(
+@@ -940,6 +1067,15 @@ fn build_layout_data_typed(
              } else {
                  parent_base_id
              };
@@ -13914,7 +13918,7 @@ index 46e623f8..d381cf96 100644
              let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
              let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
  
-@@ -1010,6 +1142,17 @@ fn build_layout_data_typed(
+@@ -1010,6 +1146,17 @@ fn build_layout_data_typed(
                  std::mem::swap(&mut from, &mut to);
              }
  
@@ -13932,15 +13936,16 @@ index 46e623f8..d381cf96 100644
              ctx.edges.push(StateDiagramRenderEdge {
                  id: format!("{from}-{to}"),
                  start: from,
-@@ -1028,6 +1171,7 @@ fn build_layout_data_typed(
+@@ -1028,6 +1175,8 @@ fn build_layout_data_typed(
  
      {
          let mut ctx = TypedLayoutContext {
 +            source_occurrences: &mut source_occurrences,
++            owned_node_ids: HashSet::new(),
              states,
              classes,
              config,
-@@ -1040,6 +1184,152 @@ fn build_layout_data_typed(
+@@ -1040,6 +1189,152 @@ fn build_layout_data_typed(
          setup_doc(&mut ctx, None, root_doc, false)?;
      }
  
@@ -14093,7 +14098,7 @@ index 46e623f8..d381cf96 100644
      // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
      for node in nodes.iter_mut() {
          let Some(label_val) = node.label.clone() else {
-@@ -1064,7 +1354,7 @@ fn build_layout_data_typed(
+@@ -1064,7 +1359,7 @@ fn build_layout_data_typed(
          node.description = Some(rest);
      }
  
@@ -14102,7 +14107,7 @@ index 46e623f8..d381cf96 100644
  }
  
  fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
-@@ -1102,6 +1392,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+@@ -1102,6 +1397,7 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
  
  fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
      match stmt {
@@ -30809,10 +30814,10 @@ index 00000000..91db05f3
 +}
 diff --git a/crates/merman/tests/state_source_provenance.rs b/crates/merman/tests/state_source_provenance.rs
 new file mode 100644
-index 00000000..074d7c32
+index 00000000..0fe3ae75
 --- /dev/null
 +++ b/crates/merman/tests/state_source_provenance.rs
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,201 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30953,6 +30958,63 @@ index 00000000..074d7c32
 +            assert!(
 +                svg.descendants()
 +                    .any(|n| n.attribute("data-mt-key") == owner["domId"].as_str())
++            );
++        }
++    }
++}
++
++#[test]
++fn transition_endpoint_references_keep_their_owner_and_first_creation() {
++    for prefix in [
++        "A\nB\n",
++        "A --> B : create\n",
++        "note right of A : first\nA --> B : create\n",
++    ] {
++        let statement = "A --> B : again";
++        let source = format!("stateDiagram-v2\n%% 😀\n{prefix}{statement}\n");
++        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++            MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++        ));
++        let RenderOutput::Svg(Some(output)) = renderer
++            .render(RenderRequest::svg(
++                &source,
++                OperationControl::new(),
++                SvgRequest::default(),
++            ))
++            .unwrap()
++        else {
++            panic!("missing SVG")
++        };
++        let svg = roxmltree::Document::parse(output.svg()).unwrap();
++        let pieces: Vec<Value> = serde_json::from_str(
++            svg.descendants()
++                .find_map(|n| n.attribute("data-mt-native"))
++                .unwrap(),
++        )
++        .unwrap();
++        let start = source.find(statement).unwrap();
++        for offset in [0, 6] {
++            assert!(!pieces.iter().any(|p| p["kind"] == "node"
++                && p["span"] == json!({"start":start+offset,"end":start+offset+1})));
++        }
++        let edge = pieces
++            .iter()
++            .find(|p| {
++                p["kind"] == "edge"
++                    && p["span"] == json!({"start":start,"end":start+statement.len()})
++            })
++            .unwrap();
++        assert_eq!(edge["from"], "A");
++        assert_eq!(edge["to"], "B");
++        assert!(
++            svg.descendants()
++                .any(|n| n.attribute("data-mt-key") == edge["domId"].as_str())
++        );
++        for id in ["A", "B"] {
++            assert!(
++                pieces
++                    .iter()
++                    .any(|p| p["kind"] == "node" && p["semanticId"] == id)
 +            );
 +        }
 +    }

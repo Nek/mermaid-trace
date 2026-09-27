@@ -692,3 +692,72 @@ fn state_note_only_anchor_preserves_later_style_relationships_without_claiming_n
         "a note attachment must not become a state selection"
     );
 }
+
+#[test]
+fn own_state_declared_endpoint_references_belong_to_the_transition() {
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for prefix in [
+                    "A\r\nB\r\n",
+                    "state \"Alpha 😀\" as A\r\nstate \"Beta\" as B\r\n",
+                    "state A {\r\nC\r\n}\r\nB\r\n",
+                    "state A <<choice>>\r\nstate B <<fork>>\r\n",
+                    "A --> B : create\r\n",
+                    "note right of A : Before creation\r\nA --> B : create\r\n",
+                ] {
+                    for nested in [false, true] {
+                        let body = format!(
+                            "{prefix}A --> B : go\r\nB --> A : return\r\nA --> A : self\r\nA --> B : parallel\r\n"
+                        );
+                        let body = if nested {
+                            format!("state Outer {{\r\n{body}}}\r\n")
+                        } else {
+                            body
+                        };
+                        let source = format!(
+                            "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n{body}"
+                        );
+                        let result = mermaid_trace_rs::render("state-ref-owner", &source).unwrap();
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        for statement in [
+                            "A --> B : go",
+                            "B --> A : return",
+                            "A --> A : self",
+                            "A --> B : parallel",
+                        ] {
+                            let byte = source.find(statement).unwrap();
+                            for offset in [0, 6] {
+                                let start = source[..byte + offset].encode_utf16().count();
+                                let span = serde_json::json!({"start":start,"end":start+1});
+                                assert!(
+                                    !pieces
+                                        .iter()
+                                        .any(|p| p["kind"] == "node" && p["span"] == span),
+                                    "reference-only endpoint must not select its target node: {source}"
+                                );
+                            }
+                            let edge = pieces
+                                .iter()
+                                .find(|p| {
+                                    p["kind"] == "edge"
+                                        && selected(&source, &p["span"]) == statement
+                                })
+                                .unwrap();
+                            assert_eq!(edge["from"], &statement[..1]);
+                            assert_eq!(edge["to"], &statement[6..7]);
+                        }
+                        for id in ["A", "B"] {
+                            assert!(
+                                pieces
+                                    .iter()
+                                    .any(|p| p["kind"] == "node" && p["semanticId"] == id),
+                                "real state declarations remain mapped"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
