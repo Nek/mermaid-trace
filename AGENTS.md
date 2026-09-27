@@ -9,6 +9,12 @@
 
 All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs/`, including feature specs.
 
+## Coherent selection
+
+- Apply [source ownership and selection](docs/DESIGN.md#source-ownership-and-selection) to every diagram family and producer. Visual parts with the same exact owned source span form one selectable object: activating any part highlights the entire group, selects the same source range and copies the same location.
+- Preserve constituent AST identities and use one keyboard stop and focus treatment for the group. Do not draw a competing selection rectangle around only the clicked part. Independently editable visuals with distinct source spans remain separate targets.
+- Require saved/live pointer, keyboard and reverse-source acceptance checks for this rule when adding or changing diagram support; a diagram-specific exception does not satisfy it.
+
 ## Full feature coverage
 
 - A request to implement diagram support means the complete diagram family by default, including valid syntax/configuration and renderer variants, nesting, repeated occurrences and edge cases. A narrower slice requires explicit user agreement; do not silently choose one.
