@@ -31045,6 +31045,56 @@ index 349c673f..34331760 100644
          assert!(!out.contains("@keyframes"));
          assert!(!out.contains(":root"));
          assert!(!out.contains("animation"));
+diff --git a/crates/merman-render/tests/sequence_svg_test.rs b/crates/merman-render/tests/sequence_svg_test.rs
+index 2267c55f..02d43a39 100644
+--- a/crates/merman-render/tests/sequence_svg_test.rs
++++ b/crates/merman-render/tests/sequence_svg_test.rs
+@@ -1851,16 +1851,18 @@ fn sequence_fallback_wraps_block_candidates_without_losing_text() {
+ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
+     let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
+     let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+-    let group_start = svg
+-        .find(r#"<g data-et="control-structure" data-id="i17">"#)
+-        .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
+-    let group_tail = &svg[group_start..];
+-    let group_end = group_tail
+-        .find("</g>")
+-        .unwrap_or_else(|| panic!("unterminated nested opt control group: {group_tail}"));
+-    let loop_lines: Vec<&str> = extract_paired_tags(&group_tail[..group_end], "text")
+-        .into_iter()
+-        .filter(|tag| tag.contains(r#"class="loopText""#))
++    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
++    let group = document
++        .descendants()
++        .find(|node| {
++            node.has_tag_name("g")
++                && node.attribute("data-et") == Some("control-structure")
++                && node.attribute("data-id") == Some("i17")
++        })
++        .expect("nested opt control group");
++    let loop_lines: Vec<_> = group
++        .descendants()
++        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("loopText"))
+         .collect();
+ 
+     assert_eq!(
+@@ -1873,9 +1875,13 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
+         "with a long title that",
+         "will overflow]",
+     ]) {
+-        assert!(
+-            line.contains(&format!(">{expected}</tspan>")),
+-            "unexpected nested opt title line: {line}"
++        assert_eq!(
++            line.descendants()
++                .filter(|node| node.is_text())
++                .filter_map(|node| node.text())
++                .collect::<String>(),
++            expected,
++            "nested opt title line"
+         );
+     }
+ }
 diff --git a/crates/merman/tests/configuration_source_provenance.rs b/crates/merman/tests/configuration_source_provenance.rs
 new file mode 100644
 index 00000000..afd37acc
