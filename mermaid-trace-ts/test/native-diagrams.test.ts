@@ -419,3 +419,11 @@ test('FLOW AC4/6: native SVG labels group multiline text and keep console glyphs
     }
   }
 });
+
+test('FLOW AC5/6: state shape retains finite saved/live geometry and selections', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+    const statement = "A@{ shape: state, label: 'State 😀' }";
+    const source = `---\nconfig:\n  htmlLabels: ${htmlLabels}\n  look: ${look}\n  handDrawnSeed: 42\n---\n${header}\n${statement}\nA --> B\n`;
+    await verifyNative(source, 'node:A', statement, 'State 😀', [], 'state');
+  }
+});

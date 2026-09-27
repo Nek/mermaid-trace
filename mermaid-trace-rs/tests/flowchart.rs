@@ -1732,3 +1732,189 @@ fn flow_ac4_svg_labels_are_native_groups_and_console_glyphs_are_generated() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_state_shape_has_finite_native_geometry_and_exact_label_ranges() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let statement = "A@{ shape: state, label: 'State 😀' }";
+                let source = format!(
+                    "---\r\nconfig:\r\n  htmlLabels: {html}\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n  themeVariables:\r\n    radius: 17\r\n---\r\n{header}\r\n{statement}\r\nA --> B\r\n"
+                );
+                let result = mermaid_trace_rs::render("state-shape", &source).unwrap();
+                let raw = result["svg"].as_str().unwrap();
+                assert!(!raw.contains("NaN") && !raw.contains("Infinity"));
+                let svg = roxmltree::Document::parse(raw).unwrap();
+                let node = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some("node:A")
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .unwrap();
+                if look != "handDrawn" {
+                    let body = node.children().find(|n| n.has_tag_name("rect")).unwrap();
+                    assert_eq!(
+                        body.attribute("rx"),
+                        Some(if look == "neo" { "3" } else { "5" })
+                    );
+                    assert_eq!(body.attribute("ry"), body.attribute("rx"));
+                    for dimension in ["width", "height"] {
+                        let value = body.attribute(dimension).unwrap().parse::<f64>().unwrap();
+                        assert!(value.is_finite() && value > 0.0);
+                    }
+                } else {
+                    assert!(node.descendants().any(|n| n.has_tag_name("path")
+                        && n.attribute("d").is_some_and(|d| !d.is_empty())));
+                }
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                for (role, expected) in [("node", statement), ("node-label", "State 😀")] {
+                    let visual = svg
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some("node:A")
+                                && n.attribute("data-mt-role") == Some(role)
+                        })
+                        .unwrap();
+                    let start = visual
+                        .attribute("data-mt-start")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    let end = visual
+                        .attribute("data-mt-end")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), expected);
+                }
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "state-shape", &source).unwrap();
+                assert_eq!(
+                    strip_trace(raw),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_every_pinned_public_shape_keeps_native_node_and_label_bindings() {
+    let shapes: Vec<_> = merman::diagrams::flowchart::flowchart_public_shape_names().collect();
+    assert_eq!(
+        shapes.len(),
+        146,
+        "review the pinned public-shape inventory when updating Merman"
+    );
+    // These native shapes deliberately omit/clear their labels, as Mermaid does.
+    let no_label = [
+        "anchor",
+        "choice",
+        "cross-circ",
+        "crossed-circle",
+        "summary",
+        "f-circ",
+        "filled-circle",
+        "junction",
+        "fork",
+        "join",
+        "fr-circ",
+        "framed-circle",
+        "stop",
+        "bolt",
+        "com-link",
+        "lightning-bolt",
+        "sm-circ",
+        "small-circle",
+        "start",
+        "hourglass",
+        "collate",
+    ];
+    let renderer = mermaid_trace_rs::renderer();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for shape in &shapes {
+                    let statement = format!("A@{{shape: {shape}, label: 'Same 😀'}}");
+                    let source = format!(
+                        "---\r\nconfig:\r\n  htmlLabels: {html}\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\n%% 😀\r\n{statement} --> B[\"Same 😀\"]\r\nA --> B\r\n"
+                    );
+                    let result = mermaid_trace_rs::render_with(&renderer, "public-shapes", &source)
+                        .unwrap_or_else(|error| panic!("{shape}/{header}/{look}/{html}: {error}"));
+                    let raw = result["svg"].as_str().unwrap();
+                    assert!(
+                        !raw.contains("NaN") && !raw.contains("Infinity"),
+                        "{shape}/{header}/{look}/{html}"
+                    );
+                    let svg = roxmltree::Document::parse(raw).unwrap();
+                    let utf16: Vec<_> = source.encode_utf16().collect();
+                    let node = svg
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some("node:A")
+                                && n.attribute("data-mt-role") == Some("node")
+                        })
+                        .unwrap();
+                    let start = node
+                        .attribute("data-mt-start")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    let end = node
+                        .attribute("data-mt-end")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    assert_eq!(
+                        String::from_utf16(&utf16[start..end]).unwrap(),
+                        statement,
+                        "{shape}/{header}/{look}/{html}"
+                    );
+                    let labels: Vec<_> = svg
+                        .descendants()
+                        .filter(|n| {
+                            n.attribute("data-mt-key") == Some("node:A")
+                                && n.attribute("data-mt-role") == Some("node-label")
+                        })
+                        .collect();
+                    assert_eq!(
+                        labels.len(),
+                        usize::from(!no_label.contains(shape)),
+                        "label controls for {shape}/{header}/{look}/{html}"
+                    );
+                    if let Some(label) = labels.first() {
+                        let start = label
+                            .attribute("data-mt-start")
+                            .unwrap()
+                            .parse::<usize>()
+                            .unwrap();
+                        let end = label
+                            .attribute("data-mt-end")
+                            .unwrap()
+                            .parse::<usize>()
+                            .unwrap();
+                        let byte_start =
+                            source.find(&statement).unwrap() + statement.find("Same 😀").unwrap();
+                        assert_eq!(
+                            start,
+                            source[..byte_start].encode_utf16().count(),
+                            "repeated text cannot substitute another label origin"
+                        );
+                        assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), "Same 😀");
+                    }
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "public-shapes", &source).unwrap();
+                    assert_eq!(
+                        strip_trace(raw),
+                        strip_trace(baseline["svg"].as_str().unwrap()),
+                        "{shape}/{header}/{look}/{html}"
+                    );
+                }
+            }
+        }
+    }
+}

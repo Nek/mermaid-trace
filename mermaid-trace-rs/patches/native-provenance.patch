@@ -27655,6 +27655,32 @@ index cdc83769..1fd66aba 100644
      }
  
      #[test]
+diff --git a/crates/merman-render/src/flowchart/node.rs b/crates/merman-render/src/flowchart/node.rs
+index e0656811..62b8c73d 100644
+--- a/crates/merman-render/src/flowchart/node.rs
++++ b/crates/merman-render/src/flowchart/node.rs
+@@ -170,7 +170,7 @@ fn node_render_dimensions(
+ 
+         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
+         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.
+-        "roundedRect" | "rounded" | "event" => (text_w + 2.0 * p, text_h + 2.0 * p),
++        "roundedRect" | "rounded" | "event" | "state" => (text_w + 2.0 * p, text_h + 2.0 * p),
+ 
+         // Note (rendering-elements/state note box).
+         "note" => (text_w + 2.0 * p, text_h + 2.0 * p),
+diff --git a/crates/merman-render/src/flowchart/shapes.rs b/crates/merman-render/src/flowchart/shapes.rs
+index 568d2557..e42f2a2e 100644
+--- a/crates/merman-render/src/flowchart/shapes.rs
++++ b/crates/merman-render/src/flowchart/shapes.rs
+@@ -125,7 +125,7 @@ impl FlowchartShape {
+             "paper-tape" | "flag" => Self::PaperTape,
+             "person" => Self::Person,
+             "squareRect" | "rect" | "proc" | "process" | "rectangle" => Self::Process,
+-            "roundedRect" | "rounded" | "event" => Self::RoundedRectangle,
++            "roundedRect" | "rounded" | "event" | "state" => Self::RoundedRectangle,
+             "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
+                 Self::ShadedProcess
+             }
 diff --git a/crates/merman-render/src/flowchart/style.rs b/crates/merman-render/src/flowchart/style.rs
 index bb421711..4b3af1e7 100644
 --- a/crates/merman-render/src/flowchart/style.rs
@@ -28868,6 +28894,35 @@ index 0e88fbb6..e59cae96 100644
  pub(super) use bow_tie_rect::render_bow_tie_rect;
  pub(super) use browser::render_browser;
  pub(super) use bucket::render_bucket;
+diff --git a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/rounded_rect.rs b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/rounded_rect.rs
+index 06728f4c..f7de275b 100644
+--- a/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/rounded_rect.rs
++++ b/crates/merman-render/src/svg/parity/flowchart/render/node/shapes/rounded_rect.rs
+@@ -20,8 +20,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
+ ) {
+     let w = common.layout_node.width.max(1.0);
+     let h = common.layout_node.height.max(1.0);
+-    let radius = 5.0;
+-    let taper = 5.0;
++    // Mermaid state.ts uses drawRect with radius 3 for neo and 5 otherwise.
++    let radius = if common.shape == "state" && common.look_is_neo() {
++        3.0
++    } else {
++        5.0
++    };
++    let taper = radius;
+ 
+     let mut pts: Vec<(f64, f64)> = Vec::new();
+     pts.push((-w / 2.0 + taper, -h / 2.0));
+@@ -113,7 +118,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
+     } else {
+         let _ = write!(
+             out,
+-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="5" ry="5"/>"#,
++            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{radius}" ry="{radius}"/>"#,
+             escape_attr(common.style),
+             fmt(-w / 2.0),
+             fmt(-h / 2.0),
 diff --git a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs b/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
 index 8e2e7251..6f0e3da8 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
@@ -30053,10 +30108,10 @@ index be0592cb..56cc21a0 100644
 +}
 diff --git a/crates/merman/tests/flowchart_source_provenance.rs b/crates/merman/tests/flowchart_source_provenance.rs
 new file mode 100644
-index 00000000..4aa08908
+index 00000000..60f27c32
 --- /dev/null
 +++ b/crates/merman/tests/flowchart_source_provenance.rs
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,480 @@
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 +};
@@ -30481,6 +30536,58 @@ index 00000000..4aa08908
 +                glyph
 +                    .ancestors()
 +                    .any(|n| n.attribute("data-mt-key") == Some("node:A"))
++            );
++        }
++    }
++}
++
++#[test]
++fn native_flowchart_state_shape_uses_finite_geometry_and_native_label_identity() {
++    for header in ["flowchart LR", "flowchart-elk LR"] {
++        for look in ["classic", "neo", "handDrawn"] {
++            let source = format!(
++                "---\r\nconfig:\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\nA@{{shape: state, label: 'State 😀'}} --> B\r\n"
++            );
++            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
++                MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false})),
++            ));
++            let RenderOutput::Svg(Some(output)) = renderer
++                .render(RenderRequest::svg(
++                    &source,
++                    OperationControl::new(),
++                    SvgRequest::default(),
++                ))
++                .unwrap()
++            else {
++                panic!("missing SVG")
++            };
++            assert!(!output.svg().contains("NaN") && !output.svg().contains("Infinity"));
++            let svg = roxmltree::Document::parse(output.svg()).unwrap();
++            let node = svg
++                .descendants()
++                .find(|n| {
++                    n.attribute("data-mt-key") == Some("node:A")
++                        && !n.has_attribute("data-mt-label")
++                })
++                .unwrap();
++            if look != "handDrawn" {
++                let body = node.children().find(|n| n.has_tag_name("rect")).unwrap();
++                assert_eq!(
++                    body.attribute("rx"),
++                    Some(if look == "neo" { "3" } else { "5" })
++                );
++                assert_eq!(body.attribute("ry"), body.attribute("rx"));
++                for dimension in ["width", "height"] {
++                    let value = body.attribute(dimension).unwrap().parse::<f64>().unwrap();
++                    assert!(value.is_finite() && value > 0.0);
++                }
++            }
++            assert_eq!(
++                svg.descendants()
++                    .filter(|n| n.attribute("data-mt-key") == Some("node:A")
++                        && n.attribute("data-mt-label") == Some("true"))
++                    .count(),
++                1
 +            );
 +        }
 +    }
