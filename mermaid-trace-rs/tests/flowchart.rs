@@ -1385,15 +1385,30 @@ fn flow_ac4_configuration_constructs_keep_original_evidence_and_visual_parity() 
                     .iter()
                     .any(|p| p["classification"] == "configuration-key"
                         && p["path"] == serde_json::json!(["flowchart", "nodeSpacing"])
-                        && slice(&p["span"]) == "nodeSpacing")
+                        && slice(&p["span"]) == "nodeSpacing: 70"
+                        && slice(&p["labelSpan"]) == "70")
             );
-            assert!(
-                !native
-                    .iter()
-                    .any(|p| p["classification"] == "configuration-key"
-                        && p["path"] == serde_json::json!(["flowchart", "htmlLabels"])),
-                "do not fabricate parser-missing escaped key ranges"
+            let escaped = native
+                .iter()
+                .find(|p| {
+                    p["classification"] == "configuration-key"
+                        && p["path"] == serde_json::json!(["flowchart", "htmlLabels"])
+                })
+                .expect("escaped JSON5 key provenance");
+            assert_eq!(
+                slice(&escaped["span"]),
+                format!("html\\u004cabels\": {html}")
             );
+            assert_eq!(slice(&escaped["labelSpan"]), html.to_string());
+            let array = native
+                .iter()
+                .find(|p| {
+                    p["classification"] == "configuration-key"
+                        && p["path"] == serde_json::json!(["values", 0, "nested"])
+                })
+                .expect("array object key provenance");
+            assert_eq!(slice(&array["span"]), "nested: 'Value 😀'");
+            assert_eq!(slice(&array["labelSpan"]), "Value 😀");
             assert!(
                 result["mapping"]["pieces"]
                     .as_array()
@@ -1469,6 +1484,102 @@ fn flow_ac4_directive_metadata_preserves_native_ignored_and_incomplete_behavior(
         );
         let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
         let baseline = mermaid_trace_rs::render_with(&plain, "directive-status", source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
+fn flow_ac4_json5_tokens_keep_escapes_continuations_containers_and_typed_array_paths() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        let directive = "%%{init: { unknown: {\r\n  'esc\\u0061ped' /* key */: 'a\\u0062 😀',\r\n  continued: 'line\\\r\nend',\r\n  empty: '', number: -0xF, nil: null, bool: true,\r\n  repeated: 'first', repeated: 'last',\r\n  values: [[{ nested: 'array', '0': 'array key' }]],\r\n  object: { '0': { nested: 'object' } },\r\n  container: [1, /* item */ 'two',],\r\n} }}%%";
+        let source = format!("\u{feff}{directive}\r\n{header}\r\nA[Actor] --> B\r\n");
+        let result = mermaid_trace_rs::render("json5-tokens", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|n| n.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let slice = |span: &Value| {
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
+        };
+        for (path, expected_span, expected_selection) in [
+            (
+                serde_json::json!(["unknown", "escaped"]),
+                "esc\\u0061ped' /* key */: 'a\\u0062 😀'",
+                Some("a\\u0062 😀"),
+            ),
+            (
+                serde_json::json!(["unknown", "continued"]),
+                "continued: 'line\\\r\nend'",
+                Some("line\\\r\nend"),
+            ),
+            (serde_json::json!(["unknown", "empty"]), "empty: ''", None),
+            (
+                serde_json::json!(["unknown", "number"]),
+                "number: -0xF",
+                Some("-0xF"),
+            ),
+            (
+                serde_json::json!(["unknown", "nil"]),
+                "nil: null",
+                Some("null"),
+            ),
+            (
+                serde_json::json!(["unknown", "bool"]),
+                "bool: true",
+                Some("true"),
+            ),
+            (
+                serde_json::json!(["unknown", "values", 0, 0, "nested"]),
+                "nested: 'array'",
+                Some("array"),
+            ),
+            (
+                serde_json::json!(["unknown", "values", 0, 0, "0"]),
+                "0': 'array key'",
+                Some("array key"),
+            ),
+            (
+                serde_json::json!(["unknown", "object", "0", "nested"]),
+                "nested: 'object'",
+                Some("object"),
+            ),
+            (
+                serde_json::json!(["unknown", "container"]),
+                "container: [1, /* item */ 'two',]",
+                None,
+            ),
+        ] {
+            let piece = native
+                .iter()
+                .find(|p| p["classification"] == "configuration-key" && p["path"] == path)
+                .unwrap_or_else(|| panic!("missing {path}"));
+            assert_eq!(slice(&piece["span"]), expected_span);
+            match expected_selection {
+                Some(expected) => assert_eq!(slice(&piece["labelSpan"]), expected),
+                None => assert!(piece["labelSpan"].is_null()),
+            }
+        }
+        let repeated: Vec<_> = native
+            .iter()
+            .filter(|p| p["path"] == serde_json::json!(["unknown", "repeated"]))
+            .collect();
+        assert_eq!(
+            repeated
+                .iter()
+                .map(|p| slice(&p["labelSpan"]))
+                .collect::<Vec<_>>(),
+            ["first", "last"]
+        );
+        assert!(repeated[0]["order"].as_u64().unwrap() < repeated[1]["order"].as_u64().unwrap());
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "json5-tokens", &source).unwrap();
         assert_eq!(
             strip_trace(result["svg"].as_str().unwrap()),
             strip_trace(baseline["svg"].as_str().unwrap())

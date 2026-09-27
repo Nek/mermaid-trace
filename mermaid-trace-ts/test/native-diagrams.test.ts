@@ -357,9 +357,18 @@ test('FLOW AC4/6: accessibility metadata preserves saved/live selection without 
 
 test('FLOW AC4/6: configuration provenance survives saved SVG and live Markdown without adding controls', { timeout: 120_000 }, async () => {
   for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const html of [false, true]) {
-    const source = `---\ntitle: Configured\nconfig:\n  flowchart:\n    nodeSpacing: 60\n---\n%%{init: { flowchart: { nodeSpacing: 70 } }}%%\n%%{initialize: { htmlLabels: ${html} }}%%\n${header}\nA["Actor 😀"] --> B\n`;
+    const source = `---\ntitle: Configured\nconfig:\n  flowchart:\n    nodeSpacing: 60\n---\n%%{init: { flowchart: { nodeSpacing: 70 } }}%%\n%%{initialize: { htmlLabels: ${html}, flowchart: { \"html\\u004cabels\": ${html} }, values: [{ nested: 'Value 😀' }] }}%%\n${header}\nA["Actor 😀"] --> B\n`;
     const evidence = await verifyNative(source, 'node:A', 'A["Actor 😀"]', 'Actor 😀', [['flowchart:title', 'Configured', 'control-label']]);
     assert.equal(evidence.filter((piece: { classification: string }) => piece.classification === 'frontmatter').length, 1);
     assert.equal(evidence.filter((piece: { classification: string }) => piece.classification === 'source-directive').length, 2);
+    type ConfigPiece = { path?: (string | number)[]; span: { start: number; end: number }; labelSpan?: { start: number; end: number } };
+    const nativeSlice = (span: { start: number; end: number }) => Buffer.from(source).subarray(span.start, span.end).toString();
+    const escaped = (evidence as ConfigPiece[]).find(piece => JSON.stringify(piece.path) === JSON.stringify(['flowchart', 'htmlLabels']));
+    assert.ok(escaped?.labelSpan, 'escaped keys must retain scalar source ranges in saved and live SVG');
+    assert.equal(nativeSlice(escaped.span), `html\\u004cabels": ${html}`);
+    assert.equal(nativeSlice(escaped.labelSpan), String(html));
+    const nested = (evidence as ConfigPiece[]).find(piece => JSON.stringify(piece.path) === JSON.stringify(['values', 0, 'nested']));
+    assert.ok(nested?.labelSpan, 'array indices must remain typed in saved and live SVG');
+    assert.equal(nativeSlice(nested.labelSpan), 'Value 😀');
   }
 });
