@@ -10,7 +10,7 @@ import { formatLocation } from '../src/markdown-source.js';
 
 const gantt = 'gantt\n  title Plan\n  dateFormat YYYY-MM-DD\n  todayMarker off\n  section Build\n  Same 😀 :a, 2026-01-01, 2d\n  Same 😀 :b, after a, 1d\n  Ship :milestone, c, after b, 0d\n';
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string, reverseKeys: readonly string[] = []) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -86,6 +86,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + reverseNodeSource.length });
       assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
       assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), null, 'a source occurrence without this label binding must not select the displayed label');
+      for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     await writeFile(filename, markdown);
@@ -111,6 +112,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       }, { start: toMarkdown(offset), end: toMarkdown(offset + reverseNodeSource.length) });
       await page.waitForSelector(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`);
       assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), null);
+      for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
     for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
       const target = page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
@@ -302,6 +304,21 @@ test('FLOW AC4/6: shape-data labels and properties preserve saved and live sourc
         ['node:P', 'Last 😀', 'node-label'],
       ], 'rounded');
       await verifyNative(source, 'node:A', 'A@{label: "Final 😀"}', 'Final 😀', [], 'Earlier 😀');
+    }
+  }
+});
+
+
+test('FLOW AC4/6: classes, links and identified connectors retain saved and live selection', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\nclassDef hot fill:#eee\nA["Actor 😀"]:::hot --> B\nA e1@--> B\nsubgraph G[Group]\nC --> D\nend\nclass A,G,e1 hot\nclick A href "https://example.com" "go"\nlinkStyle 0 stroke:#f00\nlinkStyle default stroke-width:2px\n`;
+      await verifyNative(source, 'node:A', 'A["Actor 😀"]:::hot', 'Actor 😀', [
+        ['edge:e1', 'e1@-->', 'edge'],
+        ['flowchart:subgraph:G', 'subgraph G[Group]\nC --> D\nend'],
+      ], 'class A,G,e1 hot', ['edge:e1', 'flowchart:subgraph:G']);
+      await verifyNative(source, 'node:A', 'A["Actor 😀"]:::hot', 'Actor 😀', [], 'classDef hot fill:#eee', ['edge:e1', 'flowchart:subgraph:G']);
+      await verifyNative(source, 'node:A', 'A["Actor 😀"]:::hot', 'Actor 😀', [], 'click A href "https://example.com" "go"');
     }
   }
 });

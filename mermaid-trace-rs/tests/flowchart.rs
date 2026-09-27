@@ -984,3 +984,172 @@ fn flow_ac4_shape_data_yaml_scalar_forms_and_empty_values_keep_exact_selections(
         }));
     }
 }
+
+#[test]
+fn flow_ac4_class_and_link_directives_retain_exact_native_relationships() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\nclass Missing hot\r\nclick Missing callback \"missing\"\r\nclassDef hot fill:#eee\r\nclassDef default stroke:#333\r\nclassDef unused fill:#f00\r\nA[\"Actor 😀\"]:::hot --> B[\"Book\"]\r\nA e1@--> B\r\nsubgraph G[Group]\r\nC --> D\r\nend\r\nG --> B\r\nclass A,G,e1 hot\r\nclick A href \"https://example.com\" \"go\"\r\nlinkStyle 0 stroke:#f00\r\nlinkStyle default stroke-width:2px\r\nB --> C\r\n"
+            );
+            let result = mermaid_trace_rs::render("native-directives", &source).unwrap();
+            let text: Vec<_> = source.encode_utf16().collect();
+            let slice = |span: &Value| {
+                String::from_utf16(
+                    &text[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            for (key, relation, expected) in [
+                ("node:A", "inline-class", ":::hot"),
+                ("node:A", "class", "class A,G,e1 hot"),
+                ("flowchart:subgraph:G", "class", "class A,G,e1 hot"),
+                ("edge:e1", "class", "class A,G,e1 hot"),
+                ("node:A", "classDef", "classDef hot fill:#eee"),
+                ("flowchart:subgraph:G", "classDef", "classDef hot fill:#eee"),
+                ("edge:e1", "classDef", "classDef hot fill:#eee"),
+                ("node:A", "classDef", "classDef default stroke:#333"),
+                ("node:D", "classDef", "classDef default stroke:#333"),
+                (
+                    "node:A",
+                    "click",
+                    "click A href \"https://example.com\" \"go\"",
+                ),
+            ] {
+                assert!(
+                    pieces.iter().any(|p| p["domId"] == key
+                        && p["relation"] == relation
+                        && slice(&p["span"]) == expected),
+                    "missing {key} {relation}: {expected}"
+                );
+            }
+            assert_eq!(
+                pieces
+                    .iter()
+                    .filter(|p| p["domId"] == "flowchart:subgraph:G"
+                        && p["relation"] == "classDef"
+                        && slice(&p["span"]) == "classDef hot fill:#eee")
+                    .count(),
+                1,
+                "one authored class-definition relationship per visual target"
+            );
+            assert!(
+                !pieces.iter().any(|p| p["domId"] == "flowchart:subgraph:G"
+                    && p["relation"] == "classDef"
+                    && slice(&p["span"]) == "classDef default stroke:#333"),
+                "expanded groups do not inherit the native node default class"
+            );
+            let identified_edge = pieces
+                .iter()
+                .find(|p| p["domId"] == "edge:e1" && p.get("relation").is_none())
+                .unwrap();
+            assert_eq!(
+                slice(&identified_edge["span"]),
+                "e1@-->",
+                "authored edge ID belongs to its connector selection"
+            );
+            let first_edge = pieces
+                .iter()
+                .find(|p| p["kind"] == "edge" && p["from"] == "A" && p["to"] == "B")
+                .unwrap();
+            assert!(pieces.iter().any(|p| p["domId"] == first_edge["domId"]
+                && p["relation"] == "linkStyle"
+                && slice(&p["span"]) == "linkStyle 0 stroke:#f00"));
+            for edge in pieces
+                .iter()
+                .filter(|p| p["kind"] == "edge" && p.get("relation").is_none())
+            {
+                assert!(pieces.iter().any(|p| p["domId"] == edge["domId"]
+                    && p["relation"] == "linkStyle"
+                    && slice(&p["span"]) == "linkStyle default stroke-width:2px"));
+            }
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let node = svg
+                .descendants()
+                .find(|n| {
+                    n.attribute("data-mt-key") == Some("node:A")
+                        && n.attribute("data-mt-role") == Some("node")
+                })
+                .unwrap();
+            let node_span = serde_json::json!({"start":node.attribute("data-mt-start").unwrap().parse::<usize>().unwrap(),"end":node.attribute("data-mt-end").unwrap().parse::<usize>().unwrap()});
+            assert_eq!(slice(&node_span), "A[\"Actor 😀\"]:::hot");
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            for expected in [
+                "class Missing hot",
+                "click Missing callback \"missing\"",
+                "classDef unused fill:#f00",
+            ] {
+                assert!(
+                    native.iter().any(|p| p["kind"] == "nonvisual"
+                        && &source[p["span"]["start"].as_u64().unwrap() as usize
+                            ..p["span"]["end"].as_u64().unwrap() as usize]
+                            == expected),
+                    "missing nonvisual classification: {expected}"
+                );
+            }
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline =
+                mermaid_trace_rs::render_with(&plain, "native-directives", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn flow_ac4_repeated_directives_preserve_distinct_occurrences_and_native_inheritance() {
+    let source = "flowchart LR\r\n%% 😀\r\nclass A hot\r\nclassDef hot fill:#eee\r\nclassDef hot stroke:#123\r\nclassDef node stroke-width:3px\r\nA:::hot --> B\r\nA e1@--> B\r\nclass A,e1 hot\r\nclass A,e1 hot\r\nlinkStyle 0,1 stroke:#234\r\nclick A callback \"go 😀\"\r\n";
+    let result = mermaid_trace_rs::render("repeated-directives", source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let text: Vec<_> = source.encode_utf16().collect();
+    let slice = |p: &Value| {
+        String::from_utf16(
+            &text[p["span"]["start"].as_u64().unwrap() as usize
+                ..p["span"]["end"].as_u64().unwrap() as usize],
+        )
+        .unwrap()
+    };
+    let classes: Vec<_> = pieces
+        .iter()
+        .filter(|p| p["domId"] == "node:A" && p["relation"] == "class")
+        .collect();
+    assert_eq!(
+        classes.len(),
+        2,
+        "an assignment before node creation is nonvisual; later repeats remain distinct"
+    );
+    assert_ne!(classes[0]["span"], classes[1]["span"]);
+    for key in ["node:A", "edge:e1"] {
+        for authored in ["classDef hot fill:#eee", "classDef hot stroke:#123"] {
+            assert!(
+                pieces.iter().any(|p| p["domId"] == key
+                    && p["relation"] == "classDef"
+                    && slice(p) == authored)
+            );
+        }
+    }
+    for key in ["node:A", "node:B"] {
+        assert!(pieces.iter().any(|p| p["domId"] == key
+            && p["relation"] == "classDef"
+            && slice(p) == "classDef node stroke-width:3px"));
+    }
+    assert_eq!(
+        pieces
+            .iter()
+            .filter(|p| p["relation"] == "linkStyle" && slice(p) == "linkStyle 0,1 stroke:#234")
+            .count(),
+        2
+    );
+    assert!(pieces.iter().any(|p| p["domId"] == "node:A"
+        && p["relation"] == "click"
+        && slice(p) == "click A callback \"go 😀\""));
+}
