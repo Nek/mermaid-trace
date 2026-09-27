@@ -13073,7 +13073,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..7a314824 100644
+index 68bde024..90708d71 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -1,6 +1,6 @@
@@ -13149,7 +13149,7 @@ index 68bde024..7a314824 100644
 +    }
 +}
 +
-+fn number_score(text: &str) -> f64 {
++pub fn number_score(text: &str) -> f64 {
 +    let text = text.trim_matches(is_ecmascript_whitespace);
 +    if text.is_empty() {
 +        return 0.0;
@@ -28864,10 +28864,20 @@ index c8ebca79..9e778388 100644
      fn journey_actor_legend_wraps_with_the_configured_width() {
          let measurer = DeterministicTextMeasurer::default();
 diff --git a/crates/merman-render/src/journey/config.rs b/crates/merman-render/src/journey/config.rs
-index 6f096465..f1421b2d 100644
+index 6f096465..bbf7e3ce 100644
 --- a/crates/merman-render/src/journey/config.rs
 +++ b/crates/merman-render/src/journey/config.rs
-@@ -42,8 +42,7 @@ impl<'a> JourneyConfigView<'a> {
+@@ -1,5 +1,7 @@
+-use crate::config::{config_bool, config_f64, config_string, config_string_vec};
+-use crate::text::TextStyle;
++use crate::config::{
++    config_bool, config_css_number_or_string, config_f64, config_string, config_string_vec,
++    value_at,
++};
+ use serde_json::Value;
+ 
+ const DEFAULT_LEFT_MARGIN: f64 = 150.0;
+@@ -42,8 +44,7 @@ impl<'a> JourneyConfigView<'a> {
                  .max(0.0),
              max_label_width: self
                  .journey_f64("maxLabelWidth")
@@ -28877,7 +28887,7 @@ index 6f096465..f1421b2d 100644
              box_text_margin: self
                  .journey_f64("boxTextMargin")
                  .unwrap_or(DEFAULT_BOX_TEXT_MARGIN)
-@@ -58,16 +57,15 @@ impl<'a> JourneyConfigView<'a> {
+@@ -58,16 +59,15 @@ impl<'a> JourneyConfigView<'a> {
                  .max(0.0),
              task_margin: self
                  .journey_f64("taskMargin")
@@ -28897,10 +28907,16 @@ index 6f096465..f1421b2d 100644
              actor_colours: self.actor_colours(),
              section_fills: self.section_fills(),
              use_max_width: self.use_max_width(),
-@@ -77,6 +75,16 @@ impl<'a> JourneyConfigView<'a> {
+@@ -76,8 +76,21 @@ impl<'a> JourneyConfigView<'a> {
+ 
      pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
          JourneyRenderSettings {
-             task_text_style: self.task_text_style(),
+-            task_text_style: self.task_text_style(),
+-            title_font_size: config_string(self.journey_config, &["titleFontSize"])
++            task_font_size_css: self.task_font_size_css(),
++            task_font_size_number: self.task_font_size_number(),
++            task_font_family: config_string(self.journey_config, &["taskFontFamily"])
++                .unwrap_or_else(|| DEFAULT_TASK_FONT_FAMILY.to_string()),
 +            text_placement: config_string(self.journey_config, &["textPlacement"])
 +                .unwrap_or_else(|| "fo".to_string()),
 +            section_colours: {
@@ -28911,19 +28927,60 @@ index 6f096465..f1421b2d 100644
 +                    colours
 +                }
 +            },
-             title_font_size: config_string(self.journey_config, &["titleFontSize"])
++            title_font_size: config_css_number_or_string(self.journey_config, &["titleFontSize"])
                  .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
              title_font_family: config_string(self.journey_config, &["titleFontFamily"])
-@@ -157,6 +165,8 @@ pub(crate) struct JourneyLayoutSettings {
+                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_FAMILY.to_string()),
+@@ -118,18 +131,23 @@ impl<'a> JourneyConfigView<'a> {
+         }
+     }
+ 
+-    fn task_text_style(&self) -> TextStyle {
+-        TextStyle {
+-            font_family: Some(
+-                config_string(self.journey_config, &["taskFontFamily"])
+-                    .unwrap_or_else(|| DEFAULT_TASK_FONT_FAMILY.to_string()),
+-            ),
+-            font_size: self
+-                .journey_f64("taskFontSize")
+-                .unwrap_or(DEFAULT_TASK_FONT_SIZE)
+-                .max(1.0),
+-            font_weight: None,
+-            font_style: None,
++    fn task_font_size_css(&self) -> String {
++        match value_at(self.journey_config, &["taskFontSize"]) {
++            Some(Value::String(text)) => text.clone(),
++            Some(_) => config_css_number_or_string(self.journey_config, &["taskFontSize"])
++                .map(|size| format!("{size}px"))
++                .unwrap_or_else(|| format!("{DEFAULT_TASK_FONT_SIZE}px")),
++            None => format!("{DEFAULT_TASK_FONT_SIZE}px"),
++        }
++    }
++
++    fn task_font_size_number(&self) -> f64 {
++        match value_at(self.journey_config, &["taskFontSize"]) {
++            Some(Value::String(text)) => merman_core::diagrams::journey::number_score(text),
++            Some(Value::Number(number)) => number.as_f64().unwrap_or(f64::NAN),
++            Some(Value::Bool(value)) => f64::from(*value as u8),
++            Some(Value::Null) => 0.0,
++            _ => DEFAULT_TASK_FONT_SIZE,
+         }
+     }
+ 
+@@ -156,7 +174,11 @@ pub(crate) struct JourneyLayoutSettings {
+ 
  #[derive(Debug, Clone)]
  pub(crate) struct JourneyRenderSettings {
-     pub(crate) task_text_style: TextStyle,
+-    pub(crate) task_text_style: TextStyle,
++    pub(crate) task_font_size_css: String,
++    pub(crate) task_font_size_number: f64,
++    pub(crate) task_font_family: String,
 +    pub(crate) text_placement: String,
 +    pub(crate) section_colours: Vec<String>,
      pub(crate) title_font_size: String,
      pub(crate) title_font_family: String,
      pub(crate) title_color: String,
-@@ -223,6 +233,15 @@ mod tests {
+@@ -223,6 +245,15 @@ mod tests {
          assert!(!settings.use_max_width);
      }
  
@@ -28939,6 +28996,21 @@ index 6f096465..f1421b2d 100644
      #[test]
      fn journey_render_settings_project_values() {
          let cfg = json!({
+@@ -236,11 +267,9 @@ mod tests {
+         });
+         let settings = JourneyConfigView::new(&cfg).render_settings();
+ 
+-        assert_eq!(settings.task_text_style.font_size, 18.0);
+-        assert_eq!(
+-            settings.task_text_style.font_family.as_deref(),
+-            Some("Inter, sans-serif")
+-        );
++        assert_eq!(settings.task_font_size_css, "18px");
++        assert_eq!(settings.task_font_size_number, 18.0);
++        assert_eq!(settings.task_font_family, "Inter, sans-serif");
+         assert_eq!(settings.title_font_size, "3.5ex");
+         assert_eq!(settings.title_font_family, "Georgia, serif");
+         assert_eq!(settings.title_color, "#123456");
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
 index 027dfe7d..adf538ae 100644
 --- a/crates/merman-render/src/kanban.rs
@@ -30310,7 +30382,7 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..4aa7da13 100644
+index 61faa868..4f9456d5 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
 @@ -7,8 +7,12 @@ use crate::journey::{
@@ -30328,15 +30400,33 @@ index 61faa868..4aa7da13 100644
  }
  
  fn journey_css(
-@@ -255,6 +259,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -179,12 +183,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+     }
+ 
+     let render_settings = JourneyConfigView::new(effective_config).render_settings();
+-    let task_font_size = render_settings.task_text_style.font_size;
+-    let task_font_family = render_settings
+-        .task_text_style
+-        .font_family
+-        .as_deref()
+-        .unwrap_or("\"Open Sans\", sans-serif");
++    let task_font_size = render_settings.task_font_size_number;
++    let task_font_size_css = render_settings.task_font_size_css.as_str();
++    let task_font_family = render_settings.task_font_family.as_str();
+     let title_font_size = render_settings.title_font_size.as_str();
+     let title_font_family = render_settings.title_font_family.as_str();
+     let title_color = render_settings.title_color.as_str();
+@@ -254,7 +255,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+     #[derive(Debug, Clone, Copy)]
      struct JourneyTextStyle<'a> {
          task_font_size: f64,
++        task_font_size_css: &'a str,
          task_font_family: &'a str,
 +        text_placement: &'a str,
      }
  
      fn write_text_candidate(
-@@ -264,6 +269,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -264,6 +267,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          text_box: JourneyTextBox,
          style: JourneyTextStyle<'_>,
          text_fill: &str,
@@ -30344,15 +30434,17 @@ index 61faa868..4aa7da13 100644
      ) {
          let JourneyTextBox {
              x,
-@@ -274,6 +280,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -273,7 +277,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+         } = text_box;
          let JourneyTextStyle {
              task_font_size,
++            task_font_size_css,
              task_font_family,
 +            text_placement,
          } = style;
          let content_esc = escape_xml(content);
          let class_esc = escape_attr(class);
-@@ -282,33 +289,59 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -282,42 +288,96 @@ pub(crate) fn render_journey_diagram_svg_model(
          let cx = x + width / 2.0;
          let cy = y + height / 2.0;
  
@@ -30409,6 +30501,11 @@ index 61faa868..4aa7da13 100644
          let n = lines.len().max(1) as f64;
          for (i, line) in lines.into_iter().enumerate() {
              let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
++            let dy = if dy.is_finite() {
++                format!("{}", fmt(dy))
++            } else {
++                "0".to_string()
++            };
 +            let fill = if foreign_object {
 +                format!(" fill: {fill_esc};")
 +            } else {
@@ -30422,15 +30519,18 @@ index 61faa868..4aa7da13 100644
              let _ = write!(
                  out,
 -                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff}; fill: {fill};"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
-+                r#"<text{fill_attr} x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};{fill}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
++                r#"<text{fill_attr} x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}; font-family: {ff};{fill}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
                  x = fmt(cx),
                  y = fmt(cy),
 -                fill = fill_esc,
 +                fill = fill,
                  class = class_esc,
-                 fs = fmt(task_font_size),
+-                fs = fmt(task_font_size),
++                fs = escape_attr(task_font_size_css),
                  ff = font_family_esc,
-@@ -317,7 +350,30 @@ pub(crate) fn render_journey_diagram_svg_model(
+-                dy = fmt(dy),
++                dy = dy,
+                 text = escape_xml(&line)
              );
          }
  
@@ -30462,7 +30562,7 @@ index 61faa868..4aa7da13 100644
      }
  
      let mut out = String::new();
-@@ -379,6 +435,7 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -379,6 +439,7 @@ pub(crate) fn render_journey_diagram_svg_model(
          );
      }
  
@@ -30470,7 +30570,7 @@ index 61faa868..4aa7da13 100644
      let theme = PresentationTheme::new(effective_config).journey();
      let css = journey_css(diagram_id, effective_config, &theme);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-@@ -395,7 +452,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -395,7 +456,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      for item in &layout.actor_legend {
          let _ = write!(
              &mut out,
@@ -30484,7 +30584,7 @@ index 61faa868..4aa7da13 100644
              cx = fmt(item.circle_cx),
              cy = fmt(item.circle_cy),
              pos = item.pos,
-@@ -405,7 +467,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -405,7 +471,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for line in &item.label_lines {
              let _ = write!(
                  &mut out,
@@ -30498,7 +30598,7 @@ index 61faa868..4aa7da13 100644
                  x = fmt(line.x),
                  y = fmt(line.y),
                  tx = fmt(line.tspan_x),
-@@ -415,16 +482,28 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -415,16 +486,28 @@ pub(crate) fn render_journey_diagram_svg_model(
      }
  
      let mut section_iter = layout.sections.iter();
@@ -30529,9 +30629,11 @@ index 61faa868..4aa7da13 100644
                  x = fmt(section.x),
                  y = fmt(section.y),
                  fill = escape_attr(&section.fill),
-@@ -445,8 +524,16 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -444,9 +527,18 @@ pub(crate) fn render_journey_diagram_svg_model(
+                 },
                  JourneyTextStyle {
                      task_font_size,
++                    task_font_size_css,
                      task_font_family,
 +                    text_placement: &render_settings.text_placement,
                  },
@@ -30547,7 +30649,7 @@ index 61faa868..4aa7da13 100644
              );
              out.push_str("</g>");
          }
-@@ -455,7 +542,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -455,7 +547,12 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -30561,7 +30663,7 @@ index 61faa868..4aa7da13 100644
              id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
              x1 = fmt(task.line_x1),
              y1 = fmt(task.line_y1),
-@@ -466,12 +558,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -466,12 +563,25 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -30589,7 +30691,7 @@ index 61faa868..4aa7da13 100644
          let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
          let eye_r = 1.5;
          let _ = write!(
-@@ -534,7 +639,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -534,7 +644,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for c in &task.actor_circles {
              let _ = write!(
                  &mut out,
@@ -30603,9 +30705,11 @@ index 61faa868..4aa7da13 100644
                  cx = fmt(c.cx),
                  cy = fmt(c.cy),
                  pos = c.pos,
-@@ -557,8 +667,18 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -556,9 +671,20 @@ pub(crate) fn render_journey_diagram_svg_model(
+             },
              JourneyTextStyle {
                  task_font_size,
++                task_font_size_css,
                  task_font_family,
 +                text_placement: &render_settings.text_placement,
 +            },
@@ -30623,7 +30727,7 @@ index 61faa868..4aa7da13 100644
          );
  
          out.push_str("</g>");
-@@ -567,7 +687,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +693,12 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
@@ -30637,7 +30741,7 @@ index 61faa868..4aa7da13 100644
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
-@@ -668,6 +793,7 @@ mod tests {
+@@ -668,6 +799,7 @@ mod tests {
              title_y: 25.0,
              actor_legend: Vec::new(),
              sections: vec![JourneySectionLayout {
@@ -30645,7 +30749,7 @@ index 61faa868..4aa7da13 100644
                  section: "A".to_string(),
                  num: 0,
                  x: 150.0,
-@@ -681,7 +807,7 @@ mod tests {
+@@ -681,7 +813,7 @@ mod tests {
                  index: 0,
                  section: "A".to_string(),
                  task: "Hello".to_string(),

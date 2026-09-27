@@ -20,6 +20,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
   const mapping = readSvgMapping(new XMLSerializer().serializeToString(svg), options.source);
   const byId = new Map(mapping.pieces.map(piece => [piece.id, piece]));
   const elements = [...svg.querySelectorAll('[data-mt-refs]')].filter(element => {
+    if (!element.querySelector('rect,path,line,polygon,circle,ellipse,foreignObject,image,use')) {
+      const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
+      if (text.length && text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
+    }
     if (element.getAttribute('data-mt-role') !== 'edge' || !['path', 'line'].includes(element.localName)) return true;
     const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
     if (!style || !style.stroke) return true;
@@ -168,7 +172,13 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
       const bounds = (element as SVGGElement).getBBox();
       if (bounds.width > 0 && bounds.height > 0) {
         const target = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        for (const name of ['x', 'y', 'width', 'height'] as const) target.setAttribute(name, String(bounds[name]));
+        const width = Math.max(bounds.width, 12);
+        const height = Math.max(bounds.height, 12);
+        for (const [name, value] of Object.entries({
+          x: bounds.x - (width - bounds.width) / 2,
+          y: bounds.y - (height - bounds.height) / 2,
+          width, height,
+        })) target.setAttribute(name, String(value));
         target.setAttribute('aria-hidden', 'true');
         target.setAttribute('focusable', 'false');
         target.style.cssText = 'fill:transparent;stroke:none;pointer-events:all;cursor:pointer';

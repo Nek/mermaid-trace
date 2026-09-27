@@ -358,6 +358,9 @@ async function verifyNative(source: string, key: string, expected: string, label
         await page.mouse.click(point.x, point.y);
         assert.equal(await target.getAttribute('data-mt-selected'), 'true', 'note body click selects its connector too');
         assert.equal(await body.getAttribute('data-mt-selected'), 'true');
+        assert.match(await target.evaluate(element => getComputedStyle(element).filter), /drop-shadow/, 'connector has the same visible selection cue');
+        assert.match(await body.evaluate(element => getComputedStyle(element).filter), /drop-shadow/, 'note body has the same visible selection cue');
+        assert.equal(await target.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'focus does not add a second constituent outline');
         assert.equal(await body.evaluate(element => Number(element.getAttribute('tabindex') === '0')), 1);
         assert.equal(await target.getAttribute('tabindex'), '-1', 'one keyboard stop for the note object');
         const group = await page.evaluate(() => (window as any).events.at(-1).pieces);
@@ -896,6 +899,106 @@ test('JOURNEY-2-SCORE-NUMBERS: numeric score parts share saved/live selection an
       await verifyNative(source, 'journey:task:0', `Task 😀 : ${score} : Alice`, 'Task 😀', [], { start, end: start + score.length }, [], 'journey:task:0', undefined, true);
     }
   }
+});
+
+test('JOURNEY-2-FONTS: invisible labels resolve to their owner while CSS-sized labels remain selectable', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(3_000);
+    for (const [font, computed] of [['0', '0px'], ['0.5', '0.5px'], ['24', '24px'], ["'24'", '24px'], ["'24px'", '24px'], ["'1em'", '16px'], ["'120%'", '19.2px'], ['-1', '16px'], ["'garbage'", '16px']] as const) for (const mode of ['tspan', 'fo', 'old']) {
+      const invisible = font === '0' && mode !== 'old';
+      const expectedSize = mode === 'old' ? '16px' : computed;
+      const source = '---\nconfig:\n  fontFamily: Georgia\n  journey:\n    taskFontSize: ' + font + '\n    taskFontFamily: Courier\n    textPlacement: ' + mode + '\n---\njourney\nsection Day\nTask<br>Line : 5 : Alice\n';
+      const { svg, mapping } = await producer.render('journey-font-select', source);
+      await page.setContent(svg);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: unknown[] = [];
+        const root = document.querySelector('svg') as SVGSVGElement;
+        Object.assign(window, { events, handle: activateSvg(root, { onSelect: (event: unknown) => events.push(event) }) });
+      }, activation);
+      const first = page.locator('svg');
+      const task = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node]');
+      const label = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node-label]');
+      const text = mode === 'old' ? label : label.locator('text.task').first();
+      assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), expectedSize);
+      assert.match(await text.evaluate(element => getComputedStyle(element).fontFamily), mode === 'old' ? /Georgia/ : /Courier/);
+      assert.equal(await label.getAttribute('tabindex'), invisible ? null : '0');
+      const labelStart = source.indexOf('Task<br>Line');
+      const selected = await page.evaluate(span => (window as any).handle.highlight([span]), { start: labelStart, end: labelStart + 4 });
+      assert.ok(selected.length, 'the authored label still resolves to its owning source object');
+      assert.equal(await task.getAttribute('data-mt-selected'), invisible ? 'true' : null, font);
+      if (!invisible) {
+        await label.click();
+        const event = await page.evaluate(() => (window as any).events.at(-1));
+        assert.equal(source.slice(event.span.start, event.span.end), 'Task<br>Line');
+        assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+      }
+      const section = first.locator('[data-mt-key="journey:section:0"][data-mt-role=control]');
+      const sectionLabel = first.locator('[data-mt-key="journey:section:0"][data-mt-role=control-label]');
+      assert.equal(await sectionLabel.getAttribute('tabindex'), invisible ? null : '0');
+      const sectionStart = source.indexOf('section Day') + 'section '.length;
+      await page.evaluate(span => (window as any).handle.highlight([span]), { start: sectionStart, end: sectionStart + 3 });
+      assert.equal(await section.getAttribute('data-mt-selected'), invisible ? 'true' : null);
+      assert.equal(await sectionLabel.getAttribute('data-mt-selected'), invisible ? null : 'true');
+      assert.equal(mapping.source, source);
+      await page.evaluate(() => (window as any).handle.dispose());
+    }
+    const source = '---\nconfig:\n  journey:\n    titleFontSize: 0\n---\njourney\ntitle Invisible title\nTask : 5\n';
+    const { svg } = await producer.render('journey-zero-title', source);
+    await page.setContent(svg);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      Object.assign(window, { handle: activateSvg(document.querySelector('svg') as SVGSVGElement, { onSelect() {} }) });
+    }, activation);
+    const title = page.locator('[data-mt-key="journey:title"][data-mt-role=control]');
+    assert.equal(await title.count(), 1, 'static SVG retains title provenance');
+    assert.equal(await title.getAttribute('tabindex'), null, 'invisible title has no keyboard stop');
+    assert.equal(await page.evaluate(source => (window as any).handle.mapping.pieces.some((piece: any) => source.slice(piece.span.start, piece.span.end) === 'title Invisible title'), source), true);
+    await page.evaluate(() => (window as any).handle.dispose());
+  } finally { await browser.close(); await producer.close(); }
+});
+
+test('JOURNEY-2-FONTS-LIVE: source, focus and clipboard follow the visible label or owning task', { timeout: 180_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-journey-font-'));
+  const filename = join(directory, 'fonts.md');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const mode of ['tspan', 'fo', 'old']) for (const [font, invisible] of [['0', true], ["'24px'", false]] as const) {
+      const source = '---\nconfig:\n  look: ' + look + '\n  htmlLabels: ' + html + '\n  journey:\n    taskFontSize: ' + font + '\n    textPlacement: ' + mode + '\n---\njourney\nsection Day\nTask<br>Line : 5 : Alice\n';
+      const markdown = '# Fonts\n\n~~~mermaid\n' + source + '~~~\n';
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const invisibleLabel = invisible && mode !== 'old';
+      const task = page.locator('[data-mt-key="journey:task:0"][data-mt-role=node]');
+      const label = page.locator('[data-mt-key="journey:task:0"][data-mt-role=node-label]');
+      const target = invisibleLabel ? task : label;
+      assert.equal(await label.getAttribute('tabindex'), invisibleLabel ? null : '0');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      const labelStart = markdown.indexOf('Task<br>Line');
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange();
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        const selection = element.ownerDocument.getSelection()!;
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start: labelStart, end: labelStart + 4 });
+      await page.waitForFunction(({ role, key }) => document.querySelector('[data-mt-key="' + key + '"][data-mt-role=' + role + ']')?.getAttribute('data-mt-selected') === 'true', { role: invisibleLabel ? 'node' : 'node-label', key: 'journey:task:0' });
+      await target.focus(); await target.press('Enter');
+      const expected = invisibleLabel ? 'Task<br>Line : 5 : Alice' : 'Task<br>Line';
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), expected);
+      const start = markdown.indexOf(expected);
+      await page.waitForFunction(location => navigator.clipboard.readText().then(value => value === location), formatLocation({ id: filename, source: markdown }, { start, end: start + expected.length }));
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test('JOURNEY-2-GEOMETRY-CONFIG: zero-area tasks and signed spacing retain saved/live selection', { timeout: 180_000 }, async () => {

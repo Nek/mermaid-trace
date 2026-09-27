@@ -11,6 +11,104 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_fonts_keep_native_values_visible_text_and_exact_ownership() {
+    let renderer = mermaid_trace_rs::renderer();
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for mode in ["tspan", "fo", "old"] {
+                for (size, css, offsets) in [
+                    ("0", "0px", ["0", "0"]),
+                    ("0.5", "0.5px", ["-0.25", "0.25"]),
+                    ("24", "24px", ["-12", "12"]),
+                    ("'24'", "24", ["-12", "12"]),
+                    ("'24px'", "24px", ["0", "0"]),
+                    ("'1em'", "1em", ["0", "0"]),
+                    ("'120%'", "120%", ["0", "0"]),
+                    ("-1", "-1px", ["0.5", "-0.5"]),
+                    ("'garbage'", "garbage", ["0", "0"]),
+                ] {
+                    let source = format!(
+                        "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  fontFamily: Georgia\r\n  themeVariables:\r\n    fontSize: 20px\r\n  journey:\r\n    taskFontSize: {size}\r\n    taskFontFamily: Courier\r\n    titleFontSize: 22\r\n    titleFontFamily: Verdana\r\n    titleColor: '#123456'\r\n    textPlacement: {mode}\r\n---\r\njourney\r\ntitle Font title\r\nsection Day\r\nFirst<br>Second : 5 : Author\r\n"
+                    );
+                    let result =
+                        mermaid_trace_rs::render_with(&renderer, "journey-fonts", &source).unwrap();
+                    let plain = mermaid_trace_rs::render_with(
+                        &merman::Renderer::new(),
+                        "journey-fonts",
+                        &source,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        support::strip_trace(result["svg"].as_str().unwrap()),
+                        support::strip_trace(plain["svg"].as_str().unwrap())
+                    );
+                    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let task_lines = svg
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("text") && node.attribute("class") == Some("task")
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        task_lines.len(),
+                        if mode == "old" { 1 } else { 2 },
+                        "safe SVG retains authored text for {size} {mode}"
+                    );
+                    if mode != "old" {
+                        let computed_css = task_lines[0].attribute("style").unwrap();
+                        assert!(
+                            computed_css.contains(&format!("font-size:{css}")),
+                            "{computed_css}"
+                        );
+                        assert!(computed_css.contains("font-family:Courier"));
+                        for (line, dy) in task_lines.iter().zip(offsets) {
+                            assert_eq!(
+                                line.descendants()
+                                    .find(|node| node.has_tag_name("tspan"))
+                                    .unwrap()
+                                    .attribute("dy"),
+                                Some(dy)
+                            );
+                        }
+                    } else {
+                        assert!(
+                            !task_lines[0]
+                                .attribute("style")
+                                .unwrap()
+                                .contains("font-size:")
+                        );
+                    }
+                    let title = svg
+                        .descendants()
+                        .find(|node| node.has_tag_name("text") && node.text() == Some("Font title"))
+                        .unwrap();
+                    assert_eq!(title.attribute("font-size"), Some("22"));
+                    assert_eq!(title.attribute("font-family"), Some("Verdana"));
+                    assert_eq!(title.attribute("fill"), Some("#123456"));
+                    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                    let task = pieces
+                        .iter()
+                        .find(|piece| piece["domId"] == "journey:task:0")
+                        .unwrap();
+                    assert_eq!(selected(&source, &task["labelSpan"]), "First<br>Second");
+                    let visual_labels = svg
+                        .descendants()
+                        .filter(|node| {
+                            node.attribute("data-mt-role") == Some("node-label")
+                                && node.attribute("data-mt-key") == Some("journey:task:0")
+                        })
+                        .count();
+                    assert_eq!(
+                        visual_labels, 1,
+                        "static provenance remains available even when CSS hides the label"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_actor_unicode_preserves_js_names_order_and_source_ownership() {
     use merman::{Engine, ParseOptions, RenderSemanticModel};
     let engine = Engine::new();
