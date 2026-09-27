@@ -748,6 +748,20 @@ fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
                 );
             }
         }
+        for connector in svg.descendants().filter(|node| {
+            node.attribute("class")
+                .unwrap_or("")
+                .split_whitespace()
+                .any(|class| class == "flowchart-link")
+        }) {
+            assert_eq!(
+                connector.attribute("data-mt-role"),
+                Some("edge"),
+                "unmapped connector: {} {:?}",
+                file.display(),
+                connector.attribute("id")
+            );
+        }
         let baseline = mermaid_trace_rs::render_with(&plain, "flow-inventory", &source).unwrap();
         assert_eq!(
             strip_trace(result["svg"].as_str().unwrap()),
