@@ -128,7 +128,7 @@ fn map_native_ac1_preprocessing_chains_and_declarations_preserve_parity() {
             .filter_map(|p| p.get("labelSpan"))
             .map(slice)
             .collect::<Vec<_>>(),
-        ["Café 😀", "Round", "Done"]
+        ["B", "Café 😀", "Round", "Done"]
     );
     let edges: Vec<_> = pieces.iter().filter(|p| p["kind"] == "edge").collect();
     assert_eq!(
@@ -724,5 +724,88 @@ fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
             "annotation changed {} rendering",
             file.display()
         );
+    }
+}
+
+#[test]
+fn flow_ac4_default_id_labels_keep_exact_first_creation_origins() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: {html}\r\n---\r\n{header}\r\n%% 😀\r\nA --> B\r\nB --> C\r\nstyle Q fill:#fff\r\nQ --> A\r\nZ\r\nstyle Z fill:#eee\r\nZ --> Q\r\nE\r\nE[\"\"]\r\n"
+            );
+            let result = mermaid_trace_rs::render("default-id", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            for (id, origin) in [
+                ("A", "A --> B"),
+                ("B", "B\r\nB --> C"),
+                ("C", "C\r\nstyle Q"),
+                ("Q", "Q fill:#fff"),
+                ("Z", "Z\r\nstyle Z"),
+            ] {
+                let start = source[..source.find(origin).unwrap()]
+                    .encode_utf16()
+                    .count();
+                let expected = serde_json::json!({"start":start,"end":start+id.len()});
+                let key = format!("node:{id}");
+                let label = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-role") == Some("node-label")
+                            && n.ancestors()
+                                .any(|a| a.attribute("data-mt-key") == Some(&key))
+                    })
+                    .unwrap_or_else(|| panic!("missing default label {id}, html={html}, {header}"));
+                assert_eq!(
+                    label
+                        .attribute("data-mt-start")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap(),
+                    start,
+                    "label {id}"
+                );
+                assert_eq!(
+                    label
+                        .attribute("data-mt-end")
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap(),
+                    start + id.len()
+                );
+                let effective: Vec<_> = pieces
+                    .iter()
+                    .filter(|p| p["domId"] == key && p["effective"] == true)
+                    .collect();
+                assert_eq!(
+                    effective.len(),
+                    1,
+                    "one authoritative default origin for {id}"
+                );
+                assert_eq!(effective[0]["labelSpan"], expected);
+                assert_eq!(
+                    pieces
+                        .iter()
+                        .filter(|p| p["domId"] == key && p.get("labelSpan").is_some())
+                        .count(),
+                    1,
+                    "references must not masquerade as displayed labels"
+                );
+            }
+            assert!(
+                !svg.descendants()
+                    .any(|n| n.attribute("data-mt-role") == Some("node-label")
+                        && n.ancestors()
+                            .any(|a| a.attribute("data-mt-key") == Some("node:E"))),
+                "explicit empty label must not acquire a fabricated default label"
+            );
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "default-id", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
     }
 }

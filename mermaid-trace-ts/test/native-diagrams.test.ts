@@ -276,3 +276,17 @@ test('FLOW AC4/6: style-created nodes and style source relationships work in sav
     }
   }
 });
+
+
+test('FLOW AC4/6: bare default ID labels preserve saved and live exact selection', { timeout: 120_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+    for (const html of [false, true]) {
+      const source = `---\nconfig:\n  htmlLabels: ${html}\n---\n${header}\n%% 😀\nBareA --> BareB\nBareB --> BareC\nstyle Styled fill:#fff\nStyled --> BareA\n`;
+      await verifyNative(source, 'node:BareA', 'BareA', 'BareA', [
+        ['node:BareB', 'BareB', 'node-label'],
+        ['node:Styled', 'style Styled fill:#fff', 'node'],
+        ['node:Styled', 'Styled', 'node-label'],
+      ], 'BareA\n');
+    }
+  }
+});

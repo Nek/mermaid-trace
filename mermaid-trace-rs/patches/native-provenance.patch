@@ -246,7 +246,7 @@ index fe6e3b0e..fee9cbb1 100644
          &mut self.model
      }
 diff --git a/crates/merman-core/src/diagrams/flowchart.rs b/crates/merman-core/src/diagrams/flowchart.rs
-index a9aec31b..da1876a3 100644
+index a9aec31b..d1facf3c 100644
 --- a/crates/merman-core/src/diagrams/flowchart.rs
 +++ b/crates/merman-core/src/diagrams/flowchart.rs
 @@ -123,6 +123,7 @@ pub(crate) struct FlowSubGraph {
@@ -301,7 +301,7 @@ index a9aec31b..da1876a3 100644
              nodes: &mut nodes,
              node_index: &mut node_index,
              edges: &mut edges,
-@@ -422,10 +443,52 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
+@@ -422,10 +443,57 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
          }
      }
  
@@ -331,7 +331,12 @@ index a9aec31b..da1876a3 100644
 +                && piece["semanticId"]
 +                    .as_str()
 +                    .and_then(|id| node_index.get(id))
-+                    .is_some_and(|&index| nodes[index].label.is_none());
++                    .is_some_and(|&index| {
++                        nodes[index].label.is_none()
++                            && nodes[index]
++                                .id_span
++                                .is_some_and(|span| serde_json::json!(span) == origin)
++                    });
 +            if default_label {
 +                piece["labelSpan"] = origin;
 +                piece["effective"] = serde_json::json!(true);
@@ -354,7 +359,7 @@ index a9aec31b..da1876a3 100644
          keyword: ast.keyword,
          direction,
          acc_descr,
-@@ -1565,6 +1628,7 @@ impl FlowchartSemanticSource {
+@@ -1565,6 +1633,7 @@ impl FlowchartSemanticSource {
      ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderContext)>> {
          control.checkpoint()?;
          let FlowchartSemanticSource {
@@ -362,7 +367,7 @@ index a9aec31b..da1876a3 100644
              acc_descr,
              acc_title,
              class_defs,
-@@ -1649,12 +1713,13 @@ impl FlowchartSemanticSource {
+@@ -1649,12 +1718,13 @@ impl FlowchartSemanticSource {
              tooltips: render_tooltips,
              warning_facts,
          };
@@ -390,7 +395,7 @@ index 64188dfa..c21a599a 100644
      pub statements: Vec<Stmt>,
  }
 diff --git a/crates/merman-core/src/diagrams/flowchart/build.rs b/crates/merman-core/src/diagrams/flowchart/build.rs
-index 6837a47d..d56c52f2 100644
+index 6837a47d..c8dab283 100644
 --- a/crates/merman-core/src/diagrams/flowchart/build.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/build.rs
 @@ -3,6 +3,8 @@ use crate::{OperationControl, OperationControlResult};
@@ -411,7 +416,7 @@ index 6837a47d..d56c52f2 100644
              nodes: Vec::new(),
              node_index: HashMap::new(),
              edges: Vec::new(),
-@@ -144,6 +148,25 @@ impl FlowchartBuildState {
+@@ -144,6 +148,27 @@ impl FlowchartBuildState {
      }
  
      fn upsert_node(&mut self, n: Node) {
@@ -428,6 +433,8 @@ index 6837a47d..d56c52f2 100644
 +            }
 +            if let Some(origin) = n.label_span {
 +                piece["labelOrigin"] = serde_json::json!(origin);
++            } else if n.label.is_none() {
++                piece["defaultLabelOrigin"] = serde_json::json!(id_span);
 +            }
 +            if let Some(label) = n.label_selection.filter(|label| label.start < label.end) {
 +                piece["labelSpan"] = serde_json::json!(label);
@@ -437,7 +444,7 @@ index 6837a47d..d56c52f2 100644
          if let Some(&idx) = self.node_index.get(&n.id) {
              if matches!(n.provenance, FlowNodeProvenance::Authored) {
                  self.nodes[idx].provenance = FlowNodeProvenance::Authored;
-@@ -212,6 +235,16 @@ impl FlowchartBuildState {
+@@ -212,6 +237,16 @@ impl FlowchartBuildState {
  
          self.edge_pair_counts.insert(key, existing + 1);
  
@@ -588,7 +595,7 @@ index 8d2244b6..f3c1acc1 100644
              id_equals_title: true,
          }
 diff --git a/crates/merman-core/src/diagrams/flowchart/semantic.rs b/crates/merman-core/src/diagrams/flowchart/semantic.rs
-index 7d377ab1..d3582c06 100644
+index 7d377ab1..0fe08a48 100644
 --- a/crates/merman-core/src/diagrams/flowchart/semantic.rs
 +++ b/crates/merman-core/src/diagrams/flowchart/semantic.rs
 @@ -12,6 +12,7 @@ use super::{
@@ -637,7 +644,17 @@ index 7d377ab1..d3582c06 100644
                      vertex_css
                          .entry(s.target.clone())
                          .or_insert_with(FlowSubgraphVertexStyle::default)
-@@ -657,6 +684,7 @@ mod tests {
+@@ -106,6 +133,9 @@ impl<'a> FlowchartSemanticContext<'a> {
+                             self.warning_facts.push(warning);
+                         }
+                         let idx = self.ensure_authored_node(&s.target);
++                        if is_new_vertex {
++                            self.nodes[idx].id_span = s.target_span;
++                        }
+                         self.nodes[idx].styles.extend(s.styles.iter().cloned());
+                     }
+                 }
+@@ -657,6 +687,7 @@ mod tests {
          let mut node_index = HashMap::new();
          let mut edges = (0..512)
              .map(|index| Edge {
@@ -645,7 +662,7 @@ index 7d377ab1..d3582c06 100644
                  from: format!("n{index}"),
                  to: format!("n{}", index + 1),
                  id: Some(format!("edge-{index}")),
-@@ -695,6 +723,7 @@ mod tests {
+@@ -695,6 +726,7 @@ mod tests {
          let control = OperationControl::new();
          control.cancel_after_checkpoints(3);
          let mut context = FlowchartSemanticContext {
