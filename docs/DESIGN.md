@@ -26,6 +26,14 @@ Markdown integration is an early architectural constraint. Thin renderer adapter
 - Use native map/filter/flatMap/reduce, loops, and generators when clear. Prefer a named intermediate value over clever point-free composition. Use libraries for capabilities they supply, not to imitate Clojure syntax mechanically.
 - Test transformation invariants: inputs remain unchanged, spans select the original text, all supported node variants are handled, and reverse mappings preserve multiple occurrences.
 
+## Source ownership and selection
+
+User decision, 2026-09-27: source selection follows the AST construct that owns the authored syntax, not an entity merely named by that syntax. Preserve reference/dependency relationships separately; reverse selection must not implicitly navigate them. Each producer records the owning construct and its documented visual bindings at its parser/semantic boundary. Do not infer ownership from repeated text, shortest overlapping spans or SVG nesting.
+
+A note attachment name belongs to the note; a message endpoint reference belongs to the message; a member’s referenced type belongs to that member. Actual declarations, including DSL-defined implicit declarations, retain their own ownership. A style statement can bind to the visuals whose appearance it changes: those are that construct’s visual realization, not automatic reference traversal.
+
+A property is a separate selection target only if it represents a distinct editable visual part, such as a label. Otherwise its source selects the owning object. Visuals with the same exact owned source span form one logical selection target and keyboard stop within that diagram; preserve their separate AST identities and highlight the group together. Different spans and different diagram instances remain distinct. Every diagram family must test declaration/reference distinctions and saved/live bidirectional selection. See [ownership contract and plan](specs/source-ownership/spec.md).
+
 ## Preferred ecosystem: thi.ng
 
 Prefer individual thi.ng packages for functional utilities before adding overlapping libraries or implementing equivalents. Its ecosystem covers substantially more than transducers. Native TypeScript operations remain appropriate for simple work. These are researched candidates, not installed dependencies; local compatibility, bundle size, and performance remain unverified. The project's canonical repository is now [Codeberg](https://codeberg.org/thi.ng/umbrella); GitHub is a read-only mirror.
