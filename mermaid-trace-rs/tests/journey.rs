@@ -11,6 +11,160 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_legend_empty_actor_retains_generated_geometry_without_invented_labels() {
+    let renderer = mermaid_trace_rs::renderer();
+    let source = "---\r\nconfig:\r\n  journey:\r\n    maxLabelWidth: -1\r\n---\r\njourney\r\nFirst : 5 :\r\n";
+    let RenderOutput::LayoutJson(Some(output)) = renderer
+        .render(RenderRequest::layout_json(
+            source,
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))
+        .unwrap()
+    else {
+        panic!("journey layout")
+    };
+    let layout = &output.layout()["layout"]["JourneyDiagram"];
+    assert_eq!(
+        layout["actor_legend"][0]["label_lines"],
+        json!([]),
+        "the pinned wrapper emits no label for an empty actor at negative width"
+    );
+    let result = mermaid_trace_rs::render_with(&renderer, "empty-legend", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        svg.descendants()
+            .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some("legend"))
+            .count(),
+        0
+    );
+    assert_eq!(
+        svg.descendants()
+            .filter(|n| n.has_tag_name("circle") && n.attribute("class") == Some("actor-0"))
+            .count(),
+        2,
+        "generated legend and task circles remain"
+    );
+    assert!(
+        !result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["relation"] == "actor-reference" || p["domId"] == "journey:actor:"),
+        "empty actor slots acquire no invented source range"
+    );
+}
+
+#[test]
+fn journey_2_legend_preserves_narrow_wrapping_and_actor_ownership() {
+    let renderer = mermaid_trace_rs::renderer();
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            let mut font_widths = Vec::new();
+            for (limit, margin, font, actor, expected) in [
+                (0, 0, 16, "Alpha", vec!["-", "A-", "l-", "p-", "h-", "a"]),
+                (-1, 0, 16, "Alpha", vec!["-", "A-", "l-", "p-", "h-", "a"]),
+                (1, 0, 16, "Alpha", vec!["-", "A-", "l-", "p-", "h-", "a"]),
+                (360, 0, 16, "Alpha", vec!["Alpha"]),
+                (0, 0, 1, ".", vec!["-", "."]),
+                (
+                    0,
+                    9,
+                    24,
+                    "Al pha",
+                    vec!["-", "A-", "l", "-", "p-", "h-", "a"],
+                ),
+                (360, 9, 12, "Alpha 😀", vec!["Alpha 😀"]),
+                (0, 0, 16, "A😀", vec!["-", "A�-", "😀"]),
+                (360, 0, 12, "Alpha", vec!["Alpha"]),
+                (360, 0, 24, "Alpha", vec!["Alpha"]),
+            ] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  fontFamily: Arial\r\n  themeVariables:\r\n    fontSize: {font}px\r\n  journey:\r\n    maxLabelWidth: {limit}\r\n    boxTextMargin: {margin}\r\n    leftMargin: 0\r\n---\r\njourney\r\n%% 😀\r\nFirst : 5 : {actor}\r\nSecond : 3 : {actor}\r\n"
+                );
+                let RenderOutput::LayoutJson(Some(output)) = renderer
+                    .render(RenderRequest::layout_json(
+                        &source,
+                        OperationControl::new(),
+                        SvgRequest::default(),
+                    ))
+                    .unwrap()
+                else {
+                    panic!("journey layout")
+                };
+                let layout = &output.layout()["layout"]["JourneyDiagram"];
+                let lines = layout["actor_legend"][0]["label_lines"].as_array().unwrap();
+                assert_eq!(
+                    lines
+                        .iter()
+                        .map(|line| line["text"].as_str().unwrap())
+                        .collect::<Vec<_>>(),
+                    expected,
+                    "pinned narrow wrapping: {limit}"
+                );
+                for (i, line) in lines.iter().enumerate() {
+                    assert_eq!(line["tspan_x"], json!(40.0 + 2.0 * margin as f64));
+                    assert_eq!(line["y"], json!(67.0 + i as f64 * 20.0));
+                }
+                if limit == 360 && margin == 0 && actor == "Alpha" && font != 16 {
+                    font_widths.push(layout["max_actor_label_width"].as_f64().unwrap());
+                }
+                let plain = merman::Renderer::new();
+                let result =
+                    mermaid_trace_rs::render_with(&renderer, "journey-legend", &source).unwrap();
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "journey-legend", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let labels = svg
+                    .descendants()
+                    .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some("legend"))
+                    .collect::<Vec<_>>();
+                assert_eq!(labels.len(), expected.len());
+                for (label, text) in labels.iter().zip(&expected) {
+                    assert_eq!(
+                        label
+                            .descendants()
+                            .find(|n| n.has_tag_name("tspan"))
+                            .unwrap()
+                            .text(),
+                        Some(*text)
+                    );
+                    assert_eq!(
+                        label.attribute("data-mt-key"),
+                        Some(format!("journey:actor:{actor}").as_str())
+                    );
+                }
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                let declaration = pieces
+                    .iter()
+                    .find(|p| p["domId"] == format!("journey:actor:{actor}"))
+                    .unwrap();
+                assert_eq!(selected(&source, &declaration["span"]), actor);
+                let first = pieces
+                    .iter()
+                    .find(|p| p["domId"] == "journey:actor:0:0")
+                    .unwrap();
+                let later = pieces
+                    .iter()
+                    .find(|p| p["domId"] == "journey:actor:1:0")
+                    .unwrap();
+                assert_eq!(first["span"], declaration["span"]);
+                assert_ne!(later["span"], declaration["span"]);
+            }
+            assert_eq!(font_widths.len(), 2);
+            assert!(
+                font_widths[1] > font_widths[0],
+                "larger effective legend fonts increase the native measured margin"
+            );
+        }
+    }
+}
+
+#[test]
 fn journey_2_geometry_config_preserves_zero_dimensions_and_signed_spacing() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(

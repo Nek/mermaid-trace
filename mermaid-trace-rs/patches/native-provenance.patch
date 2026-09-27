@@ -28447,10 +28447,46 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
-index c8ebca79..35051a0a 100644
+index c8ebca79..28cbaa6b 100644
 --- a/crates/merman-render/src/journey.rs
 +++ b/crates/merman-render/src/journey.rs
-@@ -224,6 +224,7 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -36,7 +36,6 @@ fn wrap_actor_label_lines(
+     measurer: &dyn TextMeasurer,
+     style: &TextStyle,
+ ) -> Vec<String> {
+-    let max_label_width = max_label_width.max(1.0);
+     let full_text_width =
+         journey_actor_legend_text_bounding_client_rect_width_px(person, measurer, style);
+     if full_text_width <= max_label_width {
+@@ -75,9 +74,12 @@ fn wrap_actor_label_lines(
+                     if candidate_width > max_label_width {
+                         let mut head = broken_word.clone();
+                         head.pop();
+-                        if !head.is_empty() {
+-                            lines.push(format!("{head}-"));
++                        // Mermaid's slice(0, -1) removes one UTF-16 unit. A remaining
++                        // high surrogate renders as U+FFFD in well-formed UTF-8 SVG.
++                        if ch.len_utf16() == 2 {
++                            head.push(char::REPLACEMENT_CHARACTER);
+                         }
++                        lines.push(format!("{head}-"));
+                         broken_word = ch.to_string();
+                     }
+                 }
+@@ -92,11 +94,7 @@ fn wrap_actor_label_lines(
+         lines.push(current_line);
+     }
+ 
+-    if lines.is_empty() {
+-        vec![person.to_string()]
+-    } else {
+-        lines
+-    }
++    lines
+ }
+ 
+ fn journey_actor_legend_text_style(effective_config: &Value) -> TextStyle {
+@@ -224,6 +222,7 @@ pub(crate) fn layout_journey_diagram_typed(
      let mut current_fill = "#CCC".to_string();
      let mut current_num: i64 = 0;
  
@@ -28458,7 +28494,7 @@ index c8ebca79..35051a0a 100644
      let mut stopx = left_margin;
      for (i, task) in model.tasks.iter().enumerate() {
          let x = (i as f64) * cfg.task_margin + (i as f64) * cfg.cell_width + left_margin;
-@@ -250,11 +251,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -250,11 +249,12 @@ pub(crate) fn layout_journey_diagram_typed(
                  cfg.cell_width * (count as f64) + cfg.diagram_margin_x * ((count - 1) as f64);
  
              sections.push(JourneySectionLayout {
@@ -28472,7 +28508,7 @@ index c8ebca79..35051a0a 100644
                  height: cfg.cell_height,
                  fill: current_fill.clone(),
                  task_count: count,
-@@ -269,16 +271,13 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -269,16 +269,13 @@ pub(crate) fn layout_journey_diagram_typed(
          let face_cy = if task.score_is_nan {
              None
          } else {
@@ -28492,7 +28528,7 @@ index c8ebca79..35051a0a 100644
              JourneyMouthKind::Sad
          } else {
              JourneyMouthKind::Ambivalent
-@@ -286,11 +285,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -286,11 +283,12 @@ pub(crate) fn layout_journey_diagram_typed(
  
          let mut actor_circles = Vec::new();
          let mut cx = x + 14.0;
@@ -28506,7 +28542,7 @@ index c8ebca79..35051a0a 100644
                  actor: p.to_string(),
                  pos,
                  color,
-@@ -325,13 +325,15 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -325,13 +323,15 @@ pub(crate) fn layout_journey_diagram_typed(
              mouth,
          });
  
@@ -28524,7 +28560,7 @@ index c8ebca79..35051a0a 100644
      });
  
      let height = (stopy - 0.0 + 2.0 * cfg.diagram_margin_y).max(1.0);
-@@ -350,9 +352,9 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -350,9 +350,9 @@ pub(crate) fn layout_journey_diagram_typed(
  
      let viewbox_top_pad = JOURNEY_VIEWBOX_TOP_PAD_PX;
      let bounds = Bounds {
@@ -28536,7 +28572,7 @@ index c8ebca79..35051a0a 100644
          max_y: -viewbox_top_pad + height + extra_vert_for_title,
      };
  
-@@ -389,6 +391,86 @@ mod tests {
+@@ -389,6 +389,86 @@ mod tests {
      use merman_core::diagrams::journey::JourneyDiagramRenderModel;
      use serde_json::json;
  
@@ -28623,11 +28659,55 @@ index c8ebca79..35051a0a 100644
      #[test]
      fn journey_layout_carries_use_max_width_config() {
          let model = JourneyDiagramRenderModel::default();
+@@ -459,6 +539,33 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn journey_actor_legend_preserves_zero_and_negative_width_wrapping() {
++        let measurer = DeterministicTextMeasurer::default();
++        let style = super::journey_actor_legend_text_style(&json!({}));
++        for width in [-1.0, 0.0, 1.0] {
++            assert_eq!(
++                super::wrap_actor_label_lines("Alpha", width, &measurer, &style),
++                ["-", "A-", "l-", "p-", "h-", "a"]
++            );
++        }
++        assert_eq!(
++            super::wrap_actor_label_lines("A😀", 0.0, &measurer, &style),
++            ["-", "A�-", "😀"]
++        );
++        assert!(super::wrap_actor_label_lines("", -1.0, &measurer, &style).is_empty());
++        let tiny =
++            super::journey_actor_legend_text_style(&json!({"themeVariables":{"fontSize":"1px"}}));
++        assert_eq!(
++            super::wrap_actor_label_lines(".", 0.0, &measurer, &tiny),
++            ["-", "."]
++        );
++        assert_eq!(
++            super::wrap_actor_label_lines(".", 1.0, &measurer, &tiny),
++            ["."]
++        );
++    }
++
+     #[test]
+     fn journey_actor_legend_wraps_with_the_configured_width() {
+         let measurer = DeterministicTextMeasurer::default();
 diff --git a/crates/merman-render/src/journey/config.rs b/crates/merman-render/src/journey/config.rs
-index 6f096465..b52bf8c2 100644
+index 6f096465..f1421b2d 100644
 --- a/crates/merman-render/src/journey/config.rs
 +++ b/crates/merman-render/src/journey/config.rs
-@@ -58,16 +58,15 @@ impl<'a> JourneyConfigView<'a> {
+@@ -42,8 +42,7 @@ impl<'a> JourneyConfigView<'a> {
+                 .max(0.0),
+             max_label_width: self
+                 .journey_f64("maxLabelWidth")
+-                .unwrap_or(DEFAULT_MAX_LABEL_WIDTH)
+-                .max(1.0),
++                .unwrap_or(DEFAULT_MAX_LABEL_WIDTH),
+             box_text_margin: self
+                 .journey_f64("boxTextMargin")
+                 .unwrap_or(DEFAULT_BOX_TEXT_MARGIN)
+@@ -58,16 +57,15 @@ impl<'a> JourneyConfigView<'a> {
                  .max(0.0),
              task_margin: self
                  .journey_f64("taskMargin")
@@ -28647,7 +28727,7 @@ index 6f096465..b52bf8c2 100644
              actor_colours: self.actor_colours(),
              section_fills: self.section_fills(),
              use_max_width: self.use_max_width(),
-@@ -77,6 +76,16 @@ impl<'a> JourneyConfigView<'a> {
+@@ -77,6 +75,16 @@ impl<'a> JourneyConfigView<'a> {
      pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
          JourneyRenderSettings {
              task_text_style: self.task_text_style(),
@@ -28664,7 +28744,7 @@ index 6f096465..b52bf8c2 100644
              title_font_size: config_string(self.journey_config, &["titleFontSize"])
                  .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
              title_font_family: config_string(self.journey_config, &["titleFontFamily"])
-@@ -157,6 +166,8 @@ pub(crate) struct JourneyLayoutSettings {
+@@ -157,6 +165,8 @@ pub(crate) struct JourneyLayoutSettings {
  #[derive(Debug, Clone)]
  pub(crate) struct JourneyRenderSettings {
      pub(crate) task_text_style: TextStyle,
@@ -28673,7 +28753,7 @@ index 6f096465..b52bf8c2 100644
      pub(crate) title_font_size: String,
      pub(crate) title_font_family: String,
      pub(crate) title_color: String,
-@@ -223,6 +234,15 @@ mod tests {
+@@ -223,6 +233,15 @@ mod tests {
          assert!(!settings.use_max_width);
      }
  

@@ -270,6 +270,10 @@ async function verifyNative(source: string, key: string, expected: string, label
       await defaultFace.click({ position: { x: 15, y: 3 } });
       assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), nodeSpan, 'a generated default face belongs to its task');
     }
+    for (const actor of await shape.first().locator('circle[class^="actor-"]:not([data-mt-key])').all()) {
+      await actor.click();
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), nodeSpan, 'an empty generated actor circle belongs to its task');
+    }
     if (key.startsWith('state:node:')) {
       await shape.first().focus(); await shape.first().press('Enter');
       assert.equal(await shape.first().getAttribute('data-mt-selected'), 'true', 'state node keyboard activation keeps node selection');
@@ -608,6 +612,108 @@ test('OWN-JOURNEY-ACTOR: saved and live actor slots preserve local ownership and
       await preview.close(); preview = undefined;
     }
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('JOURNEY-2-LEGEND: every wrapped line shares saved/live actor ownership and focus', { timeout: 180_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-journey-legend-'));
+  const filename = join(directory, 'legend.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const [limit, margin, font, actor, expected] of [
+      [0, 0, 16, 'Alpha', ['-', 'A-', 'l-', 'p-', 'h-', 'a']],
+      [-1, 0, 16, 'Alpha', ['-', 'A-', 'l-', 'p-', 'h-', 'a']],
+      [1, 0, 16, 'Alpha', ['-', 'A-', 'l-', 'p-', 'h-', 'a']],
+      [360, 0, 16, 'Alpha', ['Alpha']],
+      [0, 0, 1, '.', ['-', '.']],
+      [0, 9, 24, 'Al pha', ['-', 'A-', 'l', '-', 'p-', 'h-', 'a']],
+      [360, 9, 12, 'Alpha 😀', ['Alpha 😀']],
+      [0, 0, 16, 'A😀', ['-', 'A�-', '😀']],
+      [360, 0, 12, 'Alpha', ['Alpha']],
+      [360, 0, 24, 'Alpha', ['Alpha']],
+    ] as const) {
+      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n  fontFamily: Arial\r\n  themeVariables:\r\n    fontSize: ${font}px\r\n  journey:\r\n    maxLabelWidth: ${limit}\r\n    boxTextMargin: ${margin}\r\n    leftMargin: 150\r\n---\r\njourney\r\n%% 😀\r\nFirst : 5 : ${actor}\r\nSecond : 3 : ${actor}\r\n`;
+      const { svg, mapping } = await producer.render('journey-legend', source);
+      const origin = mapping.pieces.find(piece => piece.domId === `journey:actor:${actor}`)!.span;
+      const later = mapping.pieces.find(piece => piece.domId === 'journey:actor:1:0')!.span;
+      const groupCount = expected.length + 2;
+      await page.setContent(svg + svg.replaceAll('journey-legend', 'journey-copy'));
+      const savedMarkup = await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML));
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
+      }, activation);
+      const first = page.locator('svg').first();
+      assert.deepEqual(await first.locator('text.legend').allTextContents(), [...expected]);
+      assert.equal(await first.locator('text.legend').first().evaluate(element => getComputedStyle(element).fontSize), `${font}px`);
+      const group = first.locator(`[data-mt-start="${origin.start}"][data-mt-end="${origin.end}"]`);
+      assert.equal(await group.count(), groupCount);
+      assert.equal(await group.locator(':scope[tabindex="0"]').count(), 1);
+      for (const member of await group.all()) {
+        await clickExposedTarget(member);
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), origin);
+        assert.equal(await first.locator('[data-mt-selected=true]').count(), groupCount);
+        assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+      }
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), later);
+      assert.equal(await first.locator('[data-mt-selected=true]').count(), 1, 'later actor references stay local');
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), origin);
+      assert.equal(await first.locator('[data-mt-selected=true]').count(), groupCount, 'reverse selection restores the whole first-origin group');
+      await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+      assert.equal(await page.locator('[tabindex], [data-mt-selected], style[data-mt-runtime]').count(), 0);
+      assert.deepEqual(await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML)), savedMarkup, 'disposal restores the exact host SVG');
+      const fence = '```mermaid\r\n' + source + '```\r\n';
+      const markdown = '# Legend\r\n\r\n' + fence + '\r\n' + fence;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      const diagrams = page.locator('svg[data-mt-map]');
+      const span = { start: markdown.indexOf(source) + origin.start, end: markdown.indexOf(source) + origin.end };
+      const liveGroup = diagrams.first().locator(`[data-mt-key="journey:actor:${actor}"], [data-mt-key="journey:actor:0:0"]`);
+      assert.equal(await liveGroup.count(), groupCount, 'the live click loop includes every first-origin constituent');
+      assert.deepEqual(await diagrams.first().locator('text.legend').allTextContents(), [...expected]);
+      assert.equal(await liveGroup.locator(':scope[tabindex="0"]').count(), 1);
+      for (const member of await liveGroup.all()) {
+        await clickExposedTarget(member);
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), actor);
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
+        assert.equal(await diagrams.first().locator('[data-mt-selected=true]').count(), groupCount);
+        assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+      }
+      const focus = liveGroup.locator(':scope[tabindex="0"]');
+      await diagrams.first().focus();
+      await page.evaluate(() => navigator.clipboard.writeText('before-legend-keyboard'));
+      await focus.focus();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'before-legend-keyboard', 'focus selects without copying');
+      await focus.press(limit < 0 ? 'Space' : 'Enter');
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, span));
+      for (const [owner, count] of [[later, 1], [origin, groupCount]] as const) {
+        const selection = { start: markdown.indexOf(source) + owner.start, end: markdown.indexOf(source) + owner.end };
+        await original.evaluate((element, span) => {
+          const doc = element.ownerDocument, range = doc.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+        }, selection);
+        await page.waitForFunction(count => document.querySelector('svg[data-mt-map]')!.querySelectorAll('[data-mt-selected=true]').length === count, count);
+        if (count === 1) assert.equal(await diagrams.first().locator('[data-mt-key="journey:actor:1:0"]').getAttribute('data-mt-selected'), 'true');
+        assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+      }
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('JOURNEY-2-LEGEND-EMPTY: generated empty actor circles retain saved/live task selection', { timeout: 60_000 }, async () => {
+  for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+    const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n  journey:\r\n    maxLabelWidth: -1\r\n---\r\njourney\r\nFirst : 5 :\r\n`;
+    await verifyNative(source, 'journey:task:0', 'First : 5 :', 'First', [], 'First : 5 :', [], 'journey:task:0', undefined, true);
+  }
 });
 
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
