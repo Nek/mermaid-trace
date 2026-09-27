@@ -332,3 +332,22 @@ test('WATCH-AC2: shutdown closes incomplete HTTP connections', { timeout: 10_000
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('WATCH-STARTUP: initial file notifications wait for the native renderer', { timeout: 120_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-startup-'));
+  const filename = join(directory, 'startup.md');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    for (let i = 0; i < 12; i++) {
+      const source = `# Startup ${i}\n\n\`\`\`mermaid\nstateDiagram-v2\n[*] --> Ready\nnote right of Ready : Started ${i}\n\`\`\`\n`;
+      await writeFile(filename, source);
+      preview = await watchPreview(filename, { port: 0 });
+      const html = await (await fetch(preview.url)).text();
+      assert.match(html, /data-mt-map/);
+      const payload = html.match(/<script id="trace-data" type="application\/json">(.*?)<\/script>/s)!;
+      assert.equal(JSON.parse(payload[1]!).document.source, source, 'initial native diagram uses the current file');
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await rm(directory, { recursive: true, force: true }); }
+});

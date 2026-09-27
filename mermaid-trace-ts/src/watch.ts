@@ -107,7 +107,7 @@ export async function watchPreview(input: string, options: { sourceView?: boolea
   server.watcher.on('all', (event, path) => {
     if (resolve(path) !== watchedFile || !['add', 'change', 'unlink'].includes(event) || closed) return;
     dirty = true;
-    if (!pending) pending = rebuild().finally(() => { pending = undefined; });
+    if (!pending && producer) pending = rebuild().finally(() => { pending = undefined; });
   });
   const close = async () => {
     closed = true;
