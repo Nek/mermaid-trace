@@ -492,6 +492,126 @@ test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selectio
   await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
 });
 
+test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owners', { timeout: 180_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-section-owner-'));
+  const filename = join(directory, 'sections.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const [body, owners] of [
+      ['section Day 😀\r\nFirst : 5 : Alice\r\nsection Night\r\nSecond : 2 : Bob\r\nsection Day 😀\r\nThird : 3 : Carol\r\n', [0, 1, 2]],
+      ['section Day 😀\r\nFirst : 5 : Alice\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n', [0, 0]],
+      ['section Unused\r\nsection Day 😀\r\nFirst : 5 : Alice\r\n', [null, 1]],
+      ['section \r\nFirst : 5 : Alice\r\n', [null]],
+      ['First : 5 : Alice\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n', [0]],
+      ['section Day 😀\r\nFirst : 5 : Alice\r\nsection Unused\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n', [0, null, 0]],
+      ['section Day 😀\r\nFirst : 5 : Alice\r\nsection \r\nSecond : 2 : Bob\r\nsection Day 😀\r\nThird : 3 : Carol\r\n', [0, 1, 2]],
+      ['section Day 😀\r\nsection Day 😀\r\nFirst : 5 : Alice\r\n', [null, 1]],
+    ] as const) {
+      const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n---\r\njourney\r\n%% 😀\r\n` + body;
+      const declarations = [...body.matchAll(/^section[^\n]*/gm)].map(match => ({ start: source.indexOf(body) + match.index, end: source.indexOf(body) + match.index + match[0].trimEnd().length }));
+      const { svg } = await producer.render('section-owner', source);
+      await page.setContent(svg + svg.replaceAll('section-owner', 'section-copy'));
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
+      }, activation);
+      const first = page.locator('svg').first();
+      for (const [index, span] of declarations.entries()) {
+        const owner = owners[index];
+        assert.ok(owner !== undefined, "every authored section has an expected owner classification");
+        const pieces = await page.evaluate(span => (window as any).handles[0].highlight([span]), span);
+        if (owner === null) {
+          assert.equal(pieces.length, 0, 'unused declarations have no phantom visual');
+          assert.equal(await first.locator('[data-mt-selected=true]').count(), 0);
+          continue;
+        }
+        assert.ok(pieces.some((piece: any) => piece.sectionIndex === index));
+        const key = `journey:section:${owner}`;
+        const frame = first.locator(`[data-mt-key="${key}"][data-mt-role=control]`);
+        assert.equal(await frame.getAttribute('data-mt-selected'), 'true');
+        assert.equal(await first.locator('[data-mt-role=control][data-mt-selected=true]').count(), 1, 'only the actual owning frame selects');
+        assert.equal(await first.locator('[data-mt-role=control-label][data-mt-selected=true]').count(), owner === index && source.slice(span.start, span.end).trim() !== 'section' ? 1 : 0, 'a full owner includes its label; aliases do not claim another declaration’s label');
+        await frame.locator(':scope > rect').click({ position: { x: 1, y: 1 } });
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), declarations[owner]);
+        await frame.focus(); await frame.press(index % 2 ? 'Space' : 'Enter');
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), declarations[owner]);
+        const label = first.locator(`[data-mt-key="${key}"][data-mt-role=control-label]`);
+        if (await label.count()) {
+          await label.first().click();
+          const event = await page.evaluate(() => (window as any).events.at(-1));
+          const start = declarations[owner]!.start + 'section '.length;
+          assert.deepEqual(event.span, { start, end: declarations[owner]!.end });
+          assert.equal(await frame.getAttribute('data-mt-selected'), null, 'label has its own authored span');
+          await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: span.start + 'section '.length, end: span.end });
+          assert.equal(await frame.getAttribute('data-mt-selected'), index === owner ? null : 'true', 'only the effective declaration owns the displayed label');
+          assert.equal(await label.first().getAttribute('data-mt-selected'), index === owner ? 'true' : null);
+        }
+        assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+      }
+      await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+      assert.equal(await page.locator('[tabindex], [data-mt-selected]').count(), 0);
+      const fence = '```mermaid\r\n' + source + '```\r\n';
+      const markdown = '# Sections\r\n\r\n' + fence + '\r\n' + fence;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      const diagrams = page.locator('svg[data-mt-map]');
+      for (const [index, local] of declarations.entries()) {
+        const owner = owners[index];
+        assert.ok(owner !== undefined, "every authored section has an expected owner classification");
+        if (owner === null) await diagrams.first().locator('[data-mt-role=node]').first().press('Enter');
+        const span = { start: markdown.indexOf(source) + local.start, end: markdown.indexOf(source) + local.end };
+        await original.evaluate((element, span) => {
+          const doc = element.ownerDocument, range = doc.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+        }, span);
+        if (owner === null) {
+          await page.waitForFunction(() => document.querySelector('svg[data-mt-map]')!.querySelectorAll('[data-mt-selected=true]').length === 0);
+          continue;
+        }
+        const key = `journey:section:${owner}`;
+        const frame = diagrams.first().locator(`[data-mt-key="${key}"][data-mt-role=control]`);
+        await frame.locator(':scope[data-mt-selected=true]').waitFor();
+        assert.equal(await diagrams.first().locator('[data-mt-role=control][data-mt-selected=true]').count(), 1);
+        assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+        await frame.locator(':scope > rect').click({ position: { x: 1, y: 1 } });
+        const primary = declarations[owner]!;
+        const primarySpan = { start: markdown.indexOf(source) + primary.start, end: markdown.indexOf(source) + primary.end };
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, primarySpan));
+        assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), source.slice(primary.start, primary.end));
+        const before = await page.evaluate(() => navigator.clipboard.readText());
+        await frame.focus();
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), before);
+        await frame.press(index % 2 ? 'Space' : 'Enter');
+        const label = diagrams.first().locator(`[data-mt-key="${key}"][data-mt-role=control-label]`);
+        if (await label.count()) {
+          await label.first().press('Enter');
+          await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: primarySpan.start + 'section '.length, end: primarySpan.end }));
+          assert.equal(await frame.getAttribute('data-mt-selected'), null);
+          if (index === owner) await frame.press('Enter');
+          await original.evaluate((element, span) => {
+            const doc = element.ownerDocument, range = doc.createRange();
+            range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+            doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+          }, { start: span.start + 'section '.length, end: span.end });
+          await (index === owner ? label.first() : frame).locator(':scope[data-mt-selected=true]').waitFor();
+          assert.equal(await frame.getAttribute('data-mt-selected'), index === owner ? null : 'true');
+          assert.equal(await label.first().getAttribute('data-mt-selected'), index === owner ? 'true' : null);
+        }
+      }
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 
 test('STATE STRUCT-AC2/3: saved native SVG and original Markdown state selection', { timeout: 60_000 }, async () => {
   const block = 'state Group {\nstate "Same 😀" as A\nstate "Same 😀" as B\nA --> B : review\nB --> A\nnote right of A : Annotation\n}';

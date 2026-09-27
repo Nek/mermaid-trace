@@ -124,6 +124,132 @@ fn journey_plan_ac1_2_tasks_scores_people_and_sections_keep_original_spans() {
 const KANBAN: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\nkanban\r\n%% 😀\r\n  todo[Todo]\r\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\r\n    b[Same 😀]\r\n  done[Done]\r\n    c[Ship]\r\n";
 
 #[test]
+fn own_journey_section_runs_preserve_declarations_aliases_and_nonvisual_origins() {
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for (body, bindings) in [
+                (
+                    "section Day 😀\r\nFirst : 5 : Alice\r\nsection Night\r\nSecond : 2 : Bob\r\nsection Day 😀\r\nThird : 3 : Carol\r\n",
+                    vec![Some(0), Some(1), Some(2)],
+                ),
+                (
+                    "section Day 😀\r\nFirst : 5 : Alice\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n",
+                    vec![Some(0), Some(0)],
+                ),
+                (
+                    "section Unused\r\nsection Day 😀\r\nFirst : 5 : Alice\r\n",
+                    vec![None, Some(1)],
+                ),
+                ("section \r\nFirst : 5 : Alice\r\n", vec![None]),
+                (
+                    "First : 5 : Alice\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n",
+                    vec![Some(0)],
+                ),
+                (
+                    "section Day 😀\r\nFirst : 5 : Alice\r\nsection Unused\r\nsection Day 😀\r\nSecond : 2 : Bob\r\n",
+                    vec![Some(0), None, Some(0)],
+                ),
+                (
+                    "section Day 😀\r\nFirst : 5 : Alice\r\nsection \r\nSecond : 2 : Bob\r\nsection Day 😀\r\nThird : 3 : Carol\r\n",
+                    vec![Some(0), Some(1), Some(2)],
+                ),
+                (
+                    "section Day 😀\r\nsection Day 😀\r\nFirst : 5 : Alice\r\n",
+                    vec![None, Some(1)],
+                ),
+            ] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n---\r\njourney\r\n%% 😀\r\n{body}"
+                );
+                let result = mermaid_trace_rs::render("section-owner", &source).unwrap();
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let native: Vec<Value> = serde_json::from_str(
+                    svg.descendants()
+                        .find_map(|n| n.attribute("data-mt-native"))
+                        .unwrap(),
+                )
+                .unwrap();
+                let mut byte = source.find(body).unwrap();
+                let mut index = 0;
+                for line in body.split_inclusive('\n') {
+                    if line.starts_with("section ") {
+                        let span = serde_json::json!({"start":source[..byte].encode_utf16().count(),"end":source[..byte+line.trim_end().len()].encode_utf16().count()});
+                        let authored = native
+                            .iter()
+                            .find(|p| p["sectionIndex"] == index)
+                            .expect("every native section declaration retains its occurrence");
+                        assert_eq!(authored["sectionIndex"], index);
+                        match bindings[index] {
+                            Some(owner) => {
+                                assert_eq!(authored["semanticId"], format!("section:{owner}"));
+                                assert_eq!(authored["domId"], format!("journey:section:{owner}"));
+                                assert_eq!(authored["effective"], index == owner);
+                                let piece =
+                                    pieces.iter().find(|p| p["sectionIndex"] == index).unwrap();
+                                assert_eq!(piece["span"], span);
+                                let visuals: Vec<_> = svg
+                                    .descendants()
+                                    .filter(|n| {
+                                        n.attribute("data-mt-key") == authored["domId"].as_str()
+                                            && n.attribute("data-mt-role") == Some("control")
+                                    })
+                                    .collect();
+                                assert_eq!(
+                                    visuals.len(),
+                                    1,
+                                    "one distinct frame per native section run: {source}"
+                                );
+                                if index == owner {
+                                    assert_eq!(
+                                        visuals[0]
+                                            .attribute("data-mt-start")
+                                            .unwrap()
+                                            .parse::<usize>()
+                                            .unwrap(),
+                                        span["start"].as_u64().unwrap() as usize
+                                    );
+                                    let label =
+                                        line.trim_end().strip_prefix("section").unwrap().trim();
+                                    if label.is_empty() {
+                                        assert!(piece.get("labelSpan").is_none());
+                                    } else {
+                                        let start = source[..byte + line.find(label).unwrap()]
+                                            .encode_utf16()
+                                            .count();
+                                        assert_eq!(
+                                            piece["labelSpan"],
+                                            serde_json::json!({"start":start,"end":start+label.encode_utf16().count()})
+                                        );
+                                    }
+                                }
+                            }
+                            None => {
+                                assert_eq!(authored["kind"], "nonvisual");
+                                assert_eq!(authored["classification"], "unused-section");
+                                assert!(!pieces.iter().any(|p| p["sectionIndex"] == index));
+                                assert!(!svg.descendants().any(|n| n.attribute("data-mt-key")
+                                    == Some(format!("journey:section:{index}").as_str())));
+                            }
+                        }
+                        index += 1;
+                    }
+                    byte += line.len();
+                }
+                assert_eq!(index, bindings.len());
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "section-owner", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn own_journey_actor_slots_keep_references_local_and_first_legend_origin() {
     for look in ["classic", "neo", "handDrawn"] {
         for html in [false, true] {

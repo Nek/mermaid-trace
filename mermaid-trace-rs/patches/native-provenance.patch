@@ -12961,9 +12961,18 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..f7e1e68b 100644
+index 68bde024..ba5f0ac7 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
+@@ -10,7 +10,7 @@ use crate::{
+ use serde_json::{Value, json};
+ #[cfg(test)]
+ use std::cell::Cell;
+-use std::collections::BTreeSet;
++use std::collections::{BTreeMap, BTreeSet};
+ 
+ #[cfg(test)]
+ thread_local! {
 @@ -56,6 +56,8 @@ pub struct JourneyRenderTask {
  
  #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -12999,17 +13008,28 @@ index 68bde024..f7e1e68b 100644
                  push_journey_payload_fact(
                      &mut editor_facts,
                      value,
-@@ -513,6 +527,9 @@ fn parse_journey_semantic_source(
+@@ -508,11 +522,20 @@ fn parse_journey_semantic_source(
+         }
+         if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
+             let v = v.split(':').next().unwrap_or("").to_string();
++            let section_index = db.sections.len();
++            if trace_source {
++                source_occurrences.push(json!({"kind":"control","semanticId":format!("section:{section_index}"),"domId":format!("journey:section:{section_index}"),"sectionIndex":section_index,"name":v,"span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len())}));
++            }
+             let value = spanned_keyword_value(line, line_start, "section");
+             if let Some(value) = value {
                  let section_text = value.text.split(':').next().unwrap_or("").trim();
                  if !section_text.is_empty() {
                      let section_start = value.start + value.text.find(section_text).unwrap_or(0);
 +                    if trace_source {
-+                        source_occurrences.push(json!({"kind":"control","semanticId":v,"domId":format!("journey:section:{v}"),"span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len()),"labelSpan":SourceSpan::new(section_start,section_start+section_text.len())}));
++                        source_occurrences.last_mut().expect("recorded section")["labelSpan"] = json!(
++                            SourceSpan::new(section_start, section_start + section_text.len())
++                        );
 +                    }
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,6 +594,10 @@ fn parse_journey_semantic_source(
+@@ -577,6 +600,10 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13020,7 +13040,7 @@ index 68bde024..f7e1e68b 100644
          let rest_source = &stripped[colon + ':'.len_utf8()..];
          let rest = rest_source.trim_start();
          let rest_start =
-@@ -591,6 +612,9 @@ fn parse_journey_semantic_source(
+@@ -591,6 +618,9 @@ fn parse_journey_semantic_source(
          let score_text = rest[..score_end].trim();
          if !score_text.is_empty() {
              let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
@@ -13030,7 +13050,7 @@ index 68bde024..f7e1e68b 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +629,32 @@ fn parse_journey_semantic_source(
+@@ -605,13 +635,32 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
@@ -13064,7 +13084,38 @@ index 68bde024..f7e1e68b 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -642,6 +685,7 @@ fn parse_journey_semantic_source(
+@@ -639,9 +688,38 @@ fn parse_journey_semantic_source(
+         )));
+     }
+ 
++    if trace_source {
++        // Section runs follow the native/upstream name-based contiguous grouping.
++        // Carry each task's parser-backed section occurrence to its actual visual owner.
++        let mut owners = BTreeMap::new();
++        let mut last_section = "";
++        let mut visual_owner = None;
++        for task in &db.tasks {
++            if task.section != last_section {
++                visual_owner = task.section_index;
++                last_section = &task.section;
++            }
++            if let (Some(authored), Some(owner)) = (task.section_index, visual_owner) {
++                owners.insert(authored, owner);
++            }
++        }
++        for piece in &mut source_occurrences {
++            if let Some(index) = piece["sectionIndex"].as_u64().map(|index| index as usize) {
++                if let Some(owner) = owners.get(&index) {
++                    piece["semanticId"] = json!(format!("section:{owner}"));
++                    piece["domId"] = json!(format!("journey:section:{owner}"));
++                    piece["effective"] = json!(index == *owner);
++                } else {
++                    piece["kind"] = json!("nonvisual");
++                    piece["classification"] = json!("unused-section");
++                }
++            }
++        }
++    }
      control.checkpoint()?;
      let actors = db.actors_sorted();
      let model = header_seen.then(|| JourneyDiagramRenderModel {
@@ -27978,10 +28029,18 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
-index c8ebca79..edc5b3a0 100644
+index c8ebca79..5176a8ee 100644
 --- a/crates/merman-render/src/journey.rs
 +++ b/crates/merman-render/src/journey.rs
-@@ -286,11 +286,12 @@ pub(crate) fn layout_journey_diagram_typed(
+@@ -250,6 +250,7 @@ pub(crate) fn layout_journey_diagram_typed(
+                 cfg.cell_width * (count as f64) + cfg.diagram_margin_x * ((count - 1) as f64);
+ 
+             sections.push(JourneySectionLayout {
++                source_index: task.section_index,
+                 section: task.section.to_string(),
+                 num: current_num,
+                 x,
+@@ -286,11 +287,12 @@ pub(crate) fn layout_journey_diagram_typed(
  
          let mut actor_circles = Vec::new();
          let mut cx = x + 14.0;
@@ -28065,7 +28124,7 @@ index 027dfe7d..adf538ae 100644
          };
          let measurer = DeterministicTextMeasurer {
 diff --git a/crates/merman-render/src/model.rs b/crates/merman-render/src/model.rs
-index b2f2c2e3..3b55e14b 100644
+index b2f2c2e3..30e5ab19 100644
 --- a/crates/merman-render/src/model.rs
 +++ b/crates/merman-render/src/model.rs
 @@ -941,6 +941,9 @@ pub enum JourneyMouthKind {
@@ -28078,6 +28137,16 @@ index b2f2c2e3..3b55e14b 100644
      pub actor: String,
      pub pos: i64,
      pub color: String,
+@@ -975,6 +978,9 @@ pub struct JourneyTaskLayout {
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct JourneySectionLayout {
++    /// Parser-backed declaration governing the first task of this rendered section run.
++    #[serde(skip)]
++    pub source_index: Option<usize>,
+     pub section: String,
+     pub num: i64,
+     pub x: f64,
 diff --git a/crates/merman-render/src/sequence/message_metrics.rs b/crates/merman-render/src/sequence/message_metrics.rs
 index a80d80c0..a3608f6d 100644
 --- a/crates/merman-render/src/sequence/message_metrics.rs
@@ -29343,7 +29412,7 @@ index 5e83e058..84402f73 100644
          y = fmt(layout.title_y),
          txt = escape_xml(title),
 diff --git a/crates/merman-render/src/svg/parity/journey/render.rs b/crates/merman-render/src/svg/parity/journey/render.rs
-index 61faa868..fe4113d4 100644
+index 61faa868..069bfed5 100644
 --- a/crates/merman-render/src/svg/parity/journey/render.rs
 +++ b/crates/merman-render/src/svg/parity/journey/render.rs
 @@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
@@ -29399,7 +29468,7 @@ index 61faa868..fe4113d4 100644
                  x = fmt(line.x),
                  y = fmt(line.y),
                  tx = fmt(line.tspan_x),
-@@ -415,7 +427,8 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -415,16 +427,23 @@ pub(crate) fn render_journey_diagram_svg_model(
      }
  
      let mut section_iter = layout.sections.iter();
@@ -29409,33 +29478,33 @@ index 61faa868..fe4113d4 100644
      for task in &layout.tasks {
          if last_section != Some(task.section.as_str()) {
              let Some(section) = section_iter.next() else {
-@@ -424,7 +437,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+                 break;
+             };
++            let section_key = section
++                .source_index
++                .map(|index| format!("journey:section:{index}"));
              let section_class = format!("journey-section section-type-{}", section.num);
              let _ = write!(
                  &mut out,
 -                r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
 +                r##"<g{trace}><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
-+                trace = crate::svg::parity::source_attrs(
-+                    &model.source_occurrences,
-+                    &format!("journey:section:{}", section.section),
-+                    false
-+                ),
++                trace = section_key.as_deref().map_or_else(String::new, |key| {
++                    crate::svg::parity::source_attrs(&model.source_occurrences, key, false)
++                }),
                  x = fmt(section.x),
                  y = fmt(section.y),
                  fill = escape_attr(&section.fill),
-@@ -447,6 +465,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -447,6 +466,9 @@ pub(crate) fn render_journey_diagram_svg_model(
                      task_font_family,
                  },
                  &theme.text_color,
-+                &crate::svg::parity::source_attrs(
-+                    &model.source_occurrences,
-+                    &format!("journey:section:{}", section.section),
-+                    true,
-+                ),
++                &section_key.as_deref().map_or_else(String::new, |key| {
++                    crate::svg::parity::source_attrs(&model.source_occurrences, key, true)
++                }),
              );
              out.push_str("</g>");
          }
-@@ -455,7 +478,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -455,7 +477,12 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29449,7 +29518,7 @@ index 61faa868..fe4113d4 100644
              id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
              x1 = fmt(task.line_x1),
              y1 = fmt(task.line_y1),
-@@ -466,12 +494,25 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -466,12 +493,25 @@ pub(crate) fn render_journey_diagram_svg_model(
  
          let _ = write!(
              &mut out,
@@ -29477,7 +29546,7 @@ index 61faa868..fe4113d4 100644
          let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
          let eye_r = 1.5;
          let _ = write!(
-@@ -534,7 +575,12 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -534,7 +574,12 @@ pub(crate) fn render_journey_diagram_svg_model(
          for c in &task.actor_circles {
              let _ = write!(
                  &mut out,
@@ -29491,7 +29560,7 @@ index 61faa868..fe4113d4 100644
                  cx = fmt(c.cx),
                  cy = fmt(c.cy),
                  pos = c.pos,
-@@ -559,6 +605,11 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -559,6 +604,11 @@ pub(crate) fn render_journey_diagram_svg_model(
                  task_font_family,
              },
              &theme.text_color,
@@ -29503,7 +29572,7 @@ index 61faa868..fe4113d4 100644
          );
  
          out.push_str("</g>");
-@@ -567,7 +618,9 @@ pub(crate) fn render_journey_diagram_svg_model(
+@@ -567,7 +617,9 @@ pub(crate) fn render_journey_diagram_svg_model(
      if let Some(title) = diagram_title {
          let _ = write!(
              &mut out,
@@ -29514,6 +29583,14 @@ index 61faa868..fe4113d4 100644
              x = fmt(layout.title_x),
              fs = escape_attr(title_font_size),
              y = fmt(layout.title_y),
+@@ -668,6 +720,7 @@ mod tests {
+             title_y: 25.0,
+             actor_legend: Vec::new(),
+             sections: vec![JourneySectionLayout {
++                source_index: None,
+                 section: "A".to_string(),
+                 num: 0,
+                 x: 150.0,
 diff --git a/crates/merman-render/src/svg/parity/kanban/render.rs b/crates/merman-render/src/svg/parity/kanban/render.rs
 index 60b4b0f6..1b600e22 100644
 --- a/crates/merman-render/src/svg/parity/kanban/render.rs
@@ -30974,10 +31051,10 @@ index 00000000..56b40c23
 +}
 diff --git a/crates/merman/tests/journey_source_provenance.rs b/crates/merman/tests/journey_source_provenance.rs
 new file mode 100644
-index 00000000..a4ffe505
+index 00000000..4e525c4a
 --- /dev/null
 +++ b/crates/merman/tests/journey_source_provenance.rs
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,125 @@
 +#![cfg(feature = "svg")]
 +use merman::{
 +    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
@@ -31041,6 +31118,66 @@ index 00000000..a4ffe505
 +    assert!(
 +        !svg.descendants()
 +            .any(|n| n.attribute("data-mt-key") == Some("journey:actor:0:2"))
++    );
++}
++
++#[test]
++fn journey_section_runs_keep_parser_occurrence_ownership_and_contiguous_aliases() {
++    let source = "journey\r\n%% 😀\r\nsection Day\r\nFirst : 5 : Alice\r\nsection Day\r\nSecond : 2 : Bob\r\nsection Night\r\nThird : 3 : Carol\r\nsection Unused\r\nsection Day\r\nFourth : 4 : Alice\r\nsection \r\nFifth : 3 : Bob\r\n";
++    let renderer = Renderer::new().with_engine(
++        Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":true}))),
++    );
++    let RenderOutput::Svg(Some(output)) = renderer
++        .render(RenderRequest::svg(
++            source,
++            OperationControl::new(),
++            SvgRequest::default(),
++        ))
++        .unwrap()
++    else {
++        panic!("no SVG")
++    };
++    let svg = roxmltree::Document::parse(output.svg()).unwrap();
++    let pieces: Vec<Value> = serde_json::from_str(
++        svg.descendants()
++            .find_map(|n| n.attribute("data-mt-native"))
++            .unwrap(),
++    )
++    .unwrap();
++    let sections: Vec<_> = pieces
++        .iter()
++        .filter(|p| p.get("sectionIndex").is_some())
++        .collect();
++    assert_eq!(sections.len(), 6);
++    for (index, owner) in [Some(0), Some(0), Some(2), None, Some(4), Some(5)]
++        .iter()
++        .enumerate()
++    {
++        let piece = sections[index];
++        assert_eq!(piece["sectionIndex"], index);
++        let start = piece["span"]["start"].as_u64().unwrap() as usize;
++        let end = piece["span"]["end"].as_u64().unwrap() as usize;
++        assert!(source[start..end].starts_with("section"));
++        if let Some(owner) = owner {
++            assert_eq!(piece["semanticId"], format!("section:{owner}"));
++            assert_eq!(piece["domId"], format!("journey:section:{owner}"));
++            assert_eq!(piece["effective"], index == *owner);
++            let key = piece["domId"].as_str().unwrap();
++            assert_eq!(
++                svg.descendants()
++                    .filter(|n| n.attribute("data-mt-key") == Some(key)
++                        && !n.has_attribute("data-mt-label"))
++                    .count(),
++                1
++            );
++        } else {
++            assert_eq!(piece["kind"], "nonvisual");
++            assert_eq!(piece["classification"], "unused-section");
++        }
++    }
++    assert!(
++        sections[5].get("labelSpan").is_none(),
++        "a real empty section frame has no invented label"
 +    );
 +}
 diff --git a/crates/merman/tests/sequence_source_provenance.rs b/crates/merman/tests/sequence_source_provenance.rs

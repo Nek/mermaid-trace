@@ -51,6 +51,8 @@ journey
   Review : 3 : Author, Reviewer
   section Delivery
   Publish : 4 : Publisher
+  section Preparation
+  Revise : 2 : Author
 ```
 
 ## Kanban board
