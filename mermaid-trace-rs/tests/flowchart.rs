@@ -395,6 +395,149 @@ fn flow_ac4_5_nonbreaking_html_labels_survive_safe_svg_with_exact_origins() {
 }
 
 #[test]
+fn flow_ac4_5_edge_label_forms_keep_exact_payloads_and_only_painted_controls() {
+    let forms = [
+        ("A0 -->|plain| B0", "-->|plain|", Some("plain")),
+        (
+            "A1 -- split text --> B1",
+            "-- split text -->",
+            Some("split text"),
+        ),
+        (
+            "A2 -- \"quoted text\" --> B2",
+            "-- \"quoted text\" -->",
+            Some("quoted text"),
+        ),
+        (
+            "A3 -- \"`**marked**`\" --> B3",
+            "-- \"`**marked**`\" -->",
+            Some("**marked**"),
+        ),
+        (
+            "A4 -->|\"`**pipe markdown**`\"| B4",
+            "-->|\"`**pipe markdown**`\"|",
+            Some("**pipe markdown**"),
+        ),
+        (
+            "A5 -->|first<br/>second| B5",
+            "-->|first<br/>second|",
+            Some("first<br/>second"),
+        ),
+        ("A6 -->|A&amp;B| B6", "-->|A&amp;B|", Some("A&amp;B")),
+        ("A7 -->|😀 A| B7", "-->|😀 A|", Some("😀 A")),
+        ("A8 -->|$$x^2$$| B8", "-->|$$x^2$$|", Some("$$x^2$$")),
+        ("A9 -->|   | B9", "-->|   |", None),
+        ("A10 -->|<br/>| B10", "-->|<br/>|", Some("<br/>")),
+        ("A11 -- No--> B11", "-- No-->", Some("N")),
+        (
+            "A12 -->|first\r\nsecond| B12",
+            "-->|first\r\nsecond|",
+            Some("first\r\nsecond"),
+        ),
+        ("A13 == thick ==> B13", "== thick ==>", Some("thick")),
+        ("A14 -. dotted .-> B14", "-. dotted .->", Some("dotted")),
+        (
+            "A15 ==>|thick pipe| B15",
+            "==>|thick pipe|",
+            Some("thick pipe"),
+        ),
+        (
+            "A16 -.->|dotted pipe| B16",
+            "-.->|dotted pipe|",
+            Some("dotted pipe"),
+        ),
+        ("A17 -- circle --o B17", "-- circle --o", Some("circle")),
+        ("A18 -- cross --x B18", "-- cross --x", Some("cross")),
+        ("A19 o-- round --> B19", "o-- round -->", Some("round")),
+        (
+            "A20 x-- crossed --> B20",
+            "x-- crossed -->",
+            Some("crossed"),
+        ),
+        (
+            "A21 <-- backward --> B21",
+            "<-- backward -->",
+            Some("backward"),
+        ),
+    ];
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for (chunk_index, chunk) in forms.chunks(11).enumerate() {
+                    let source = format!(
+                        "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\n{}\r\n",
+                        chunk
+                            .iter()
+                            .map(|(line, _, _)| *line)
+                            .collect::<Vec<_>>()
+                            .join("\r\n")
+                    );
+                    let result = mermaid_trace_rs::render("label-forms", &source).unwrap();
+                    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let utf16 = |byte: usize| source[..byte].encode_utf16().count();
+                    for (offset, (statement, operator, label)) in chunk.iter().enumerate() {
+                        let index = chunk_index * 11 + offset;
+                        let key = format!("edge:L_A{index}_B{index}_0");
+                        let edge = pieces
+                            .iter()
+                            .find(|piece| {
+                                piece["domId"] == key
+                                    && piece["kind"] == "edge"
+                                    && piece.get("relation").is_none()
+                            })
+                            .unwrap();
+                        let start =
+                            source.find(statement).unwrap() + statement.find(operator).unwrap();
+                        assert_eq!(
+                            edge["span"],
+                            serde_json::json!({"start":utf16(start),"end":utf16(start + operator.len())}),
+                            "{header} {look} {html} {index}"
+                        );
+                        match label {
+                            Some(label) => {
+                                let label_start = start + operator.find(label).unwrap();
+                                assert_eq!(
+                                    edge["labelSpan"],
+                                    serde_json::json!({"start":utf16(label_start),"end":utf16(label_start + label.len())}),
+                                    "{header} {look} {html} {index}"
+                                );
+                            }
+                            None => assert!(edge.get("labelSpan").is_none()),
+                        }
+                        let visible = svg
+                            .descendants()
+                            .filter(|node| {
+                                node.attribute("data-mt-key") == Some(key.as_str())
+                                    && node.attribute("data-mt-role") == Some("edge-label")
+                            })
+                            .count();
+                        assert_eq!(
+                            visible,
+                            usize::from(label.is_some() && !(html && index == 10)),
+                            "{header} {look} {html} {index}"
+                        );
+                    }
+                    let baseline =
+                        mermaid_trace_rs::render_with(&plain, "label-forms", &source).unwrap();
+                    assert_eq!(
+                        strip_trace(result["svg"].as_str().unwrap()),
+                        strip_trace(baseline["svg"].as_str().unwrap())
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));

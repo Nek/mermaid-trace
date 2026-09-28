@@ -321,6 +321,102 @@ test('FLOW-2-NONBREAKING-LABELS: saved and live HTML labels retain exact source 
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FLOW-2-EDGE-LABEL-FORMS: saved and live connector labels select authored payloads', { timeout: 240_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-edge-labels-'));
+  const filename = join(directory, 'labels.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const forms = [
+    ['A0 -->|plain| B0', '-->|plain|', 'plain'],
+    ['A1 -- split text --> B1', '-- split text -->', 'split text'],
+    ['A2 -- "quoted text" --> B2', '-- "quoted text" -->', 'quoted text'],
+    ['A3 -- "`**marked**`" --> B3', '-- "`**marked**`" -->', '**marked**'],
+    ['A4 -->|"`**pipe markdown**`"| B4', '-->|"`**pipe markdown**`"|', '**pipe markdown**'],
+    ['A5 -->|first<br/>second| B5', '-->|first<br/>second|', 'first<br/>second'],
+    ['A6 -->|A&amp;B| B6', '-->|A&amp;B|', 'A&amp;B'],
+    ['A7 -->|😀 A| B7', '-->|😀 A|', '😀 A'],
+    ['A8 -->|$$x^2$$| B8', '-->|$$x^2$$|', '$$x^2$$'],
+    ['A9 -->|   | B9', '-->|   |', null],
+    ['A10 -->|<br/>| B10', '-->|<br/>|', '<br/>'],
+    ['A11 -- No--> B11', '-- No-->', 'N'],
+    ['A12 -->|first\r\nsecond| B12', '-->|first\r\nsecond|', 'first\r\nsecond'],
+    ['A13 == thick ==> B13', '== thick ==>', 'thick'],
+    ['A14 -. dotted .-> B14', '-. dotted .->', 'dotted'],
+    ['A15 ==>|thick pipe| B15', '==>|thick pipe|', 'thick pipe'],
+    ['A16 -.->|dotted pipe| B16', '-.->|dotted pipe|', 'dotted pipe'],
+    ['A17 -- circle --o B17', '-- circle --o', 'circle'],
+    ['A18 -- cross --x B18', '-- cross --x', 'cross'],
+    ['A19 o-- round --> B19', 'o-- round -->', 'round'],
+    ['A20 x-- crossed --> B20', 'x-- crossed -->', 'crossed'],
+    ['A21 <-- backward --> B21', '<-- backward -->', 'backward'],
+  ] as const;
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+      for (let first = 0; first < forms.length; first += 11) {
+        const chunk = forms.slice(first, first + 11);
+        const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n  handDrawnSeed: 42\r\n---\r\n${header}\r\n${chunk.map(([line]) => line).join('\r\n')}\r\n`;
+        const { svg } = await producer.render('edge-labels', source);
+        await page.setContent(svg);
+        const original = await page.locator('svg').first().evaluate(element => element.outerHTML);
+        await page.evaluate(async activation => {
+          const { activateSvg } = await import(activation);
+          const events: any[] = [];
+          Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+        }, activation);
+        for (const [offset, [statement, operator, label]] of chunk.entries()) {
+          const index = first + offset;
+          const key = `edge:L_A${index}_B${index}_0`;
+          const start = source.indexOf(statement) + statement.indexOf(operator);
+          const labelStart = label === null ? -1 : start + operator.indexOf(label);
+          const visual = page.locator(`[data-mt-key="${key}"][data-mt-role="edge-label"]`);
+          if (label === null || (html && index === 10)) {
+            assert.equal(await visual.count(), 0, `${header} ${look} ${html} ${index}`);
+            const range = label === null ? { start: start + operator.indexOf('   '), end: start + operator.indexOf('   ') + 3 }
+              : { start: labelStart, end: labelStart + label.length };
+            await page.evaluate(range => (window as any).handle.highlight([range]), range);
+            assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role="edge"][data-mt-selected="true"]`).count(), 1);
+            continue;
+          }
+          assert.equal(await visual.count(), 1, `${header} ${look} ${html} ${index}`);
+          await clickExposedTarget(visual);
+          assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), { start: labelStart, end: labelStart + label.length });
+          await visual.focus(); await visual.press('Enter');
+          await page.evaluate(range => (window as any).handle.highlight([range]), { start: labelStart, end: labelStart + label.length });
+          assert.equal(await visual.getAttribute('data-mt-selected'), 'true');
+        }
+        await page.evaluate(() => (window as any).handle.dispose());
+        assert.equal(await page.locator('svg').first().evaluate(element => element.outerHTML), original);
+
+        if (look === 'classic') {
+          const markdown = `# Labels\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+          await writeFile(filename, markdown);
+          preview = await watchPreview(filename, { port: 0, sourceView: true });
+          await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+          for (const index of [0, 3, 5, 8, 11, 13, 14].filter(index => index >= first && index < first + chunk.length)) {
+            const [statement, operator, label] = forms[index]!;
+            const key = `edge:L_A${index}_B${index}_0`;
+            const visual = page.locator(`[data-mt-key="${key}"][data-mt-role="edge-label"]`);
+            await clickExposedTarget(visual);
+            const selected = await page.frameLocator('#source-frame').locator('#source')
+              .evaluate(element => element.ownerDocument.getSelection()!.toString());
+            assert.equal(selected, label);
+            const start = markdown.indexOf(source) + source.indexOf(statement) + statement.indexOf(operator) + operator.indexOf(label!);
+            await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+              formatLocation({ id: filename, source: markdown }, { start, end: start + label!.length }));
+          }
+          await preview.close(); preview = undefined;
+        }
+      }
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('OWN-STATE-ENDPOINT: saved and live references select their transition owner', { timeout: 240_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-state-owner-'));
   const filename = join(directory, 'states.md');
