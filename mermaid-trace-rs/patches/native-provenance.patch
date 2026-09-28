@@ -15156,7 +15156,7 @@ index 1763d899..fbfffec8 100644
              acc_title: self.acc_title,
              acc_descr: self.acc_descr,
 diff --git a/crates/merman-core/src/diagrams/sequence/parse.rs b/crates/merman-core/src/diagrams/sequence/parse.rs
-index f84737e3..02d656f7 100644
+index f84737e3..66bea290 100644
 --- a/crates/merman-core/src/diagrams/sequence/parse.rs
 +++ b/crates/merman-core/src/diagrams/sequence/parse.rs
 @@ -68,19 +68,20 @@ impl SequenceSyntax {
@@ -15221,7 +15221,7 @@ index f84737e3..02d656f7 100644
          Ok(db) => db,
          Err(message) => {
              return Ok(Err(Box::new(SequenceSemanticFailure::Db {
-@@ -235,16 +248,165 @@ fn construct_sequence_semantic_source(
+@@ -235,16 +248,197 @@ fn construct_sequence_semantic_source(
  fn build_sequence_db(
      actions: Vec<super::Action>,
      wrap_enabled: Option<bool>,
@@ -15230,6 +15230,7 @@ index f84737e3..02d656f7 100644
      control: &OperationControl,
  ) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
      let mut db = SequenceDb::new(wrap_enabled);
++    let mut visible_title = false;
 +    let tokens: Vec<_> = events
 +        .iter()
 +        .filter_map(|event| event.as_ref().ok())
@@ -15252,6 +15253,9 @@ index f84737e3..02d656f7 100644
 +            .collect();
 +        let label = within.iter().find_map(|(start, token, end)| {
 +            let text = match token {
++                Tok::Title(text) | Tok::CompatTitle(text) => {
++                    return sequence_payload_selection(text, *start, *end, code);
++                }
 +                Tok::Text(text) | Tok::RestOfLine(text) => text,
 +                _ => return None,
 +            };
@@ -15271,6 +15275,10 @@ index f84737e3..02d656f7 100644
 +            }
 +            sequence_payload_selection(text, *start, *end, code)
 +        });
++        let title = matches!(action.as_ref(), super::Action::SetTitle(_));
++        if let super::Action::SetTitle(text) = action.as_ref() {
++            visible_title = !text.trim().is_empty();
++        }
 +        let actor = match action.as_ref() {
 +            super::Action::AddParticipant { id, .. }
 +            | super::Action::CreateParticipant { id, .. } => Some((id.clone(), true)),
@@ -15313,6 +15321,20 @@ index f84737e3..02d656f7 100644
 +        if let Err(error) = db.apply_controlled(*action, control)? {
              return Ok(Err(error));
          }
++        if title {
++            for previous in db
++                .source_occurrences
++                .iter_mut()
++                .filter(|p| p["domId"] == "sequence:title")
++            {
++                previous["effective"] = serde_json::json!(false);
++            }
++            let mut occurrence = serde_json::json!({"kind":"control", "semanticId":"title", "domId":"sequence:title", "origin":"body", "span":span, "effective":true});
++            if let Some(label) = label {
++                occurrence["labelSpan"] = serde_json::json!(label);
++            }
++            db.source_occurrences.push(occurrence);
++        }
 +        if let Some((id, declaration)) = actor {
 +            let key = format!("actor:{id}");
 +            let previous = db.source_occurrences.iter().position(|p| p["domId"] == key);
@@ -15369,6 +15391,16 @@ index f84737e3..02d656f7 100644
 +            }
 +        }
 +    }
++    if !visible_title {
++        for piece in db
++            .source_occurrences
++            .iter_mut()
++            .filter(|p| p["domId"] == "sequence:title")
++        {
++            piece["kind"] = serde_json::json!("nonvisual");
++            piece["classification"] = serde_json::json!("empty-effective-title");
++        }
++    }
 +    let note_targets: Vec<String> = db
 +        .source_occurrences
 +        .iter()
@@ -15388,7 +15420,7 @@ index f84737e3..02d656f7 100644
      }
      Ok(Ok(db))
  }
-@@ -825,4 +987,43 @@ mod tests {
+@@ -825,4 +1019,43 @@ mod tests {
                  .all(|symbol| symbol.role == EditorSemanticRole::Reference)
          );
      }
@@ -29029,7 +29061,7 @@ index fe8d8293..be3798b6 100644
      match v {
          Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..bbac23b2 100644
+index f4d33957..456f4f36 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
 @@ -118,10 +118,14 @@ impl<'a> EditorParseSourceMap<'a> {
@@ -29097,7 +29129,7 @@ index f4d33957..bbac23b2 100644
              let Some((code, meta)) = (match preprocessed {
                  Ok(preprocessed) => preprocessed,
                  Err(error) => return Ok(Err(error)),
-@@ -616,6 +651,78 @@ impl<'a> ParsePipeline<'a> {
+@@ -616,6 +651,86 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -29160,6 +29192,14 @@ index f4d33957..bbac23b2 100644
 +                    Some("journey:title")
 +                }
 +                RenderSemanticModel::Gantt(model) if model.title.is_none() => Some("gantt:title"),
++                RenderSemanticModel::Sequence(model)
++                    if model
++                        .title
++                        .as_deref()
++                        .is_none_or(|title| title.trim().is_empty()) =>
++                {
++                    Some("sequence:title")
++                }
 +                _ => None,
 +            };
 +            if let (Some(title_key), Some(evidence)) = (title_key, source_config.as_ref()) {
@@ -29176,7 +29216,7 @@ index f4d33957..bbac23b2 100644
              let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
              output
                  .model_mut()
-@@ -1712,6 +1819,42 @@ mod editor_parse_source_map_tests {
+@@ -1712,6 +1827,42 @@ mod editor_parse_source_map_tests {
          assert!(matches!(error, crate::Error::MalformedFrontMatter));
      }
  
@@ -33161,6 +33201,20 @@ index 88d24d54..9f5a468a 100644
      let _ = write!(
          &mut *out,
          r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"/>"##,
+diff --git a/crates/merman-render/src/svg/parity/sequence/render.rs b/crates/merman-render/src/svg/parity/sequence/render.rs
+index 4b68dad0..8cfe09e7 100644
+--- a/crates/merman-render/src/svg/parity/sequence/render.rs
++++ b/crates/merman-render/src/svg/parity/sequence/render.rs
+@@ -262,7 +262,8 @@ fn render_sequence_diagram_svg_inner(
+         checkpoints.checkpoint()?;
+         let _ = write!(
+             &mut out,
+-            r#"<text x="{x}" y="-25">{text}</text>"#,
++            r#"<text{trace} x="{x}" y="-25">{text}</text>"#,
++            trace = source_attrs(&model.source_occurrences, "sequence:title", true),
+             x = fmt(title_x),
+             text = escape_xml(title)
+         );
 diff --git a/crates/merman-render/src/svg/parity/sequence/root.rs b/crates/merman-render/src/svg/parity/sequence/root.rs
 index 630c554c..c3074114 100644
 --- a/crates/merman-render/src/svg/parity/sequence/root.rs

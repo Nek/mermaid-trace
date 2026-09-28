@@ -199,3 +199,63 @@ fn own_seq_note_attachments_do_not_declare_or_label_participants() {
         }
     }
 }
+
+#[test]
+fn seq_title_preserves_body_occurrences_and_frontmatter_fallback() {
+    for (prefix, titles, expected, count) in [
+        ("", "title Example 😀\r\n", "Example 😀", 1),
+        ("", "title: Example 😀\r\n", "Example 😀", 1),
+        ("", "title First\r\ntitle Second\r\n", "Second", 2),
+        ("---\r\ntitle: 'Front 😀'\r\n---\r\n", "", "Front 😀", 1),
+        (
+            "---\r\ntitle: Front\r\n---\r\n",
+            "title Body\r\n",
+            "Body",
+            1,
+        ),
+        ("---\r\ntitle: Front\r\n---\r\n", "title: \r\n", "Front", 1),
+    ] {
+        let source =
+            format!("{prefix}sequenceDiagram\r\n{titles}participant A\r\nA->>B: Hello\r\n");
+        let result = mermaid_trace_rs::render("seq-title", &source).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let title: Vec<_> = pieces
+            .iter()
+            .filter(|p| p["domId"] == "sequence:title")
+            .collect();
+        assert_eq!(title.len(), count, "{source}");
+        let effective = title
+            .iter()
+            .find(|p| p["effective"] == true)
+            .unwrap_or(&title[0]);
+        let span = &effective["labelSpan"];
+        let utf16: Vec<_> = source.encode_utf16().collect();
+        assert_eq!(
+            String::from_utf16(
+                &utf16[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize]
+            )
+            .unwrap(),
+            expected
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let text = svg
+            .descendants()
+            .find(|n| n.attribute("data-mt-key") == Some("sequence:title"))
+            .unwrap();
+        assert_eq!(text.text(), Some(expected));
+        assert_eq!(
+            text.attribute("data-mt-start")
+                .unwrap()
+                .parse::<u64>()
+                .unwrap(),
+            span["start"].as_u64().unwrap()
+        );
+        let plain = Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "seq-title", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}

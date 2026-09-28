@@ -23,6 +23,14 @@ Inspect and pin a separate Merman source checkout. Reuse its native grammar and 
 
 ## Verification
 
+### SEQ-TITLE (implemented)
+
+Audit S1: displayed sequence titles retain exact statement/payload origins, including both body syntaxes, repeated titles, Unicode/CRLF and frontmatter fallback. The effective title supplies the clickable range; earlier declarations remain queryable without inventing another visual. Empty body titles follow the native renderer's frontmatter fallback. Saved/live source selection, keyboard and clipboard must work with unchanged static SVG.
+
+Plan: capture the existing title action and token spans, reuse shared frontmatter evidence, and bind the native title text. Start with native and browser regressions, then check plain/mapped parity and existing sequence acceptance.
+
+Verification: native and browser regressions first failed for missing title bindings. Six original-source title cases, mapped/plain parity, all existing sequence native tests, saved/live title pointer/keyboard/reverse-source/clipboard/isolation, and shared six-family configuration provenance pass. Empty effective body titles retain nonvisual evidence while a visible frontmatter fallback owns its title.
+
 Native exact spans and UTF-16 conversion: 3 Rust integration tests pass, covering repeated labels, self/empty messages, aliases, notes, activations, boxes, rect and nested/branched controls, comments, frontmatter, wrapping prefixes, Unicode and CRLF. The upstream native provenance regression also passes. A fresh checkout reproduces the patched native files byte-for-byte. Saved SVG activation and live Markdown clipboard/watch/recovery checks pass in pinned Chromium; 21 TypeScript tests pass, including unchanged upstream references. Browser WASM runtime acceptance: future, not run. All-family mapping remains the release gate; SEQ-1 is its next implementation slice.
 
 ## Implementation contracts and remaining coverage
