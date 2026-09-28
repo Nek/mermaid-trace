@@ -13023,7 +13023,7 @@ index 4ca3acbd..beed0638 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..dce7260c 100644
+index 242dc0f3..dc469d47 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13083,40 +13083,48 @@ index 242dc0f3..dce7260c 100644
  }
  
  #[derive(Debug, Clone, Copy)]
-@@ -389,6 +398,32 @@ fn parse_gantt_keyword_arg_spanned<'a>(
+@@ -389,6 +398,40 @@ fn parse_gantt_keyword_arg_spanned<'a>(
      })
  }
  
-+fn parse_gantt_title_or_section_arg_spanned<'a>(
++fn parse_gantt_keyword_arg_or_next_line_spanned<'a>(
 +    line: &'a str,
 +    line_start: usize,
 +    keyword: &str,
++    terminates_at_statement_suffix: bool,
 +    cursor: &mut LineCursor<'a>,
 +) -> Option<SpannedText<'a>> {
-+    if let Some(value) = parse_gantt_keyword_arg_spanned(line, line_start, keyword, false) {
++    if let Some(value) =
++        parse_gantt_keyword_arg_spanned(line, line_start, keyword, terminates_at_statement_suffix)
++    {
 +        return Some(value);
 +    }
-+    // Jison's `"title"\s[^\n]+` / `"section"\s[^\n]+` also accept a line feed as
-+    // their single separator. Only a bare keyword can take the following physical line.
++    // Jison's keyword `\s` accepts a line feed as its separator. Only a bare keyword can take
++    // the next physical line; the selected source still includes the original separator.
 +    if !line.trim_start().eq_ignore_ascii_case(keyword) {
 +        return None;
 +    }
 +    let (next, start) = cursor.next_line()?;
-+    if next.is_empty() {
++    let text = if terminates_at_statement_suffix {
++        split_statement_suffix(next)
++    } else {
++        next
++    };
++    if text.is_empty() {
 +        cursor.resume_same_line_at(start);
 +        return None;
 +    }
 +    Some(SpannedText {
-+        text: next,
++        text,
 +        start,
-+        end: start + next.len(),
++        end: start + text.len(),
 +    })
 +}
 +
  #[derive(Debug)]
  struct GanttAccDescrBlock {
      statement_start: usize,
-@@ -524,7 +559,7 @@ impl GanttAccDescrBlock {
+@@ -524,7 +567,7 @@ impl GanttAccDescrBlock {
  fn collect_gantt_click_symbols(
      line: &str,
      line_start: usize,
@@ -13125,7 +13133,7 @@ index 242dc0f3..dce7260c 100644
      facts: &mut EditorSemanticFacts,
  ) {
      let statement_span = gantt_statement_span(line, line_start);
-@@ -584,6 +619,87 @@ fn collect_gantt_click_symbols(
+@@ -584,6 +627,87 @@ fn collect_gantt_click_symbols(
              );
          }
      }
@@ -13213,7 +13221,7 @@ index 242dc0f3..dce7260c 100644
  }
  
  fn collect_gantt_section_symbol(
-@@ -600,7 +716,7 @@ fn collect_gantt_section_symbol(
+@@ -600,7 +724,7 @@ fn collect_gantt_section_symbol(
          section.text,
          Some("gantt section".to_string()),
          EditorSemanticKind::Namespace,
@@ -13222,7 +13230,7 @@ index 242dc0f3..dce7260c 100644
          section.span(),
      ));
  }
-@@ -620,11 +736,12 @@ fn push_gantt_payload_symbol(
+@@ -620,11 +744,12 @@ fn push_gantt_payload_symbol(
          EditorExpectedSyntaxKind::Payload,
          field.span(),
      ));
@@ -13236,7 +13244,7 @@ index 242dc0f3..dce7260c 100644
          field.span(),
      ));
  }
-@@ -638,6 +755,43 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
+@@ -638,6 +763,43 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
      )
  }
  
@@ -13280,7 +13288,7 @@ index 242dc0f3..dce7260c 100644
  fn collect_gantt_task_field_symbols(
      fields: &[SpannedText<'_>],
      statement_span: SourceSpan,
-@@ -961,6 +1115,12 @@ fn parse_gantt_semantic_source_once(
+@@ -961,6 +1123,12 @@ fn parse_gantt_semantic_source_once(
      control.checkpoint()?;
      let mut db = GanttDb::default();
      db.clear();
@@ -13293,7 +13301,7 @@ index 242dc0f3..dce7260c 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1211,8 +1371,89 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1379,89 @@ pub(super) fn gantt_db_to_render_model_controlled(
          }
      }
  
@@ -13383,7 +13391,7 @@ index 242dc0f3..dce7260c 100644
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1268,6 +1509,7 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
+@@ -1268,6 +1517,7 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
  
      Ok(GanttRenderTask {
          id: t.id,
@@ -13391,7 +13399,7 @@ index 242dc0f3..dce7260c 100644
          task: t.task,
          section: t.section,
          section_index: t.section_index,
-@@ -1333,11 +1575,11 @@ fn task_time_ms(task: &RawTask, field: &str, value: Option<OffsetDateTime>) -> R
+@@ -1333,11 +1583,11 @@ fn task_time_ms(task: &RawTask, field: &str, value: Option<OffsetDateTime>) -> R
      })
  }
  
@@ -13406,7 +13414,22 @@ index 242dc0f3..dce7260c 100644
      facts: &mut EditorSemanticFacts,
      control: &OperationControl,
  ) -> OperationControlResult<Result<()>> {
-@@ -1359,16 +1601,19 @@ fn parse_gantt_statement(
+@@ -1348,7 +1598,13 @@ fn parse_gantt_statement(
+         return Ok(Ok(()));
+     }
+ 
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true) {
++    if let Some(v) = parse_gantt_keyword_arg_or_next_line_spanned(
++        stripped,
++        line_start,
++        "dateFormat",
++        true,
++        cursor,
++    ) {
+         facts.push_directive_prefix("dateFormat");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1359,19 +1615,28 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_date_format(v.text);
@@ -13425,56 +13448,110 @@ index 242dc0f3..dce7260c 100644
 +        record_gantt_directive(db, "topAxis", stripped, line_start, None);
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
-@@ -1382,6 +1627,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
++    if let Some(v) = parse_gantt_keyword_arg_or_next_line_spanned(
++        stripped,
++        line_start,
++        "axisFormat",
++        true,
++        cursor,
++    ) {
+         facts.push_directive_prefix("axisFormat");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1382,9 +1647,16 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_axis_format(v.text);
 +        record_gantt_directive(db, "axisFormat", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
-@@ -1395,6 +1641,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
++    if let Some(v) = parse_gantt_keyword_arg_or_next_line_spanned(
++        stripped,
++        line_start,
++        "tickInterval",
++        true,
++        cursor,
++    ) {
+         facts.push_directive_prefix("tickInterval");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1395,9 +1667,12 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_tick_interval(v.text.trim());
 +        record_gantt_directive(db, "tickInterval", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
-@@ -1408,6 +1655,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
++    if let Some(v) =
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "includes", true, cursor)
++    {
+         facts.push_directive_prefix("includes");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1408,9 +1683,12 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_includes(v.text);
 +        record_gantt_directive(db, "includes", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
-@@ -1421,6 +1669,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
++    if let Some(v) =
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "excludes", true, cursor)
++    {
+         facts.push_directive_prefix("excludes");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1421,9 +1699,16 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_excludes(v.text);
 +        record_gantt_directive(db, "excludes", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
-@@ -1434,6 +1683,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
++    if let Some(v) = parse_gantt_keyword_arg_or_next_line_spanned(
++        stripped,
++        line_start,
++        "todayMarker",
++        false,
++        cursor,
++    ) {
+         facts.push_directive_prefix("todayMarker");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1434,9 +1719,12 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_today_marker(v.text.trim());
 +        record_gantt_directive(db, "todayMarker", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
-@@ -1464,6 +1714,7 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
++    if let Some(v) =
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "weekday", false, cursor)
++    {
+         facts.push_directive_prefix("weekday");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1464,9 +1752,12 @@ fn parse_gantt_statement(
              )));
          }
          db.set_weekday(&day);
 +        record_gantt_directive(db, "weekday", stripped, line_start, Some(v));
          return Ok(Ok(()));
      }
-     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
-@@ -1491,9 +1742,11 @@ fn parse_gantt_statement(
+-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
++    if let Some(v) =
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "weekend", false, cursor)
++    {
+         facts.push_directive_prefix("weekend");
+         push_gantt_payload_symbol(
+             stripped,
+@@ -1491,9 +1782,12 @@ fn parse_gantt_statement(
              )));
          }
          db.set_weekend(&day);
@@ -13482,12 +13559,13 @@ index 242dc0f3..dce7260c 100644
          return Ok(Ok(()));
      }
 -    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
-+    if let Some(v) = parse_gantt_title_or_section_arg_spanned(stripped, line_start, "title", cursor)
++    if let Some(v) =
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "title", false, cursor)
 +    {
          facts.push_directive_prefix("title");
          push_gantt_payload_symbol(
              stripped,
-@@ -1503,12 +1756,22 @@ fn parse_gantt_statement(
+@@ -1503,12 +1797,22 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13499,7 +13577,7 @@ index 242dc0f3..dce7260c 100644
      }
 -    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
 +    if let Some(v) =
-+        parse_gantt_title_or_section_arg_spanned(stripped, line_start, "section", cursor)
++        parse_gantt_keyword_arg_or_next_line_spanned(stripped, line_start, "section", false, cursor)
 +    {
          facts.push_directive_prefix("section");
          collect_gantt_section_symbol(stripped, line_start, v, facts);
@@ -13511,7 +13589,7 @@ index 242dc0f3..dce7260c 100644
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1522,6 +1785,12 @@ fn parse_gantt_statement(
+@@ -1522,6 +1826,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13524,7 +13602,7 @@ index 242dc0f3..dce7260c 100644
          db.set_acc_title(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1535,6 +1804,12 @@ fn parse_gantt_statement(
+@@ -1535,6 +1845,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13537,7 +13615,7 @@ index 242dc0f3..dce7260c 100644
          db.set_acc_descr(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1542,6 +1817,15 @@ fn parse_gantt_statement(
+@@ -1542,6 +1858,15 @@ fn parse_gantt_statement(
          facts.push_directive_prefix("accDescr");
          let block = block.consume_remaining(cursor, control)?;
          block.resume_after_closing_brace(cursor);
@@ -13553,7 +13631,7 @@ index 242dc0f3..dce7260c 100644
          db.set_acc_descr(block.value());
          block.emit_symbol(facts);
          if !block.is_complete() {
-@@ -1556,7 +1840,14 @@ fn parse_gantt_statement(
+@@ -1556,7 +1881,14 @@ fn parse_gantt_statement(
      match parse_click_statement(stripped, line_start) {
          Ok(Some(click)) => {
              facts.push_directive_prefix("click");
@@ -13569,7 +13647,7 @@ index 242dc0f3..dce7260c 100644
              if let Some(call) = click.call {
                  db.set_click_event(
                      click.ids.text,
-@@ -1604,17 +1895,84 @@ fn parse_gantt_statement(
+@@ -1604,17 +1936,84 @@ fn parse_gantt_statement(
          return Ok(Ok(()));
      }
      let leading = stripped.len().saturating_sub(task_stmt.len());
@@ -13657,10 +13735,10 @@ index 242dc0f3..dce7260c 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/gantt/tests.rs b/crates/merman-core/src/diagrams/gantt/tests.rs
-index 17dad7fa..09150dc3 100644
+index 17dad7fa..495d3673 100644
 --- a/crates/merman-core/src/diagrams/gantt/tests.rs
 +++ b/crates/merman-core/src/diagrams/gantt/tests.rs
-@@ -481,6 +481,35 @@ fn gantt_title_requires_content_after_the_separator() {
+@@ -481,6 +481,70 @@ fn gantt_title_requires_content_after_the_separator() {
      );
  }
  
@@ -13691,6 +13769,41 @@ index 17dad7fa..09150dc3 100644
 +    assert_eq!(model["title"], "Plan");
 +    assert_eq!(model["sections"], json!(["Work"]));
 +    assert_eq!(model["tasks"].as_array().unwrap().len(), 1);
++}
++
++#[test]
++fn gantt_scalar_directives_can_take_the_next_line_without_losing_parser_facts() {
++    for (keyword, value) in [
++        ("dateFormat", "YYYY-MM-DD"),
++        ("axisFormat", "%d/%m"),
++        ("tickInterval", "2day"),
++        ("includes", "weekends"),
++        ("excludes", "weekends"),
++        ("todayMarker", "off"),
++        ("weekday", "monday"),
++        ("weekend", "friday"),
++    ] {
++        let cross = format!(
++            "gantt\r\ndateFormat YYYY-MM-DD\r\n{keyword}\r\n%% note\r\n{value}\r\nTask :a, 2026-01-01, 1d\r\n"
++        );
++        let inline = format!(
++            "gantt\r\ndateFormat YYYY-MM-DD\r\n{keyword} {value}\r\nTask :a, 2026-01-01, 1d\r\n"
++        );
++        assert_eq!(parse(&cross), parse(&inline), "{keyword} model");
++        let facts = Engine::new()
++            .parse_editor_semantic_facts_with_type_sync("gantt", &cross)
++            .unwrap()
++            .unwrap();
++        let start = cross.find(&format!("{keyword}\r\n%% note")).unwrap();
++        let payload = cross[start..].find(value).unwrap() + start;
++        assert!(
++            facts.symbols.iter().any(|symbol| symbol.selection
++                == SourceSpan::new(payload, payload + value.len())
++                && symbol.span.start == start
++                && symbol.span.end == payload + value.len()),
++            "{keyword} facts: {facts:?}"
++        );
++    }
 +}
 +
  #[test]
@@ -28413,10 +28526,27 @@ index fe8d8293..be3798b6 100644
      match v {
          Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..879e509f 100644
+index f4d33957..bbac23b2 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
-@@ -581,11 +581,42 @@ impl<'a> ParsePipeline<'a> {
+@@ -118,10 +118,14 @@ impl<'a> EditorParseSourceMap<'a> {
+             if index % 128 == 0 {
+                 control.checkpoint()?;
+             }
+-            let Some(span) = self.try_remap_source_span(symbol.span) else {
++            let Some(selection) = self.try_remap_source_span(symbol.selection) else {
+                 continue;
+             };
+-            let Some(selection) = self.try_remap_source_span(symbol.selection) else {
++            let Some(span) = self
++                .try_remap_source_span(symbol.span)
++                .or_else(|| self.source.try_map_enclosing_span(symbol.span))
++                .filter(|span| span.start <= selection.start && selection.end <= span.end)
++            else {
+                 continue;
+             };
+             symbol.span = span;
+@@ -581,11 +585,42 @@ impl<'a> ParsePipeline<'a> {
                  DirectiveRecoveryMode::Strict
              };
              let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
@@ -28464,7 +28594,7 @@ index f4d33957..879e509f 100644
              let Some((code, meta)) = (match preprocessed {
                  Ok(preprocessed) => preprocessed,
                  Err(error) => return Ok(Err(error)),
-@@ -616,6 +647,78 @@ impl<'a> ParsePipeline<'a> {
+@@ -616,6 +651,78 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -28543,6 +28673,49 @@ index f4d33957..879e509f 100644
              let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
              output
                  .model_mut()
+@@ -1712,6 +1819,42 @@ mod editor_parse_source_map_tests {
+         assert!(matches!(error, crate::Error::MalformedFrontMatter));
+     }
+ 
++    #[test]
++    fn fact_remap_keeps_enclosing_provenance_when_selection_is_exact() {
++        let original = "flowchart TD\nA%%{wrap}%%B\n";
++        let engine = Engine::new();
++        let preprocessed = crate::preprocess::preprocess_mermaid_public_parse_pipeline(
++            original,
++            &engine.registry,
++            None,
++        )
++        .unwrap()
++        .source;
++        let map = EditorParseSourceMap::new(&preprocessed);
++        let joined_start = preprocessed.text().find("AB").unwrap();
++        let mut facts = EditorSemanticFacts::new();
++        facts.push_symbol(EditorSemanticSymbol::new(
++            "B",
++            None,
++            EditorSemanticKind::Variable,
++            SourceSpan::new(joined_start, joined_start + 2),
++            SourceSpan::new(joined_start + 1, joined_start + 2),
++        ));
++
++        map.remap_facts(&mut facts, &OperationControl::new())
++            .expect("a private parse control cannot be cancelled");
++
++        assert_eq!(facts.symbols.len(), 1);
++        assert_eq!(
++            &original[facts.symbols[0].span.start..facts.symbols[0].span.end],
++            "A%%{wrap}%%B"
++        );
++        assert_eq!(
++            &original[facts.symbols[0].selection.start..facts.symbols[0].selection.end],
++            "B"
++        );
++    }
++
+     #[test]
+     fn fact_remap_drops_only_the_fact_crossing_a_deleted_span() {
+         let original = "flowchart TD\nA%%{wrap}%%B\nC\n";
 diff --git a/crates/merman-core/src/preprocess/mod.rs b/crates/merman-core/src/preprocess/mod.rs
 index f34006a4..bf44bd4d 100644
 --- a/crates/merman-core/src/preprocess/mod.rs

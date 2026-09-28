@@ -732,6 +732,20 @@ test('GANTT-2-DIRECTIVE-ORIGINS: source-only settings survive saved and live SVG
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-CROSS-LINE-DIRECTIVES: saved and live Markdown keep settings nonvisual', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const settings = [
+    ['dateFormat', 'YYYY-MM-DD'], ['axisFormat', '%d/%m'],
+    ['tickInterval', '2day'], ['includes', 'weekends'],
+    ['excludes', 'weekends'], ['todayMarker', 'off'],
+    ['weekday', 'monday'], ['weekend', 'friday'],
+  ];
+  const statements = settings.map(([keyword, value]) => `${keyword}\n%% note\n${value}`);
+  const source = `gantt\n${statements.join('\n')}\n${task}\n`;
+  const spans = statements.map(statement => ({ start: source.indexOf(statement), end: source.indexOf(statement) + statement.length }));
+  await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, spans);
+});
+
 test('GANTT-2-CLICK-ORIGINS: task interaction syntax selects its own existing targets', { timeout: 60_000 }, async () => {
   const source = 'gantt\n%% 😀\ndateFormat YYYY-MM-DD\nclick a href "https://early.test"\nFirst :a, 2026-01-01, 1d\nSecond :b, 2026-01-02, 1d\nclick a,b href "https://example.test/😀" call cb("x", 2) "Open 😀"\nclick a href "https://later.test"\nclick ghost href "https://missing.test"\nclick a href "" ""\n';
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-click-'));

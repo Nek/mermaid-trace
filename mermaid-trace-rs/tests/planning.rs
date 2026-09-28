@@ -645,6 +645,92 @@ fn gantt_2_directives_retain_each_nonvisual_source_origin() {
 }
 
 #[test]
+fn gantt_2_cross_line_directives_keep_effects_and_exact_nonvisual_origins() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for (keyword, value) in [
+        ("dateFormat", "YYYY-MM-DD"),
+        ("axisFormat", "%d/%m"),
+        ("tickInterval", "2day"),
+        ("includes", "weekends"),
+        ("excludes", "weekends"),
+        ("todayMarker", "off"),
+        ("weekday", "monday"),
+        ("weekend", "friday"),
+    ] {
+        let cross = format!(
+            "gantt\r\ndateFormat YYYY-MM-DD\r\n{keyword}\r\n%% note\r\n{value}\r\nTask :a, 2026-01-01, 1d\r\n"
+        );
+        let inline = format!(
+            "gantt\r\ndateFormat YYYY-MM-DD\r\n{keyword} {value}\r\nTask :a, 2026-01-01, 1d\r\n"
+        );
+        let result = mermaid_trace_rs::render("gantt-cross-directive", &cross).unwrap();
+        let inline_result = mermaid_trace_rs::render("gantt-cross-directive", &inline).unwrap();
+        let baseline =
+            mermaid_trace_rs::render_with(&plain, "gantt-cross-directive", &cross).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(inline_result["svg"].as_str().unwrap()),
+            "rendered effect of {keyword}"
+        );
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap()),
+            "static parity for {keyword}"
+        );
+        let document = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            document
+                .descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let start = cross.find(&format!("{keyword}\r\n%% note")).unwrap();
+        let payload_start = cross[start..].find(value).unwrap() + start;
+        let occurrence = native
+            .iter()
+            .find(|item| {
+                item["classification"] == "gantt-directive"
+                    && item["semanticId"] == keyword
+                    && item["span"]["start"] == start
+            })
+            .unwrap();
+        assert_eq!(occurrence["kind"], "nonvisual");
+        assert_eq!(
+            occurrence["span"],
+            serde_json::json!({"start":start,"end":payload_start+value.len()})
+        );
+        assert_eq!(
+            occurrence["labelSpan"],
+            serde_json::json!({"start":payload_start,"end":payload_start+value.len()})
+        );
+        assert!(
+            result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["domId"] == "gantt:task:a")
+        );
+    }
+    for keyword in [
+        "dateFormat",
+        "axisFormat",
+        "tickInterval",
+        "includes",
+        "excludes",
+        "todayMarker",
+        "weekday",
+        "weekend",
+    ] {
+        assert!(
+            mermaid_trace_rs::render("gantt-cross-directive", &format!("gantt\n{keyword}\n"))
+                .is_err(),
+            "bare {keyword} at EOF must reject"
+        );
+    }
+}
+
+#[test]
 fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
     for (body, visible, mapped_body, nonvisual_body) in [
