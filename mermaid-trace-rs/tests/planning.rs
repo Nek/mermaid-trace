@@ -325,6 +325,52 @@ fn gantt_2_repeated_task_ids_keep_distinct_declaration_and_visual_owners() {
 }
 
 #[test]
+fn gantt_2_repeated_ids_keep_individual_native_label_styles() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, dup, 2026-01-06, 1d\nFirst :done, dup, 2026-01-05, 1d\nSecond :active, dup, 2026-01-03, 1d\nThird :crit, dup, 2026-01-01, 1d\n";
+    let mapped = mermaid_trace_rs::render("gantt-repeated-styles", source).unwrap();
+    let document = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+    let labels: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("data-mt-role") == Some("node-label"))
+        .collect();
+    assert_eq!(labels.len(), 4);
+    for (label, (statement, expected)) in labels.iter().zip([
+        ("Third :crit, dup, 2026-01-01, 1d", "critText0"),
+        ("Second :active, dup, 2026-01-03, 1d", "activeText0"),
+        ("First :done, dup, 2026-01-05, 1d", "doneText0"),
+        ("Marker :vert, dup, 2026-01-06, 1d", "vertText"),
+    ]) {
+        assert!(
+            label
+                .attribute("class")
+                .unwrap()
+                .split_whitespace()
+                .any(|token| token == expected),
+            "{expected} must belong to its own task"
+        );
+        let start = source.find(statement).unwrap();
+        let owner = mapped["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|piece| {
+                piece["kind"] == "node"
+                    && piece["relation"].is_null()
+                    && piece["span"]
+                        == serde_json::json!({"start":start,"end":start+statement.len()})
+            })
+            .unwrap();
+        assert_eq!(label.attribute("data-mt-key"), owner["domId"].as_str());
+    }
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"traceSource":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-repeated-styles", source).unwrap();
+    assert_eq!(
+        support::strip_trace(mapped["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
+#[test]
 fn gantt_2_task_fields_keep_parsed_roles_and_original_source_ranges() {
     let source = "gantt\r\n%% 😀\r\ndateFormat YYYY-MM-DD\r\nBase 😀 :done, done, base, 2026-01-01, 1d\r\nDeadline :deadline, 2026-01-10, 1d\r\nMain :active, crit, main, after base, until deadline\r\nAuto :milestone, 2d\r\nMarker :vert, marker, 2026-01-02, 1d ; ignored\r\n";
     let result = mermaid_trace_rs::render("gantt-fields", source).unwrap();

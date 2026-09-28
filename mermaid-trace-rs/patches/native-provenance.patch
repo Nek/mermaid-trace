@@ -29171,10 +29171,10 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/gantt.rs b/crates/merman-render/src/gantt.rs
-index 1031ff97..3050f36e 100644
+index 1031ff97..658ef36a 100644
 --- a/crates/merman-render/src/gantt.rs
 +++ b/crates/merman-render/src/gantt.rs
-@@ -1323,6 +1323,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1323,9 +1323,13 @@ pub(crate) fn layout_gantt_diagram_typed(
  
          tasks.push(GanttTaskLayout {
              id: t.id.clone(),
@@ -29182,6 +29182,12 @@ index 1031ff97..3050f36e 100644
              task: t.task.clone(),
              section: t.section.clone(),
              task_type: t.task_type.clone(),
++            active: t.active,
++            done: t.done,
++            crit: t.crit,
+             order: t.order,
+             start_ms: t.start_ms,
+             end_ms: t.end_ms,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
 index c8ebca79..9e778388 100644
 --- a/crates/merman-render/src/journey.rs
@@ -29716,7 +29722,7 @@ index 027dfe7d..adf538ae 100644
          };
          let measurer = DeterministicTextMeasurer {
 diff --git a/crates/merman-render/src/model.rs b/crates/merman-render/src/model.rs
-index b2f2c2e3..7287ee8f 100644
+index b2f2c2e3..7bd7c950 100644
 --- a/crates/merman-render/src/model.rs
 +++ b/crates/merman-render/src/model.rs
 @@ -941,6 +941,9 @@ pub enum JourneyMouthKind {
@@ -29752,7 +29758,7 @@ index b2f2c2e3..7287ee8f 100644
      pub section: String,
      pub num: i64,
      pub x: f64,
-@@ -1474,6 +1484,8 @@ pub struct GanttTaskBarLayout {
+@@ -1474,9 +1484,17 @@ pub struct GanttTaskBarLayout {
  #[derive(Debug, Clone, Serialize, Deserialize)]
  pub struct GanttTaskLayout {
      pub id: String,
@@ -29761,6 +29767,15 @@ index b2f2c2e3..7287ee8f 100644
      pub task: String,
      pub section: String,
      pub task_type: String,
++    #[serde(skip)]
++    pub active: bool,
++    #[serde(skip)]
++    pub done: bool,
++    #[serde(skip)]
++    pub crit: bool,
+     pub order: i64,
+     pub start_ms: i64,
+     pub end_ms: i64,
 diff --git a/crates/merman-render/src/sequence/message_metrics.rs b/crates/merman-render/src/sequence/message_metrics.rs
 index a80d80c0..a3608f6d 100644
 --- a/crates/merman-render/src/sequence/message_metrics.rs
@@ -30961,9 +30976,16 @@ index 8e2e7251..6f0e3da8 100644
          );
      }
 diff --git a/crates/merman-render/src/svg/parity/gantt/render.rs b/crates/merman-render/src/svg/parity/gantt/render.rs
-index 5e83e058..f6f5b144 100644
+index 5e83e058..db5ffc58 100644
 --- a/crates/merman-render/src/svg/parity/gantt/render.rs
 +++ b/crates/merman-render/src/svg/parity/gantt/render.rs
+@@ -1,5 +1,5 @@
+ use super::super::*;
+-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
++use merman_core::diagrams::gantt::GanttDiagramRenderModel;
+ 
+ // Gantt diagram SVG renderer implementation (split from parity.rs).
+ 
 @@ -168,6 +168,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
          );
      }
@@ -30972,7 +30994,19 @@ index 5e83e058..f6f5b144 100644
      let css = gantt_css(diagram_id, effective_config);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
      out.push_str(r#"<g/>"#);
-@@ -283,6 +284,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -271,18 +272,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         layout.tasks.iter().enumerate().collect();
+     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
+ 
+-    let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
+-        std::collections::HashMap::new();
+-    for t in &model.tasks {
+-        semantic_task_by_id.insert(t.id.as_str(), t);
+-    }
+-
+     if layout.tasks.is_empty() {
+         out.push_str("<g/>");
+     } else {
          out.push_str("<g>");
  
          for (_idx, t) in &tasks_in_draw_order {
@@ -30983,7 +31017,7 @@ index 5e83e058..f6f5b144 100644
              let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
              let end_x = gantt_scale_time_round(t.end_ms, min_ms, max_ms, range);
              let center_x = start_x + layout.left_padding + 0.5 * (end_x - start_x);
-@@ -293,7 +298,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -293,7 +292,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  fmt_allow_nan(center_y)
              );
  
@@ -30996,7 +31030,7 @@ index 5e83e058..f6f5b144 100644
              let _ = write!(
                  &mut out,
                  r#" id="{}""#,
-@@ -315,6 +324,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -315,53 +318,55 @@ pub(crate) fn render_gantt_diagram_svg_model(
          }
  
          for (_idx, t) in &tasks_in_draw_order {
@@ -31006,8 +31040,88 @@ index 5e83e058..f6f5b144 100644
 +                .unwrap_or_else(|| format!("gantt:task:{}", t.id));
              let base_class = &t.label.class;
              let mut task_type_class = String::new();
-             if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
-@@ -373,6 +386,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+-            if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
+-                let sec_num = crate::gantt::gantt_section_class_suffix(
+-                    &st.task_type,
+-                    &layout.categories,
+-                    layout.number_section_styles,
+-                );
+-                if st.active {
+-                    if st.crit {
+-                        task_type_class = format!("activeCritText{sec_num}");
+-                    } else {
+-                        task_type_class = format!("activeText{sec_num}");
+-                    }
++            let sec_num = crate::gantt::gantt_section_class_suffix(
++                &t.task_type,
++                &layout.categories,
++                layout.number_section_styles,
++            );
++            if t.active {
++                if t.crit {
++                    task_type_class = format!("activeCritText{sec_num}");
++                } else {
++                    task_type_class = format!("activeText{sec_num}");
+                 }
+-                if st.done {
+-                    if st.crit {
+-                        if !task_type_class.is_empty() {
+-                            task_type_class.push(' ');
+-                        }
+-                        task_type_class.push_str(&format!("doneCritText{sec_num}"));
+-                    } else {
+-                        if !task_type_class.is_empty() {
+-                            task_type_class.push(' ');
+-                        }
+-                        task_type_class.push_str(&format!("doneText{sec_num}"));
+-                    }
+-                } else if st.crit {
++            }
++            if t.done {
++                if t.crit {
+                     if !task_type_class.is_empty() {
+                         task_type_class.push(' ');
+                     }
+-                    task_type_class.push_str(&format!("critText{sec_num}"));
+-                }
+-
+-                if st.milestone {
++                    task_type_class.push_str(&format!("doneCritText{sec_num}"));
++                } else {
+                     if !task_type_class.is_empty() {
+                         task_type_class.push(' ');
+                     }
+-                    task_type_class.push_str("milestoneText");
++                    task_type_class.push_str(&format!("doneText{sec_num}"));
+                 }
++            } else if t.crit {
++                if !task_type_class.is_empty() {
++                    task_type_class.push(' ');
++                }
++                task_type_class.push_str(&format!("critText{sec_num}"));
++            }
+ 
+-                if st.vert {
+-                    if !task_type_class.is_empty() {
+-                        task_type_class.push(' ');
+-                    }
+-                    task_type_class.push_str("vertText");
++            if t.milestone {
++                if !task_type_class.is_empty() {
++                    task_type_class.push(' ');
++                }
++                task_type_class.push_str("milestoneText");
++            }
++
++            if t.vert {
++                if !task_type_class.is_empty() {
++                    task_type_class.push(' ');
+                 }
++                task_type_class.push_str("vertText");
+             }
+ 
+             let class = gantt_insert_before_width(base_class, &task_type_class);
+@@ -373,6 +378,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  x = fmt(t.label.x),
                  y = fmt(t.label.y),
              );
@@ -31019,7 +31133,7 @@ index 5e83e058..f6f5b144 100644
              options.checkpoint_emit()?;
              if preserve_task_text_height {
                  let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
-@@ -395,7 +413,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -395,7 +405,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
          for st in &layout.section_titles {
              let _ = write!(
                  &mut out,
@@ -31033,7 +31147,7 @@ index 5e83e058..f6f5b144 100644
                  dy = fmt(st.dy_em),
                  x = fmt(st.x),
                  y = fmt(st.y),
-@@ -459,7 +482,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -459,7 +474,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
      let title = layout.title.as_deref().unwrap_or_default();
      let _ = write!(
          &mut out,
@@ -32610,6 +32724,42 @@ index 349c673f..34331760 100644
          assert!(!out.contains("@keyframes"));
          assert!(!out.contains(":root"));
          assert!(!out.contains("animation"));
+diff --git a/crates/merman-render/tests/gantt_svg_test.rs b/crates/merman-render/tests/gantt_svg_test.rs
+index 892097c9..4a698b6a 100644
+--- a/crates/merman-render/tests/gantt_svg_test.rs
++++ b/crates/merman-render/tests/gantt_svg_test.rs
+@@ -171,6 +171,31 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String
+         .to_owned()
+ }
+ 
++#[test]
++fn gantt_repeated_ids_keep_their_own_task_label_styles() {
++    let svg = render_gantt_svg_from_text(
++        "gantt\ndateFormat YYYY-MM-DD\nsection Work\nMarker :vert, dup, 2026-01-06, 1d\nFirst :done, dup, 2026-01-05, 1d\nSecond :active, dup, 2026-01-03, 1d\nThird :crit, dup, 2026-01-01, 1d\n",
++    );
++    let document = roxmltree::Document::parse(&svg).unwrap();
++    let styles: Vec<_> = document
++        .descendants()
++        .filter(|node| node.has_tag_name("text"))
++        .filter_map(|node| node.attribute("class"))
++        .filter(|class| class.split_whitespace().any(|token| token == "taskText"))
++        .collect();
++    assert_eq!(styles.len(), 4);
++    for (class, expected) in
++        styles
++            .iter()
++            .zip(["critText0", "activeText0", "doneText0", "vertText"])
++    {
++        assert!(
++            class.split_whitespace().any(|token| token == expected),
++            "{class}"
++        );
++    }
++}
++
+ #[test]
+ fn gantt_task_text_height_follows_final_svg_security_sanitization() {
+     let source = r#"gantt
 diff --git a/crates/merman-render/tests/sequence_svg_test.rs b/crates/merman-render/tests/sequence_svg_test.rs
 index 2267c55f..02d43a39 100644
 --- a/crates/merman-render/tests/sequence_svg_test.rs
