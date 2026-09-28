@@ -89,7 +89,7 @@ As a Mermaid author, I want the same source-mapping interactions for every built
 ## Open questions and readiness
 
 - Initial proof: the flowchart subset in [MAP-1](../flowchart-mapping/spec.md). Full S1/S6 coverage is mandatory; per-family implementation plans and format-v1 guarantees remain unfinished.
-- Backend decision: [Merman](../merman-backend/spec.md) supplies native rendering and semantic JSON. The [Mermaid fork](../mermaid-fork/spec.md) remains the explicit transitional mapped-flowchart path. The pinned Merman binding lacks native source occurrence/visual exports; adding those is the next required story. All-family mapping is still unimplemented; native static rendering is verified independently of mapping.
+- Backend decision: [Merman](../merman-backend/spec.md) supplies native rendering and source occurrences. The former Mermaid fork path was retired after native flowchart behavior was restored. All-family mapping remains incomplete.
 - [NEEDS CLARIFICATION: Exact v1 attribute names, span units, metadata/source encoding, AST projection, source-version check, and size limits?] Resolve before S1/S2 format implementation; do not promise a stable wire format yet.
 - ACT-1 resolves the experimental selection policy: declarations first, otherwise first occurrence; labels select label spans; half-open overlap returns all matching projections. Occurrence alternatives are exposed. Stable v1 should retain or explicitly revise this policy.
 - ACT-1 is verified in pinned Chromium; wider browser support remains open. Click/Enter/Space selects source and suppresses hyperlink navigation. markdown-it is implemented first; unified/rehype follows before the integration milestone closes.
@@ -99,14 +99,14 @@ As a Mermaid author, I want the same source-mapping interactions for every built
 
 | Criteria | Planned checks | Status |
 |---|---|---|
-| S1-AC1 | Browser with scripts disabled; artifact inspection and offline/resource check | Demo fixture passes; comprehensive export-security acceptance pending |
+| S1-AC1 | Browser with scripts disabled; artifact inspection and offline/resource check | Native watch fixture passes; comprehensive export-security acceptance pending |
 | S1-AC2–AC4 | Source-span fixtures, Unicode/CRLF boundaries, repeated occurrences, serialized artifact round-trip | MAP-1 passes supported subset |
 | S1-AC5 | Invalid/unsupported inputs and generated decoration diagnostics | MAP-1 negative inputs pass; richer decoration diagnostics pending |
 | S2-AC1–AC2 | Real browser click/keyboard and reverse-selection checks | ACT-1 passes format 0 in Chromium |
 | S2-AC3–AC4 | Duplicate IDs across instances, dispose/reactivate lifecycle | ACT-1 passes |
 | S2-AC5–AC6 | Invalid metadata/stale source, safe link handling, keyboard acceptance | ACT-1 passes; wider accessibility/browser acceptance pending |
 | S3-AC1–AC6 | Both Markdown adapters, extraction provenance, sanitization/replacement, edits, and VS Code host demonstration | MD-1/ACT-1 pass markdown-it slice; unified, sanitization and VS Code integration pending |
-| S4-AC1–AC3 | Viewer selection, alternatives, and source-unavailable behavior | ACT-1 demo passes selections/alternatives; format 0 requires embedded source, missing-source artifacts unsupported |
+| S4-AC1–AC3 | Viewer selection, alternatives, and source-unavailable behavior | Native watch preview passes bidirectional selection; the retired demo exposed occurrence alternatives, which remain a viewer requirement; missing-source artifacts unsupported |
 | S6-AC1–AC5 | Registry inventory plus native-parser and artifact/browser conformance for every family | Required; incomplete, see diagram coverage |
 | S5-AC1–AC3 | Cross-language fixtures, Rust artifact activation, reproducible benchmarks | Not implemented / not run |
 

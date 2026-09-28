@@ -1,4 +1,4 @@
-.PHONY: build test typecheck demo snapshots-update preview native-build native-test
+.PHONY: build test typecheck snapshots-update preview native-build native-test
 
 build: native-build
 	cd mermaid-trace-ts && corepack pnpm run build
@@ -8,9 +8,6 @@ test: native-test
 
 typecheck:
 	cd mermaid-trace-ts && corepack pnpm run typecheck
-
-demo:
-	cd mermaid-trace-ts && corepack pnpm demo
 
 snapshots-update:
 	cd mermaid-trace-ts && corepack pnpm snapshots:update

@@ -34,7 +34,7 @@ TDD: new CLI/integration tests failed before implementation because the entry po
 
 `corepack pnpm test`: 18/18 passed. `corepack pnpm run typecheck` and `git diff --check`: passed. Existing raw SVG baselines and environment are unchanged. Sequence probe: normal SVG rendering succeeds; strict fork mapped render fails with `Source maps are not supported for sequence`. Manual in-app inspection verified the minimal document, both diagrams and keyboard label highlighting at `http://127.0.0.1:5174/`. Pointer/clipboard checks are automated in Chromium; browser permission policies may deny clipboard writes, which are logged in its console. Broader browser acceptance remains pending.
 
-The source-view demo remains available separately. No new dependency, external include convention, GFM support, sequence AST/participant/message mapping or browser-free renderer was added.
+The earlier source-view demo was retired after the native preview gained an optional source pane. No external include convention or GFM support was added.
 
 ## Merman migration (2026-09-26)
 

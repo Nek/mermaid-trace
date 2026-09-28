@@ -1,4 +1,4 @@
-import type { Piece, SourceMapping, Span } from './source-mapping.js';
+import type { SourceMapping, Span } from './source-mapping.js';
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid SVG mapping: ${message}`);
@@ -64,68 +64,4 @@ export function readSvgMapping(svg: string, source?: string): SourceMapping {
   }
   check(mapping.pieces.every(piece => referenced.has(piece.id)), 'unreferenced piece');
   return mapping;
-}
-
-export function annotateSvg(svg: string, mapping: SourceMapping): string {
-  validate(mapping);
-  check(mapping.format === 'mermaid-trace/0', 'native producers annotate format 1');
-  const root = parse(svg);
-  check(!root.querySelector('[data-mt-refs]') && !root.hasAttribute('data-mt-map'), 'already annotated');
-  const attributes = new Map<Element, string>();
-  attributes.set(root, ` data-mt-map="${encodeURIComponent(JSON.stringify(mapping))}"`);
-  const bind = (element: Element | undefined | null, pieces: readonly Piece[], label: boolean) => {
-    check(element, 'missing SVG element');
-    check(!attributes.has(element), 'duplicate SVG binding');
-    const first = pieces[0]!;
-    const span = label ? first.labelSpan ?? first.span : first.span;
-    attributes.set(element, ` data-mt-refs="${pieces.map(piece => piece.id).join(' ')}" data-mt-role="${first.kind}${label ? '-label' : ''}" data-mt-start="${span.start}" data-mt-end="${span.end}"`);
-  };
-  const groups = new Map<string, Piece[]>();
-  for (const piece of mapping.pieces) {
-    const key = `${piece.kind}:${piece.domId}`;
-    const group = groups.get(key) ?? [];
-    group.push(piece);
-    groups.set(key, group);
-  }
-  for (const group of groups.values()) {
-    const pieces = [...group].sort((a, b) => Number(Boolean(b.labelSpan)) - Number(Boolean(a.labelSpan)));
-    const first = pieces[0]!;
-    if (first.kind === 'node') {
-      const nodes = [...root.querySelectorAll('.node')].filter(node => node.id === `${root.id}-${first.domId}`);
-      check(nodes.length === 1, 'node visual identity mismatch');
-      bind(nodes[0], pieces, false);
-      bind(nodes[0]!.querySelector('.label'), [first], true);
-    } else {
-      const elements = [...root.querySelectorAll('[data-id]')].filter(element => element.getAttribute('data-id') === first.domId);
-      const paths = elements.filter(element => element.classList.contains('flowchart-link'));
-      check(paths.length === 1, 'edge visual identity mismatch');
-      bind(paths[0], pieces, false);
-      if (first.labelSpan) {
-        const labels = elements.filter(element => element.classList.contains('label'));
-        check(labels.length === 1, 'edge label identity mismatch');
-        bind(labels[0], [first], true);
-      }
-    }
-  }
-
-  // DOM is used for identity lookup; insert into original start tags so the
-  // serializer cannot change baseline bytes. This accepts upstream's simple SVG
-  // serialization only, rejecting XML constructs that need a richer tokenizer.
-  check(!/<[!?]/.test(svg), 'unsupported XML construct');
-  const tags = [...svg.matchAll(/<[A-Za-z][\w:.-]*(?:[^<>"']|"[^"]*"|'[^']*')*>/g)];
-  const elements = [root, ...root.querySelectorAll('*')];
-  check(tags.length === elements.length, 'SVG tag correspondence');
-  let output = svg;
-  for (let i = tags.length - 1; i >= 0; i--) {
-    const tag = tags[i]!;
-    const element = elements[i]!;
-    check(tag[0].match(/^<([\w:.-]+)/)?.[1] === element.tagName, 'SVG tag order');
-    const extra = attributes.get(element);
-    if (extra) {
-      const offset = tag.index + tag[0].length - (tag[0].endsWith('/>') ? 2 : 1);
-      output = output.slice(0, offset) + extra + output.slice(offset);
-    }
-  }
-  readSvgMapping(output);
-  return output;
 }

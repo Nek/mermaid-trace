@@ -1,4 +1,6 @@
-# Saved SVG activation and Markdown demonstration
+# Saved SVG activation
+
+The generated fork-mapped demo was retired on 2026-09-28. Demo-specific criteria and verification below record the historical ACT-1 experiment; the native [watch preview](../watch-cli/spec.md) and its saved/live browser tests are the current user-facing route. The activation library and format-0 reader remain in use for saved artifacts.
 
 **ACT-1 — implemented:** As a viewer user, I want to select diagram elements and original Markdown in either direction, using a saved SVG without loading Mermaid.
 
@@ -28,7 +30,7 @@ Scope: existing experimental flowchart artifacts, independent activation library
 
 Verification: activation and demo tests first failed against their unimplemented functions. Full `pnpm test`: 12 passing, including unchanged raw SVG baselines. Chromium only; no screen-reader acceptance test or other browser engine run. Vite is dev tooling, not part of the activation module. The browser dependency graph contains `demo`, `svg-activation`, `svg-mapping`, and `markdown-source`; type-only producer imports are erased.
 
-Run `make demo` from the repository root to generate `dist/index.html` and serve locally. The generator reuses the deterministic browser producer with the trusted checked-in Markdown fixture; generated output is ignored build output. No arbitrary file uploads or live source edits. For external artifacts, sanitize before DOM insertion, preserve the inert mapping attributes, then activate. Dispose before replacement and activate the new element.
+Run `make preview ARGS='watch docs/examples/interactive.md --source'` from the repository root to exercise activation in the native preview. No arbitrary file uploads or live source edits. For external artifacts, sanitize before DOM insertion, preserve the inert mapping attributes, then activate. Dispose before replacement and activate the new element.
 
 ## LOC-1 — copyable selection location (implemented)
 

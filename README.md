@@ -38,9 +38,8 @@ The root Makefile builds and tests Rust and TypeScript. Each language owns its m
 | [Native sequence mapping](docs/specs/sequence-mapping/spec.md) | Exact sequence selection and future dynamic Rust/WASM rendering |
 | [Diagram coverage](docs/specs/diagram-coverage/spec.md) | Required all-family coverage and release acceptance |
 | [Watch CLI](docs/specs/watch-cli/spec.md) | Live Markdown/Mermaid preview without source or debug UI |
-| [SVG activation and demo](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
+| [SVG activation](docs/specs/svg-activation/spec.md) | Browser API, selection policy, lifecycle and verification |
 | [Native flowchart mapping](docs/specs/flowchart-mapping/spec.md) | Supported syntax, parser integration, experimental metadata, and verification |
-| [Mermaid fork](docs/specs/mermaid-fork/spec.md) | Explicit render API, local fork setup, upstream patch and verification |
 | [SVG baselines](docs/specs/svg-baselines/spec.md) | Upstream fixtures, deterministic rendering, and verification |
 | [Toolchain](docs/specs/toolchain/spec.md) | Pinned tools, setup contract, and verification |
 | [Roadmap](docs/ROADMAP.md) | Milestones, dependencies, and completion evidence |
@@ -53,7 +52,7 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 
 Use Rust 1.95+ and Node.js 24.x, as declared in `mermaid-trace-ts/package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
 
-For historical flowchart reference tests, first build the sibling Mermaid fork using the [fork setup instructions](docs/specs/mermaid-fork/spec.md#local-setup). Mapping tests use `../mermaid/packages/mermaid/dist/mermaid.min.js`; set `MERMAID_TRACE_BUNDLE` to use another checkout. Reference-baseline tests continue to use the pinned, unmodified npm release.
+Reference-baseline tests use the pinned, unmodified Mermaid npm release. The native renderer and its provenance patch are built by `make test`; no sibling Mermaid fork is needed.
 
 ```sh
 cd mermaid-trace-ts
@@ -75,7 +74,7 @@ make snapshots-update
 
 The update command verifies three identical rendering passes before writing. Review the SVG and environment diff before committing. Mermaid, Playwright/Chromium, configuration, viewport, IDs, and packaged font are pinned; no SVG normalization is applied. Current references were verified on macOS ARM64. A different platform or rendering configuration fails the recorded-environment check and needs an explicit compatibility decision, not an automatic baseline refresh. See [baseline details and fixture attribution](docs/specs/svg-baselines/spec.md).
 
-The production producer uses Merman’s native parser, preprocessing map and SVG identities. Rust embeds inert source/AST metadata in experimental `mermaid-trace/1` SVG. TypeScript activates saved artifacts and translates locations back to the original Markdown. Chromium and the earlier Mermaid fork remain reference test tooling.
+The production producer uses Merman’s native parser, preprocessing map and SVG identities. Rust embeds inert source/AST metadata in experimental `mermaid-trace/1` SVG. TypeScript activates saved artifacts and translates locations back to the original Markdown. Chromium remains test tooling for upstream SVG baselines and browser interaction.
 
 ## Watch a document
 
@@ -101,22 +100,22 @@ Future browser rendering will compile the same Rust core to WASM, optionally in 
 
 The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `make preview ARGS='watch /path/to/file.md'` builds and runs it; after `make build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 
-## Try the Markdown demo
+## Try the example document
 
 ```sh
-make demo
+make preview ARGS='watch docs/examples/interactive.md --source'
 ```
 
-Open the local URL printed by Vite. The command renders [the example Markdown](docs/examples/interactive.md) once and generates a page containing static SVGs. The browser loads only the interaction/coordinate modules; it does not load Mermaid or markdown-it. Click a node, edge or label (or focus it and press Enter/Space) to select its original Markdown. Click diagram background to select its whole fenced block. Click prose/code/list blocks to select their source; click a heading to select only that heading, including its Markdown syntax. Drag rendered text to select characters across formatting or blocks. Occurrence buttons expose repeated references; selecting text highlights matching visuals. The source view is readonly. Its selected range stays visibly highlighted while focus remains in the preview, and the selection start is scrolled into view. The source pane uses a real native text selection in a frame containing only source text and styles, so source and rendered-text selections can coexist. There is no overlay or synchronized text mirror. Diagrams remain visible with JavaScript disabled.
+Open the printed localhost URL. The native preview renders [the example Markdown](docs/examples/interactive.md) with static SVGs and an optional read-only source pane. The browser loads only activation and coordinate modules; it does not load Mermaid or markdown-it. Diagram and Markdown selection, clipboard locations, native text dragging and source highlighting follow the [watch CLI behavior](#watch-a-document). Diagrams remain visible with JavaScript disabled.
 
-`activateSvg(svg, { source, onSelect })` accepts a safe inline SVG and returns its decoded `mapping`, `highlight(ranges)`, `select(pieceId)` and `dispose()`. Source spans are zero-based UTF-16, end-exclusive. Labels select their label text; node groups prefer a declaration, then the first occurrence. `data-mt-selected` provides a styling hook. The demo supplies visible focus and selection styles. Dispose before replacing or changing an SVG; duplicate attachment rejects. Source-selection gestures suppress hyperlink navigation.
+`activateSvg(svg, { source, onSelect })` accepts a safe inline SVG and returns its decoded `mapping`, `highlight(ranges)`, `select(pieceId)` and `dispose()`. Source spans are zero-based UTF-16, end-exclusive. Labels select their label text; node groups prefer a declaration, then the first occurrence. `data-mt-selected` provides a styling hook. Activation supplies visible focus and selection styles. Dispose before replacing or changing an SVG; duplicate attachment rejects. Source-selection gestures suppress hyperlink navigation.
 
-Diagram clicks, keyboard activation and occurrence choices automatically copy the selected location, for example `interactive.md:18:10-18:15`. The visible location uses one-based lines/UTF-16 columns with an exclusive end. Source-view selection updates the location without overwriting the clipboard. If the browser denies clipboard access, the demo reports it and keeps the location selectable for manual copying.
+Diagram clicks and keyboard activation automatically copy the selected location, using one-based lines/UTF-16 columns with an exclusive end. Source-view selection does not overwrite the clipboard. Clipboard failures are logged in the browser console.
 
 Keyboard focus is the diagram selection: Tab/Shift+Tab updates highlights, source and location while keeping focus in the diagram. Enter/Space copies the current location. Focus navigation alone does not overwrite the clipboard. Native text dragging inside SVG is disabled; rendered Markdown and source text remain normally selectable. Completing a rendered-text drag copies its source location.
 
 Connectors have an invisible 12-pixel click target while activated. Clicking the line selects its connector syntax (`-->` or `-->|review|`); clicking just a label selects and highlights only that label. The same distinction applies to source-view highlighting. Disposal removes the extra hit targets, leaving the original static SVG intact.
 
-Hosts own sanitization before insertion, document identity/revision and editor selection. Activation validates mappings but is not a sanitizer. `prepareMarkdown(document, namespace)` returns blocks and a synchronous renderer consuming trusted prepared SVGs. `toMarkdown` returns exact segments plus an enclosing editor range; `fromMarkdown` performs reverse lookup. Expanded indentation tabs that cannot be mapped exactly fail explicitly. The demo uses `renderMarkdownView(document, blocks, svgs)`, a CommonMark producer built on unified’s mdast/hast utilities. It sanitizes ordinary HTML before inserting trusted SVGs, retains block/text positions, and reuses markdown-it fence provenance. Entities, escapes and line endings map back to their original spelling; transformed text without exact correspondence is explicitly reported as an enclosing construct. Native drags retain their own highlight; source-view ranges identify the enclosing Markdown block and matching diagram elements. No arbitrary SVG upload UI, source editing, GFM plugin support or VS Code extension is included yet.
+Hosts own sanitization before insertion, document identity/revision and editor selection. Activation validates mappings but is not a sanitizer. `prepareMarkdown(document, namespace)` returns blocks and a synchronous renderer consuming trusted prepared SVGs. `toMarkdown` returns exact segments plus an enclosing editor range; `fromMarkdown` performs reverse lookup. Expanded indentation tabs that cannot be mapped exactly fail explicitly. The preview uses `renderMarkdownView(document, blocks, svgs)`, a CommonMark producer built on unified’s mdast/hast utilities. It sanitizes ordinary HTML before inserting trusted SVGs, retains block/text positions, and reuses markdown-it fence provenance. Entities, escapes and line endings map back to their original spelling; transformed text without exact correspondence is explicitly reported as an enclosing construct. Native drags retain their own highlight; source-view ranges identify the enclosing Markdown block and matching diagram elements. No arbitrary SVG upload UI, source editing, GFM plugin support or VS Code extension is included yet.
 
 Follow [SDD.md](docs/SDD.md): select one ready story, define its contracts and plan, derive tests, implement, verify, and record results. Read [SDD-PLANNING.md](docs/SDD-PLANNING.md) for planning and [SDD-DELIVERY.md](docs/SDD-DELIVERY.md) before implementation. Planned checks are not passing tests.

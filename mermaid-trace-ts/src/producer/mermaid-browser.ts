@@ -32,11 +32,7 @@ const contextOptions = {
 export type Fixture = { readonly id: string; readonly source: string };
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-export const forkBundle = process.env.MERMAID_TRACE_BUNDLE ? resolve(process.env.MERMAID_TRACE_BUNDLE) : resolve(root, '../../mermaid/packages/mermaid/dist/mermaid.min.js');
-
-export async function renderReferences(fixtures: readonly Fixture[], mapped = false, bundle = mapped
-  ? forkBundle
-  : resolve(root, 'node_modules/mermaid/dist/mermaid.min.js')) {
+export async function renderReferences(fixtures: readonly Fixture[]) {
   const font = await readFile(resolve(root, 'node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2'));
   const versions: Record<string, string> = {};
   for (const name of ['mermaid', 'playwright', '@fontsource/noto-sans']) {
@@ -60,32 +56,18 @@ export async function renderReferences(fixtures: readonly Fixture[], mapped = fa
           @font-face { font-family: TraceBaseline; src: url(data:font/woff2;base64,${font.toString('base64')}) format('woff2'); font-weight: 400; }
           body { margin: 0; font-family: TraceBaseline; }
         </style><body></body>`);
-        await page.addScriptTag({ path: resolve(bundle) });
-        if (mapped) {
-          for (const [file, exports] of [['flowchart-source', 'renderFlowchart'], ['svg-mapping', 'annotateSvg']] as const) {
-            await page.addScriptTag({ type: 'module', content: await readFile(new URL(`../${file}.js`, import.meta.url), 'utf8') + `\nwindow.${exports} = ${exports};` });
-          }
-        }
-        const rendered = await page.evaluate(async ({ id, source, config, mapped }) => {
+        await page.addScriptTag({ path: resolve(root, 'node_modules/mermaid/dist/mermaid.min.js') });
+        const rendered = await page.evaluate(async ({ id, source, config }) => {
           const faces = await document.fonts.load('16px TraceBaseline');
           if (faces.length !== 1 || faces[0]?.status !== 'loaded') throw new Error('Baseline font did not load');
           await document.fonts.ready;
           const mermaid = (window as unknown as { mermaid: {
             initialize(config: unknown): void;
-            render: import('../flowchart-source.js').MermaidRenderHost['render'];
+            render(id: string, source: string): Promise<{ svg: string }>;
           } }).mermaid;
           mermaid.initialize(config);
-          const api = window as unknown as {
-            renderFlowchart: typeof import('../flowchart-source.js').renderFlowchart;
-            annotateSvg: typeof import('../svg-mapping.js').annotateSvg;
-          };
-          if (mapped) {
-            Object.defineProperty(mermaid, 'mermaidAPI', { get() { throw new Error('Private Mermaid API must not be accessed'); } });
-            const { svg, mapping } = await api.renderFlowchart(`baseline-${id}`, source, mermaid);
-            return api.annotateSvg(svg, mapping);
-          }
           return (await mermaid.render(`baseline-${id}`, source)).svg;
-        }, { id, source, config, mapped });
+        }, { id, source, config });
         svgs[id] = rendered;
       } finally {
         await page.close();

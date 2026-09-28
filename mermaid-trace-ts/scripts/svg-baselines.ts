@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { renderReferences } from '../src/producer/mermaid-browser.js';
 import type { Fixture } from '../src/producer/mermaid-browser.js';
-export { renderReferences, forkBundle } from '../src/producer/mermaid-browser.js';
+export { renderReferences } from '../src/producer/mermaid-browser.js';
 
 export async function readFixtures(): Promise<readonly Fixture[]> {
   const directory = 'test/fixtures/flowchart';

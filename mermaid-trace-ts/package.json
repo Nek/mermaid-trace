@@ -9,10 +9,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "test": "corepack pnpm run build && node --test dist/test/*.test.js",
     "snapshots:update": "corepack pnpm run build && node dist/scripts/svg-baselines.js --update",
-    "demo": "corepack pnpm run build && node dist/scripts/demo.js && vite dist --host 127.0.0.1",
     "preview": "corepack pnpm run build && node dist/src/cli.js"
   },
   "devDependencies": {

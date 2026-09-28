@@ -1,6 +1,6 @@
 # MAP-1: flowchart source provenance in static SVG
 
-Status: original proof implemented and verified on 2026-09-26. Its private-parser adapter has since been replaced by [FORK-1](../mermaid-fork/spec.md). The findings below record the original experiment; the fork spec describes the current producer and supported input. The SVG format and reader remain in use.
+Status: original proof implemented and verified on 2026-09-26. Its private-parser adapter and the later mapped Mermaid fork route are retired. The findings below record those experiments; Merman is the current producer. The SVG format-0 reader remains for historical artifacts.
 
 ## Findings and decision
 
@@ -33,7 +33,7 @@ Source inspection used the installed Mermaid 12.0.0 source map: `flow.jison`, `f
 
 ## Implementation and verification
 
-- Original adapter: isolated Jison reductions became source-occurrence projections. [The current adapter](../../../mermaid-trace-ts/src/flowchart-source.ts) instead consumes the fork's explicit render result, with no private parser access.
+- Original adapter: isolated Jison reductions became source-occurrence projections. The later fork adapter consumed an explicit render result; both routes have been retired in favor of native Merman provenance.
 - [SVG writer/reader](../../../mermaid-trace-ts/src/svg-mapping.ts): DOM identity checks plus insertion into original start tags preserve raw SVG bytes. The independent reader imports no renderer and verifies spans, IDs, element identity and optional external source.
 - TDD: tests first failed on the missing mapping path. A further negative test exposed acceptance of a mismatched node DOM identity; it failed before the validation fix and passes afterward.
 - All six integration tests pass: four mapping tests and two unchanged reference tests. All four original SVG baselines are unchanged. CRLF/comment/astral-Unicode offsets and duplicate node/edge labels have independently specified expected ranges. Saved SVG was read in a new page without Mermaid; invalid payload, out-of-bounds range, unknown reference, wrong DOM identity, stale source and unsupported syntax were rejected.
