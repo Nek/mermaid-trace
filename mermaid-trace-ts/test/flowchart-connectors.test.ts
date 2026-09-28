@@ -56,7 +56,8 @@ test('FLOW AC4/6: layout links retain source without invisible pointer or keyboa
       for (const id of ['ghost', 'labeled', 'hidden']) {
         const path = first.locator(`[data-mt-key="edge:${id}"][data-mt-role=edge]`);
         assert.equal(await path.getAttribute('tabindex'), null, `unpainted ${id}/${header}/${look}/${html} must not be a keyboard stop`);
-        assert.equal(await path.evaluate(element => element.previousElementSibling?.getAttribute('aria-hidden') ?? null), null, 'no widened hidden stroke');
+        assert.equal(await path.evaluate(element => (element.previousElementSibling as SVGElement | null)?.style.pointerEvents === 'stroke'), false,
+          `no widened hidden stroke for ${id}/${header}/${look}/${html}`);
       }
       for (const id of ['painted', 'markers']) {
         const path = first.locator(`[data-mt-key="edge:${id}"][data-mt-role=edge]`);

@@ -152,3 +152,50 @@ test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation a
     assert.ok(outcomes.staleUnchanged && outcomes.badUnchanged);
   } finally { await browser.close(); }
 });
+
+test('ACT-VISIBILITY-TRANSITIONS: a hidden saved connector becomes selectable when painted', async () => {
+  const svg = await readFile('../docs/examples/repeated-labels.svg', 'utf8');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<style>.hidden-edge{display:none}</style>${svg}`);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const root = document.querySelector('svg')!;
+      const edge = root.querySelector<SVGPathElement>('[data-mt-role="edge"]')!;
+      edge.classList.add('hidden-edge');
+      const original = root.outerHTML;
+      const events: unknown[] = [];
+      Object.assign(window, { original, events, handle: activateSvg(root, { onSelect: (event: unknown) => events.push(event) }) });
+    }, activation);
+    const edge = page.locator('[data-mt-role="edge"]').first();
+    assert.equal(await edge.getAttribute('tabindex'), null);
+    await edge.evaluate(element => element.classList.remove('hidden-edge'));
+    await page.waitForFunction(() => document.querySelector('[data-mt-role="edge"]')?.getAttribute('tabindex') === '0', undefined, { timeout: 2_000 });
+    const point = await edge.evaluate(element => {
+      const path = element as SVGPathElement;
+      const at = path.getTotalLength() * .2;
+      const a = path.getPointAtLength(at).matrixTransform(path.getScreenCTM()!);
+      const b = path.getPointAtLength(at + 1).matrixTransform(path.getScreenCTM()!);
+      const dx = b.x - a.x, dy = b.y - a.y;
+      return { x: a.x - 4 * dy / Math.hypot(dx, dy), y: a.y + 4 * dx / Math.hypot(dx, dy) };
+    });
+    assert.equal(await edge.evaluate(element => element.previousElementSibling?.getAttribute('aria-hidden')), 'true');
+    await page.mouse.click(point.x, point.y);
+    assert.equal(await page.evaluate(() => (window as any).events.at(-1).role), 'edge');
+    await edge.focus(); await edge.press('Enter');
+    assert.equal(await edge.getAttribute('data-mt-selected'), 'true');
+    const selection = await page.evaluate(() => (window as any).events.at(-1));
+    const source = await page.evaluate(() => (window as any).handle.mapping.source);
+    assert.equal(source.slice(selection.span.start, selection.span.end), '-->|same|');
+    await edge.evaluate(element => element.classList.add('hidden-edge'));
+    await page.waitForFunction(() => !document.querySelector('[data-mt-role="edge"]')?.hasAttribute('tabindex'), undefined, { timeout: 2_000 });
+    assert.equal(await edge.getAttribute('data-mt-selected'), null);
+    assert.notEqual(await edge.evaluate(element => element.previousElementSibling?.getAttribute('aria-hidden')), 'true', 'wide hit target is removed when the edge is hidden');
+    await page.evaluate(() => (window as any).handle.dispose());
+    assert.equal(await page.locator('svg').evaluate(element => element.outerHTML === (window as any).original), true);
+  } finally { await browser.close(); }
+});

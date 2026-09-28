@@ -19,19 +19,20 @@ export function activateSvg(svg: SVGSVGElement, options: {
   if (active.has(svg)) throw new Error('SVG is already activated');
   const mapping = readSvgMapping(new XMLSerializer().serializeToString(svg), options.source);
   const byId = new Map(mapping.pieces.map(piece => [piece.id, piece]));
-  const elements = [...svg.querySelectorAll('[data-mt-refs]')].filter(element => {
+  const elements = [...svg.querySelectorAll('[data-mt-refs]')];
+  const painted = (element: Element) => {
+    const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
+    if (style && (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0)) return false;
     if (!element.querySelector('rect,path,line,polygon,circle,ellipse,foreignObject,image,use')) {
       const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
       if (text.length && text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
     }
     if (element.getAttribute('data-mt-role') !== 'edge' || !['path', 'line'].includes(element.localName)) return true;
-    const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
     if (!style || !style.stroke) return true;
-    if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
     return (style.stroke !== 'none' && parseFloat(style.strokeWidth) > 0 && Number(style.strokeOpacity) > 0)
       || (element.localName === 'path' && style.fill !== 'none' && Number(style.fillOpacity) > 0)
       || [style.markerStart, style.markerMid, style.markerEnd].some(marker => marker !== 'none');
-  });
+  };
   const hitTargets = new Map<Element, Element>();
   let exposed = new Set<Element>();
   const refs = (element: Element) => element.getAttribute('data-mt-refs')!.split(' ');
@@ -48,7 +49,6 @@ export function activateSvg(svg: SVGSVGElement, options: {
     return members.find(member => exposed.has(member) && ['node', 'control'].includes(member.getAttribute('data-mt-role')!))
       ?? members.find(member => exposed.has(member)) ?? members[0]!;
   };
-  const labelIds = new Set(elements.filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
   const changes = new Map<Element, Map<string, { before: string | null; after: string | null }>>();
   const set = (element: Element, name: string, value: string | null) => {
     const attributes = changes.get(element) ?? new Map();
@@ -66,7 +66,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const measurable = svg.isConnected && viewport.width > 0 && viewport.height > 0;
     const clipped = svg.ownerDocument.defaultView?.getComputedStyle(svg).overflow !== 'visible';
     const next = new Set(elements.filter(element => {
-      if (!measurable) return false;
+      if (!measurable || !painted(element)) return false;
       if (!clipped) return true;
       const bounds = element.getBoundingClientRect();
       return bounds.right >= viewport.left && bounds.left <= viewport.right
@@ -74,6 +74,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
     }));
     if (next.size === exposed.size && [...next].every(element => exposed.has(element))) return false;
     exposed = next;
+    for (const [target, owner] of hitTargets) if (!exposed.has(owner)) {
+      target.remove();
+      hitTargets.delete(target);
+    }
     for (const element of elements) {
       set(element, 'tabindex', exposed.has(element) ? (primary(element) === element ? '0' : '-1') : null);
       set(element, 'aria-hidden', exposed.has(element) ? null : 'true');
@@ -96,6 +100,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
       ? span.start <= range.start && range.start < span.end
       : span.start < range.end && span.end > range.start;
     const matching = mapping.pieces.filter(piece => (!selectedIds || selectedIds.has(piece.id)) && ranges.some(range => overlaps(piece.span, range)));
+    const labelIds = new Set([...exposed].filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
     const matchingLabels = matching.filter(piece => piece.labelSpan && labelIds.has(piece.id) && ranges.filter(range => overlaps(piece.span, range))
       .every(range => range.start >= piece.labelSpan!.start && range.start < piece.labelSpan!.end && range.end <= piece.labelSpan!.end));
     const labelPieces = new Set(matchingLabels);
@@ -238,7 +243,12 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
   const resizeObserver = new ResizeObserver(updateExposure);
   resizeObserver.observe(svg);
   const mutationObserver = new MutationObserver(updateExposure);
-  for (let element: Element | null = svg; element; element = element.parentElement) {
+  mutationObserver.observe(svg, { attributes: true, subtree: true, attributeFilter: [
+    'style', 'class', 'hidden', 'overflow', 'viewBox', 'width', 'height', 'font-size',
+    'display', 'visibility', 'opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+    'fill', 'fill-opacity', 'marker-start', 'marker-mid', 'marker-end',
+  ] });
+  for (let element = svg.parentElement; element; element = element.parentElement) {
     mutationObserver.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'overflow', 'viewBox', 'width', 'height'] });
   }
   svg.ownerDocument.defaultView?.addEventListener('resize', updateExposure);
