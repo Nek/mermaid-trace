@@ -711,6 +711,92 @@ test('GANTT-2-CLIPPED-VIEWPORT: zero and off-viewport labels have no keyboard ta
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', { timeout: 60_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-late-'));
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const source = '---\nconfig: { gantt: { useWidth: 1, useMaxWidth: false } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n';
+    const { svg } = await producer.render('gantt-late-exposure', source);
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    await page.setContent(`<div id="host" style="display:none">${svg}</div>`);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const events: unknown[] = [];
+      Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+    }, activation);
+    const root = page.locator('svg');
+    const task = root.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+    assert.equal(await task.count(), 1);
+    await page.locator('#host').evaluate(element => { (element as HTMLElement).style.display = 'block'; });
+    await page.waitForFunction(() => document.querySelector('svg')!.getBoundingClientRect().width > 0);
+    await page.waitForFunction(() => !document.querySelector('[data-mt-key="gantt:task:a"][tabindex]'));
+    assert.equal(await root.locator('[data-mt-role][tabindex="0"]').count(), 0);
+    const start = source.indexOf('Task :a');
+    await page.evaluate(span => (window as any).handle.highlight([span]), { start, end: start + 4 });
+    assert.equal(await task.getAttribute('data-mt-selected'), null);
+
+    await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'visible'; });
+    await page.waitForFunction(() => document.querySelector('[data-mt-key="gantt:task:a"][data-mt-role=node-label]')?.getAttribute('tabindex') === '0');
+    await task.focus();
+    await task.press('Enter');
+    const selected = await page.evaluate(() => (window as any).events.at(-1).span);
+    assert.equal(source.slice(selected.start, selected.end), 'Task');
+    assert.equal(await task.getAttribute('data-mt-selected'), 'true');
+
+    await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'hidden'; });
+    await page.waitForFunction(() => !document.querySelector('[data-mt-key="gantt:task:a"][tabindex]'));
+    assert.equal(await task.getAttribute('data-mt-selected'), null);
+    await page.evaluate(() => (window as any).handle.dispose());
+    assert.equal(await task.getAttribute('tabindex'), null);
+    assert.equal(await task.getAttribute('role'), null);
+    await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'visible'; });
+    assert.equal(await task.getAttribute('tabindex'), null, 'disposed activation stays inert');
+
+    await page.evaluate(async activation => {
+      const svg = document.querySelector('svg')!;
+      svg.remove();
+      const { activateSvg } = await import(activation);
+      Object.assign(window, { detached: svg, handle: activateSvg(svg, { onSelect() {} }) });
+    }, activation);
+    await page.evaluate(() => {
+      const svg = (window as any).detached as SVGSVGElement;
+      svg.style.overflow = 'hidden';
+      document.querySelector('#host')!.append(svg);
+    });
+    await page.waitForFunction(() => !document.querySelector('[data-mt-key="gantt:task:a"][tabindex]'));
+    await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'visible'; });
+    await page.waitForFunction(() => document.querySelector('[data-mt-key="gantt:task:a"][data-mt-role=node-label]')?.getAttribute('tabindex') === '0');
+    await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'hidden'; });
+    await page.waitForFunction(() => !document.querySelector('[data-mt-key="gantt:task:a"][tabindex]'));
+    await page.evaluate(() => (window as any).handle.dispose());
+
+    const filename = join(directory, 'gantt.md');
+    const markdown = `# Narrow\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const liveRoot = page.locator('svg[data-mt-map]');
+    const liveTask = liveRoot.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+    assert.equal(await liveTask.getAttribute('tabindex'), null);
+    await liveRoot.evaluate(element => { (element as SVGSVGElement).style.overflow = 'visible'; });
+    await page.waitForFunction(() => document.querySelector('[data-mt-key="gantt:task:a"][data-mt-role=node-label]')?.getAttribute('tabindex') === '0');
+    await liveTask.focus(); await liveTask.press('Enter');
+    const original = page.frameLocator('#source-frame').locator('#source');
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'Task');
+    const markdownStart = markdown.indexOf('Task :a');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+      formatLocation({ id: filename, source: markdown }, { start: markdownStart, end: markdownStart + 4 }));
+    await liveRoot.evaluate(element => { (element as SVGSVGElement).style.overflow = 'hidden'; });
+    await page.waitForFunction(() => !document.querySelector('[data-mt-key="gantt:task:a"][tabindex]'));
+    assert.equal(await liveTask.getAttribute('data-mt-selected'), null);
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('GANTT-2-SUBPIXEL-TEXT: zero-size label has no invisible keyboard target', { timeout: 30_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await chromium.launch();

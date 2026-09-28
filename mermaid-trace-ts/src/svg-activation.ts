@@ -19,15 +19,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
   if (active.has(svg)) throw new Error('SVG is already activated');
   const mapping = readSvgMapping(new XMLSerializer().serializeToString(svg), options.source);
   const byId = new Map(mapping.pieces.map(piece => [piece.id, piece]));
-  const viewport = svg.getBoundingClientRect();
-  const clipped = svg.isConnected && viewport.width > 0 && viewport.height > 0
-    && svg.ownerDocument.defaultView?.getComputedStyle(svg).overflow !== 'visible';
   const elements = [...svg.querySelectorAll('[data-mt-refs]')].filter(element => {
-    if (clipped) {
-      const bounds = element.getBoundingClientRect();
-      if (bounds.right < viewport.left || bounds.left > viewport.right
-        || bounds.bottom < viewport.top || bounds.top > viewport.bottom) return false;
-    }
     if (!element.querySelector('rect,path,line,polygon,circle,ellipse,foreignObject,image,use')) {
       const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
       if (text.length && text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
@@ -41,6 +33,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
       || [style.markerStart, style.markerMid, style.markerEnd].some(marker => marker !== 'none');
   });
   const hitTargets = new Map<Element, Element>();
+  let exposed = new Set<Element>();
   const refs = (element: Element) => element.getAttribute('data-mt-refs')!.split(' ');
   const spanKey = (element: Element) => `${element.getAttribute('data-mt-start')}:${element.getAttribute('data-mt-end')}`;
   const groups = new Map<string, Element[]>();
@@ -52,7 +45,8 @@ export function activateSvg(svg: SVGSVGElement, options: {
   }
   const primary = (element: Element) => {
     const members = groups.get(spanKey(element))!;
-    return members.find(member => ['node', 'control'].includes(member.getAttribute('data-mt-role')!)) ?? members[0]!;
+    return members.find(member => exposed.has(member) && ['node', 'control'].includes(member.getAttribute('data-mt-role')!))
+      ?? members.find(member => exposed.has(member)) ?? members[0]!;
   };
   const labelIds = new Set(elements.filter(element => element.getAttribute('data-mt-role')!.endsWith('-label')).flatMap(refs));
   const changes = new Map<Element, Map<string, { before: string | null; after: string | null }>>();
@@ -67,12 +61,37 @@ export function activateSvg(svg: SVGSVGElement, options: {
   };
   let disposed = false;
   const checkActive = () => { if (disposed) throw new Error('SVG activation is disposed'); };
+  const refreshExposure = () => {
+    const viewport = svg.getBoundingClientRect();
+    const measurable = svg.isConnected && viewport.width > 0 && viewport.height > 0;
+    const clipped = svg.ownerDocument.defaultView?.getComputedStyle(svg).overflow !== 'visible';
+    const next = new Set(elements.filter(element => {
+      if (!measurable) return false;
+      if (!clipped) return true;
+      const bounds = element.getBoundingClientRect();
+      return bounds.right >= viewport.left && bounds.left <= viewport.right
+        && bounds.bottom >= viewport.top && bounds.top <= viewport.bottom;
+    }));
+    if (next.size === exposed.size && [...next].every(element => exposed.has(element))) return false;
+    exposed = next;
+    for (const element of elements) {
+      set(element, 'tabindex', exposed.has(element) ? (primary(element) === element ? '0' : '-1') : null);
+      set(element, 'aria-hidden', exposed.has(element) ? null : 'true');
+      if (exposed.has(element)) ensureHitTargets(element);
+    }
+    return true;
+  };
+  let lastRanges: readonly Span[] = [];
+  let lastIds: ReadonlySet<string> | undefined;
   const highlight = (ranges: readonly Span[], selectedIds?: ReadonlySet<string>) => {
     checkActive();
     for (const range of ranges) {
       if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0
         || range.end < range.start || range.end > mapping.source.length) throw new Error('Invalid selection range');
     }
+    refreshExposure();
+    lastRanges = ranges;
+    lastIds = selectedIds;
     const overlaps = (span: Span, range: Span) => range.start === range.end
       ? span.start <= range.start && range.start < span.end
       : span.start < range.end && span.end > range.start;
@@ -98,11 +117,11 @@ export function activateSvg(svg: SVGSVGElement, options: {
     for (const members of groups.values()) {
       const match = members.some(element => {
         const label = element.getAttribute('data-mt-role')!.endsWith('-label');
-        return refs(element).some(id => selected.has(id) && (label || !labelOnly.has(id)));
+        return exposed.has(element) && refs(element).some(id => selected.has(id) && (label || !labelOnly.has(id)));
       });
       for (const element of members) {
-        set(element, 'data-mt-selected', match ? 'true' : null);
-        set(element, 'aria-pressed', String(match));
+        set(element, 'data-mt-selected', match && exposed.has(element) ? 'true' : null);
+        set(element, 'aria-pressed', String(match && exposed.has(element)));
       }
     }
     return pieces;
@@ -117,9 +136,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
     options.onSelect(selection);
   };
   const targetFor = (event: Event) => {
+    refreshExposure();
     const element = event.target instanceof Element
       ? hitTargets.get(event.target) ?? event.target.closest('[data-mt-refs]') ?? svg : null;
-    return element && element.closest('svg') === svg && (element === svg || elements.includes(element)) ? element as SVGElement : null;
+    return element && element.closest('svg') === svg && (element === svg || exposed.has(element)) ? element as SVGElement : null;
   };
   let pointerTarget: SVGElement | null = null;
   const pointerFocus = (event: MouseEvent) => {
@@ -170,12 +190,8 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
   set(svg, 'tabindex', '0');
   set(svg, 'aria-label', 'Select whole diagram');
   for (const helper of svg.querySelectorAll('[data-mt-generated="bounds"]')) set(helper, 'pointer-events', 'none');
-  for (const element of elements) {
-    const piece = byId.get(refs(element)[0]!)!;
-    set(element, 'tabindex', primary(element) === element ? '0' : '-1');
-    set(element, 'role', 'button');
-    set(element, 'aria-label', `Select ${element.getAttribute('data-mt-role')} ${piece.semanticId}`);
-    set(element, 'aria-pressed', 'false');
+  function ensureHitTargets(element: Element) {
+    if ([...hitTargets.values()].includes(element)) return;
     if (element.localName === 'g' && element.getAttribute('data-mt-role')!.endsWith('-label')) {
       const bounds = (element as SVGGElement).getBBox();
       if (bounds.width > 0 && bounds.height > 0) {
@@ -208,6 +224,24 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
       hitTargets.set(target, element);
     }
   }
+  for (const element of elements) {
+    const piece = byId.get(refs(element)[0]!)!;
+    set(element, 'role', 'button');
+    set(element, 'aria-label', `Select ${element.getAttribute('data-mt-role')} ${piece.semanticId}`);
+    set(element, 'aria-pressed', 'false');
+  }
+  refreshExposure();
+  const updateExposure = () => {
+    if (disposed || !refreshExposure()) return;
+    if (lastRanges.length) highlight(lastRanges, lastIds);
+  };
+  const resizeObserver = new ResizeObserver(updateExposure);
+  resizeObserver.observe(svg);
+  const mutationObserver = new MutationObserver(updateExposure);
+  for (let element: Element | null = svg; element; element = element.parentElement) {
+    mutationObserver.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'overflow', 'viewBox', 'width', 'height'] });
+  }
+  svg.ownerDocument.defaultView?.addEventListener('resize', updateExposure);
   svg.addEventListener('click', gesture);
   svg.addEventListener('keydown', gesture);
   svg.addEventListener('focusin', gesture);
@@ -222,13 +256,17 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
       checkActive();
       const piece = byId.get(pieceId);
       if (!piece) throw new Error(`Unknown piece: ${pieceId}`);
-      const element = elements.find(element => element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))
-        ?? elements.find(element => refs(element).includes(piece.id))!;
+      refreshExposure();
+      const element = elements.find(element => exposed.has(element) && element.getAttribute('data-mt-role') === piece.kind && refs(element).includes(piece.id))
+        ?? elements.find(element => exposed.has(element) && refs(element).includes(piece.id));
       (element as SVGElement | undefined)?.focus({ preventScroll: true });
       emit({ trigger: 'activation', role: piece.kind, pieces: [piece], span: piece.span });
     },
     dispose() {
       if (disposed) return;
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      svg.ownerDocument.defaultView?.removeEventListener('resize', updateExposure);
       svg.removeEventListener('click', gesture);
       svg.removeEventListener('keydown', gesture);
       svg.removeEventListener('focusin', gesture);
