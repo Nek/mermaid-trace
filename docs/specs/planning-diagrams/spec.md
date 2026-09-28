@@ -28,6 +28,14 @@ Implement one story at a time in the existing Merman parser, semantic model and 
 
 Current checks live in [native planning tests](../../../mermaid-trace-rs/tests/planning.rs), [native Journey tests](../../../mermaid-trace-rs/tests/journey.rs), [saved/live browser tests](../../../mermaid-trace-ts/test/native-diagrams.test.ts) and [watch tests](../../../mermaid-trace-ts/test/watch-cli.test.ts). Run `make test typecheck` for the project gate. Gantt's 157 and Journey's 26 pinned fixtures have independent provenance/static-parity assertions. Full Gantt, Journey and Kanban conformance remains open; the completed sub-stories below do not close those family gates.
 
+### KANBAN-2-OCCURRENCES (implemented)
+
+Audit K1: repeated authored IDs must retain distinct column/card occurrences and their label/metadata ranges, including identical labels, cross-column cards, Unicode and CRLF. Clicking or reverse-selecting one occurrence must not select another merely because their IDs or text match. Preserve rendered geometry, authored semantic IDs, metadata values and plain/mapped SVG parity. Saved and live Markdown pointer, keyboard, source selection, clipboard and instance isolation remain mandatory.
+
+Plan: first reproduce the collision in native and saved/live acceptance. Assign a parser-owned occurrence identity, carry it on the render model through preparation, and use it for column/card/metadata bindings. Reuse shared activation; do not relax its duplicate-label guard. Verify the pinned Kanban corpus and existing family regressions. This fixes K1 without claiming complete Kanban support or resolving the audit's open browser/fidelity decisions.
+
+Verification: native and browser regressions first failed with the duplicate-label error. Distinct/equal labels, cross-column cards, repeated column IDs and metadata now retain separate origins. All 87 pinned Kanban fixtures render with mapped/plain SVG parity; saved/live pointer, keyboard, reverse-source, clipboard and isolation checks pass. Authored semantic IDs and SVG appearance remain unchanged; internal Kanban mapping keys now use parser occurrence identities. Existing Rust tests, 42 native core and 26 native renderer Kanban checks pass; the patch applies cleanly to the pinned archive.
+
 [OWN-GANTT-DEPENDENCY](../source-ownership/spec.md#own-gantt-dependency-ready) retains each authored `after`/`until` ID as an exact task-owned reference with target and constraint data; selecting it does not navigate to the referenced task. Full Gantt syntax/configuration conformance remains open.
 
 ### GANTT-2-SECTION-OWNERSHIP (implemented)

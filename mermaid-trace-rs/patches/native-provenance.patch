@@ -14921,10 +14921,18 @@ index 68bde024..789f81b6 100644
                          "section": t.section,
                          "task": t.task,
 diff --git a/crates/merman-core/src/diagrams/kanban.rs b/crates/merman-core/src/diagrams/kanban.rs
-index 7a93d54b..3672e52f 100644
+index 7a93d54b..a9e79965 100644
 --- a/crates/merman-core/src/diagrams/kanban.rs
 +++ b/crates/merman-core/src/diagrams/kanban.rs
-@@ -55,6 +55,8 @@ struct KanbanNode {
+@@ -35,6 +35,7 @@ const NODE_TYPE_HEXAGON: i32 = 6;
+ #[derive(Debug, Clone)]
+ struct KanbanNode {
+     id: String,
++    source_id: String,
+     span: SourceSpan,
+     level: usize,
+     label: String,
+@@ -55,12 +56,17 @@ struct KanbanNode {
  pub struct KanbanDiagramRenderModel {
      #[serde(default)]
      pub nodes: Vec<KanbanRenderNode>,
@@ -14933,7 +14941,16 @@ index 7a93d54b..3672e52f 100644
  }
  
  #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-@@ -104,6 +106,7 @@ impl KanbanRenderNode {
+ #[serde(rename_all = "camelCase")]
+ pub struct KanbanRenderNode {
+     pub id: String,
++    /// Parser-owned occurrence identity, independent of repeated authored IDs.
++    #[serde(skip)]
++    pub source_id: String,
+     pub label: String,
+     #[serde(default, rename = "isGroup")]
+     pub is_group: bool,
+@@ -104,6 +110,7 @@ impl KanbanRenderNode {
  
  #[derive(Debug, Default)]
  struct KanbanDb {
@@ -14941,7 +14958,31 @@ index 7a93d54b..3672e52f 100644
      nodes: Vec<KanbanNode>,
      section_indices: Vec<usize>,
      next_auto_id: i64,
-@@ -1331,6 +1334,39 @@ fn parse_kanban_statement(
+@@ -284,6 +291,7 @@ impl KanbanDb {
+ 
+         let mut node = KanbanNode {
+             id,
++            source_id: self.nodes.len().to_string(),
+             span,
+             level,
+             label: sanitize_text(&spec.descr_raw, config),
+@@ -319,6 +327,7 @@ impl KanbanDb {
+             };
+             out.push(KanbanRenderNode {
+                 id: section.id.clone(),
++                source_id: section.source_id.clone(),
+                 label: sanitize_text(&section.label, config),
+                 is_group: true,
+                 parent_id: None,
+@@ -346,6 +355,7 @@ impl KanbanDb {
+             {
+                 out.push(KanbanRenderNode {
+                     id: item.id.clone(),
++                    source_id: item.source_id.clone(),
+                     label: sanitize_text(&item.label, config),
+                     is_group: false,
+                     parent_id: Some(section.id.clone()),
+@@ -1331,6 +1341,39 @@ fn parse_kanban_statement(
          Ok(parsed) => parsed,
          Err(error) => return Ok(Err(error)),
      };
@@ -14981,7 +15022,7 @@ index 7a93d54b..3672e52f 100644
      let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
      if let Some(shape_data) = &shape_data {
          push_kanban_metadata_facts(facts, &shape_data.fields);
-@@ -1363,6 +1399,27 @@ fn parse_kanban_statement(
+@@ -1363,6 +1406,27 @@ fn parse_kanban_statement(
      ) {
          return Ok(Err(error));
      }
@@ -14999,17 +15040,17 @@ index 7a93d54b..3672e52f 100644
 +            .iter()
 +            .find(|(key, _)| key == "label")
 +            .map_or(label_span, |(_, span)| *span);
-+        db.source_occurrences.push(json!({"kind":if node.parent_id.is_none(){"control"}else{"node"},"semanticId":node.id,"domId":format!("kanban:{family}:{}",node.id),"parentId":node.parent_id,"span":statement_span,"labelSpan":label_span}));
++        db.source_occurrences.push(json!({"kind":if node.parent_id.is_none(){"control"}else{"node"},"semanticId":node.id,"domId":format!("kanban:{family}:{}",node.source_id),"parentId":node.parent_id,"span":statement_span,"labelSpan":label_span}));
 +        for (key, span) in fields {
 +            if key != "label" {
-+                db.source_occurrences.push(json!({"kind":"control","semanticId":format!("{}:{key}",node.id),"domId":format!("kanban:field:{}:{key}",node.id),"span":span}));
++                db.source_occurrences.push(json!({"kind":"control","semanticId":format!("{}:{key}",node.id),"domId":format!("kanban:field:{}:{key}",node.source_id),"span":span}));
 +            }
 +        }
 +    }
      let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
      if is_section {
          facts.push_symbol(EditorSemanticSymbol::outline(
-@@ -1465,6 +1522,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
+@@ -1465,6 +1529,7 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
  fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
      KanbanDiagramRenderModel {
          nodes: db.data_nodes_for_render(&meta.effective_config),
@@ -30574,7 +30615,7 @@ index 6f096465..bbf7e3ce 100644
          assert_eq!(settings.title_font_family, "Georgia, serif");
          assert_eq!(settings.title_color, "#123456");
 diff --git a/crates/merman-render/src/kanban.rs b/crates/merman-render/src/kanban.rs
-index 027dfe7d..adf538ae 100644
+index 027dfe7d..72229d4a 100644
 --- a/crates/merman-render/src/kanban.rs
 +++ b/crates/merman-render/src/kanban.rs
 @@ -61,12 +61,16 @@ pub(crate) use config::{KanbanConfigView, default_use_max_width};
@@ -30594,7 +30635,57 @@ index 027dfe7d..adf538ae 100644
      pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
          &self.layout
      }
-@@ -434,6 +438,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+@@ -84,6 +88,7 @@ impl KanbanPreparedArtifact {
+ 
+ #[derive(Debug)]
+ pub(crate) struct KanbanPreparedMarkdownLabel {
++    pub(crate) source_id: String,
+     pub(crate) html: String,
+     pub(crate) geometry: KanbanPreparedLabelGeometry,
+ }
+@@ -182,6 +187,7 @@ fn prepare_kanban_markdown_label(
+ 
+     (
+         KanbanPreparedMarkdownLabel {
++            source_id: String::new(),
+             html,
+             geometry: KanbanPreparedLabelGeometry {
+                 content_height: metrics.height,
+@@ -290,7 +296,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
+         let center_y = 0.0;
+ 
+-        let (prepared_label, label_metrics) = prepare_kanban_markdown_label(
++        let (mut prepared_label, label_metrics) = prepare_kanban_markdown_label(
+             &markdown,
+             measurer,
+             &section.label,
+@@ -314,6 +320,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+             label_width: label_metrics.width.max(0.0),
+             label_height,
+         });
++        prepared_label.source_id.clone_from(&section.source_id);
+         prepared_sections.push(prepared_label);
+     }
+ 
+@@ -332,7 +339,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
+             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
+             // that behavior so item heights match the upstream bbox-based layout.
+-            let (prepared_title, title_metrics) = prepare_kanban_title_label(
++            let (mut prepared_title, title_metrics) = prepare_kanban_title_label(
+                 &markdown,
+                 measurer,
+                 &item.label,
+@@ -367,6 +374,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
+                 priority: item.priority.clone(),
+                 icon: item.icon.clone(),
+             });
++            prepared_title.source_id.clone_from(&item.source_id);
+             prepared_items.push(KanbanPreparedItem {
+                 title: prepared_title,
+                 ticket_link: prepare_kanban_ticket_link(
+@@ -434,6 +442,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
          items,
      };
      Ok(KanbanPreparedArtifact {
@@ -30602,7 +30693,7 @@ index 027dfe7d..adf538ae 100644
          layout,
          sections: prepared_sections,
          items: prepared_items,
-@@ -485,6 +490,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
+@@ -485,6 +494,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
          .collect();
  
      KanbanPreparedArtifact {
@@ -30610,7 +30701,7 @@ index 027dfe7d..adf538ae 100644
          layout: layout.clone(),
          sections,
          items,
-@@ -550,6 +556,7 @@ mod tests {
+@@ -550,6 +560,7 @@ mod tests {
      #[test]
      fn kanban_layout_uses_mermaid_padding() {
          let model = KanbanDiagramRenderModel {
@@ -30618,7 +30709,7 @@ index 027dfe7d..adf538ae 100644
              nodes: vec![
                  section("todo", "Todo"),
                  section("doing", "Doing"),
-@@ -574,6 +581,7 @@ mod tests {
+@@ -574,6 +585,7 @@ mod tests {
      #[test]
      fn kanban_layout_measures_rendered_markdown_instead_of_source_markers() {
          let markdown_model = KanbanDiagramRenderModel {
@@ -30626,7 +30717,7 @@ index 027dfe7d..adf538ae 100644
              nodes: vec![
                  section("todo", "Todo"),
                  item("task-1", "*aaaa aaaa aaaaaaa*", "todo"),
-@@ -581,6 +589,7 @@ mod tests {
+@@ -581,6 +593,7 @@ mod tests {
              ],
          };
          let plain_model = KanbanDiagramRenderModel {
@@ -30634,7 +30725,7 @@ index 027dfe7d..adf538ae 100644
              nodes: vec![
                  section("todo", "Todo"),
                  item("task-1", "aaaa aaaa aaaaaaa", "todo"),
-@@ -617,6 +626,7 @@ mod tests {
+@@ -617,6 +630,7 @@ mod tests {
      #[test]
      fn kanban_layout_uses_mermaid_mindmap_viewport_config_precedence() {
          let model = KanbanDiagramRenderModel {
@@ -32630,7 +32721,7 @@ index 61faa868..4f9456d5 100644
                  y: 110.0,
                  width: 150.0,
 diff --git a/crates/merman-render/src/svg/parity/kanban/render.rs b/crates/merman-render/src/svg/parity/kanban/render.rs
-index 60b4b0f6..1b600e22 100644
+index 60b4b0f6..7fe72f1d 100644
 --- a/crates/merman-render/src/svg/parity/kanban/render.rs
 +++ b/crates/merman-render/src/svg/parity/kanban/render.rs
 @@ -114,6 +114,7 @@ struct KanbanLabelRenderContext {
@@ -32674,84 +32765,100 @@ index 60b4b0f6..1b600e22 100644
      let css = kanban_css(diagram_id, effective_config)?;
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
      options.checkpoint_emit()?;
-@@ -264,7 +268,9 @@ pub(crate) fn render_kanban_diagram_svg(
+@@ -264,7 +268,17 @@ pub(crate) fn render_kanban_diagram_svg(
  
          let _ = write!(
              &mut out,
 -            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="{div_style}"><span class="nodeLabel">{label}</span></div></foreignObject></g></g>"##,
 +            r##"<g{trace} class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject{label_trace} width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="{div_style}"><span class="nodeLabel">{label}</span></div></foreignObject></g></g>"##,
-+            trace = source_attrs(occurrences, &format!("kanban:column:{}", s.id), false),
-+            label_trace = source_attrs(occurrences, &format!("kanban:column:{}", s.id), true),
++            trace = source_attrs(
++                occurrences,
++                &format!("kanban:column:{}", prepared_label.source_id),
++                false
++            ),
++            label_trace = source_attrs(
++                occurrences,
++                &format!("kanban:column:{}", prepared_label.source_id),
++                true
++            ),
              idx = s.index,
              id = escape_attr(&section_dom_id),
              look = data_look_attr,
-@@ -327,7 +333,8 @@ pub(crate) fn render_kanban_diagram_svg(
+@@ -327,7 +341,12 @@ pub(crate) fn render_kanban_diagram_svg(
  
          let _ = write!(
              &mut out,
 -            r##"<g class="node undefined" id="{id}" transform="translate({x}, {y})">"##,
 +            r##"<g{trace} class="node undefined" id="{id}" transform="translate({x}, {y})">"##,
-+            trace = source_attrs(occurrences, &format!("kanban:card:{}", n.id), false),
++            trace = source_attrs(
++                occurrences,
++                &format!("kanban:card:{}", prepared_item.title.source_id),
++                false
++            ),
              id = escape_attr(&item_dom_id),
              x = fmt(n.center_x),
              y = fmt(n.center_y),
-@@ -353,6 +360,7 @@ pub(crate) fn render_kanban_diagram_svg(
-             &mut out,
-             &label_context,
-             KanbanLabelGroup {
-+                trace: &source_attrs(occurrences, &format!("kanban:card:{}", n.id), true),
-                 position: (left_x, title_y),
-                 text: Some(n.label.as_str()),
-                 html: Some(prepared_item.title.html.as_str()),
-@@ -378,6 +386,11 @@ pub(crate) fn render_kanban_diagram_svg(
-                     &mut out,
-                     &label_context,
-                     KanbanLabelGroup {
-+                        trace: &source_attrs(
-+                            occurrences,
-+                            &format!("kanban:field:{}:ticket", n.id),
-+                            false,
-+                        ),
-                         position: (left_x, details_y),
-                         text: Some(t),
-                         html: None,
-@@ -392,6 +405,11 @@ pub(crate) fn render_kanban_diagram_svg(
-                     &mut out,
-                     &label_context,
-                     KanbanLabelGroup {
-+                        trace: &source_attrs(
-+                            occurrences,
-+                            &format!("kanban:field:{}:ticket", n.id),
-+                            false,
-+                        ),
-                         position: (left_x, details_y),
-                         text: Some(t),
-                         html: None,
-@@ -406,6 +424,11 @@ pub(crate) fn render_kanban_diagram_svg(
-                 &mut out,
-                 &label_context,
-                 KanbanLabelGroup {
-+                    trace: &source_attrs(
-+                        occurrences,
-+                        &format!("kanban:field:{}:ticket", n.id),
-+                        false,
-+                    ),
-                     position: (left_x, details_y),
-                     text: None,
-                     html: None,
-@@ -421,6 +444,11 @@ pub(crate) fn render_kanban_diagram_svg(
+@@ -353,6 +372,11 @@ pub(crate) fn render_kanban_diagram_svg(
              &mut out,
              &label_context,
              KanbanLabelGroup {
 +                trace: &source_attrs(
 +                    occurrences,
-+                    &format!("kanban:field:{}:assigned", n.id),
++                    &format!("kanban:card:{}", prepared_item.title.source_id),
++                    true,
++                ),
+                 position: (left_x, title_y),
+                 text: Some(n.label.as_str()),
+                 html: Some(prepared_item.title.html.as_str()),
+@@ -378,6 +402,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                     &mut out,
+                     &label_context,
+                     KanbanLabelGroup {
++                        trace: &source_attrs(
++                            occurrences,
++                            &format!("kanban:field:{}:ticket", prepared_item.title.source_id),
++                            false,
++                        ),
+                         position: (left_x, details_y),
+                         text: Some(t),
+                         html: None,
+@@ -392,6 +421,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                     &mut out,
+                     &label_context,
+                     KanbanLabelGroup {
++                        trace: &source_attrs(
++                            occurrences,
++                            &format!("kanban:field:{}:ticket", prepared_item.title.source_id),
++                            false,
++                        ),
+                         position: (left_x, details_y),
+                         text: Some(t),
+                         html: None,
+@@ -406,6 +440,11 @@ pub(crate) fn render_kanban_diagram_svg(
+                 &mut out,
+                 &label_context,
+                 KanbanLabelGroup {
++                    trace: &source_attrs(
++                        occurrences,
++                        &format!("kanban:field:{}:ticket", prepared_item.title.source_id),
++                        false,
++                    ),
+                     position: (left_x, details_y),
+                     text: None,
+                     html: None,
+@@ -421,6 +460,11 @@ pub(crate) fn render_kanban_diagram_svg(
+             &mut out,
+             &label_context,
+             KanbanLabelGroup {
++                trace: &source_attrs(
++                    occurrences,
++                    &format!("kanban:field:{}:assigned", prepared_item.title.source_id),
 +                    false,
 +                ),
                  position: (right_x, details_y),
                  text: n.assigned.as_deref(),
                  html: None,
-@@ -438,7 +466,12 @@ pub(crate) fn render_kanban_diagram_svg(
+@@ -438,7 +482,12 @@ pub(crate) fn render_kanban_diagram_svg(
                  .unwrap_or_default();
              let _ = write!(
                  &mut out,
@@ -32759,7 +32866,7 @@ index 60b4b0f6..1b600e22 100644
 +                r#"<line{trace} x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4"{stroke_attr}/>"#,
 +                trace = source_attrs(
 +                    occurrences,
-+                    &format!("kanban:field:{}:priority", n.id),
++                    &format!("kanban:field:{}:priority", prepared_item.title.source_id),
 +                    false
 +                ),
                  x1 = fmt(rect_x + 2.0),

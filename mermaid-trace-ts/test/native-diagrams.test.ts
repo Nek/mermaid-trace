@@ -1981,7 +1981,27 @@ test('JOURNEY-2-IGNORED: source-only Journey options create no visual selection'
 });
 
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
-  await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
+  await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:1', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:0', 'todo[Todo]'], ['kanban:field:1:ticket', 'T-1'], ['kanban:field:1:assigned', 'Alice'], ['kanban:field:1:priority', 'High']]);
+});
+
+test('KANBAN-2-OCCURRENCES: repeated IDs retain separate saved/live selections', { timeout: 60_000 }, async () => {
+  for (const separateColumns of [false, true]) {
+    const first = "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }";
+    const second = "a[Same 😀]@{ ticket: 'T-2', assigned: 'Bob', priority: 'Low' }";
+    const source = `kanban\n  todo[Todo]\n    ${first}\n${separateColumns ? '  done[Done]\n' : ''}    ${second}\n`;
+    for (const [id, statement, ticket, assigned, priority] of [
+      [1, first, 'T-1', 'Alice', 'High'],
+      [separateColumns ? 3 : 2, second, 'T-2', 'Bob', 'Low'],
+    ] as const) {
+      const key = `kanban:card:${id}`;
+      await verifyNative(source, key, statement, 'Same 😀', [
+        [key, 'Same 😀', 'node-label', source.indexOf(statement) + 2],
+        [`kanban:field:${id}:ticket`, ticket],
+        [`kanban:field:${id}:assigned`, assigned],
+        [`kanban:field:${id}:priority`, priority],
+      ], { start: source.indexOf(statement), end: source.indexOf(statement) + 1 }, [], key, undefined, true);
+    }
+  }
 });
 
 test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owners', { timeout: 180_000 }, async () => {

@@ -2132,7 +2132,7 @@ fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {
     assert!(
         document
             .descendants()
-            .any(|n| n.attribute("data-mt-key") == Some("kanban:card:a")
+            .any(|n| n.attribute("data-mt-key") == Some("kanban:card:1")
                 && n.attribute("data-mt-role") == Some("node-label")
                 && n.descendants().any(|child| child.text() == Some("Same 😀"))),
         "Kanban labels must survive the production SVG pipeline"
@@ -2168,7 +2168,7 @@ fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {
         assert!(
             pieces
                 .iter()
-                .any(|p| p["domId"] == format!("kanban:field:a:{field}")
+                .any(|p| p["domId"] == format!("kanban:field:1:{field}")
                     && slice(&p["span"]) == value)
         );
     }
@@ -2179,4 +2179,162 @@ fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {
         support::strip_trace(result["svg"].as_str().unwrap()),
         support::strip_trace(baseline["svg"].as_str().unwrap())
     );
+}
+
+#[test]
+fn kanban_2_repeated_ids_keep_distinct_occurrences_and_metadata() {
+    for second in ["Second", "Same 😀"] {
+        for separate_columns in [false, true] {
+            let source = format!(
+                "kanban\r\n  todo[Todo]\r\n    a[Same 😀]@{{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }}\r\n{}    a[{second}]@{{ ticket: 'T-2', assigned: 'Bob', priority: 'Low' }}\r\n",
+                if separate_columns {
+                    "  done[Done]\r\n"
+                } else {
+                    ""
+                }
+            );
+            let result = mermaid_trace_rs::render("kanban-repeated", &source).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let cards: Vec<_> = pieces.iter().filter(|p| p["kind"] == "node").collect();
+            assert_eq!(cards.len(), 2);
+            assert_ne!(cards[0]["domId"], cards[1]["domId"]);
+            assert_eq!(cards[0]["semanticId"], "a");
+            assert_eq!(cards[1]["semanticId"], "a");
+            let utf16: Vec<_> = source.encode_utf16().collect();
+            let slice = |span: &Value| {
+                String::from_utf16(
+                    &utf16[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap()
+            };
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            for (i, card) in cards.iter().enumerate() {
+                assert_eq!(
+                    slice(&card["labelSpan"]),
+                    if i == 0 { "Same 😀" } else { second }
+                );
+                let key = card["domId"].as_str().unwrap();
+                let body = svg
+                    .descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some(key)
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    svg.descendants()
+                        .filter(|n| n.attribute("data-mt-key") == Some(key)
+                            && n.attribute("data-mt-role") == Some("node"))
+                        .count(),
+                    1
+                );
+                assert_eq!(body.attribute("data-mt-refs"), card["id"].as_str());
+                for text in if i == 0 {
+                    ["T-1", "Alice", "High"]
+                } else {
+                    ["T-2", "Bob", "Low"]
+                } {
+                    let field = pieces
+                        .iter()
+                        .find(|p| p["kind"] == "control" && slice(&p["span"]) == text)
+                        .unwrap();
+                    let visuals: Vec<_> = svg
+                        .descendants()
+                        .filter(|n| n.attribute("data-mt-key") == field["domId"].as_str())
+                        .collect();
+                    assert_eq!(visuals.len(), 1, "metadata {text} has its own binding");
+                    if matches!(text, "High" | "Low") {
+                        assert!(body.descendants().any(|n| n == visuals[0]));
+                    } else {
+                        // Safe export lifts foreignObject text out of the card wrapper.
+                        let rendered: String = visuals[0]
+                            .descendants()
+                            .filter(|n| n.is_text())
+                            .filter_map(|n| n.text())
+                            .collect();
+                        assert_eq!(rendered, text, "the visible field selects its own value");
+                    }
+                }
+            }
+            assert!(cards[0]["span"]["end"].as_u64() < cards[1]["span"]["start"].as_u64());
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline =
+                mermaid_trace_rs::render_with(&plain, "kanban-repeated", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(result["svg"].as_str().unwrap()),
+                support::strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn kanban_2_pinned_corpus_renders_and_preserves_static_output() {
+    let directory =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/merman/fixtures/kanban");
+    let mut fixtures: Vec<_> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "mmd"))
+        .collect();
+    fixtures.sort();
+    assert_eq!(
+        fixtures.len(),
+        87,
+        "review the pinned Kanban inventory when it changes"
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for path in fixtures {
+        let source = std::fs::read_to_string(&path).unwrap();
+        let mapped = mermaid_trace_rs::render("kanban-corpus", &source)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        let baseline = mermaid_trace_rs::render_with(&plain, "kanban-corpus", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap()),
+            "{}",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn kanban_2_repeated_column_ids_keep_separate_label_origins() {
+    let source = "kanban\n  todo[First]\n    a[Task]\n  todo[Second]\n    b[Other]\n";
+    let result = mermaid_trace_rs::render("kanban-columns", source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let columns: Vec<_> = pieces
+        .iter()
+        .filter(|p| {
+            p["domId"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("kanban:column:"))
+        })
+        .collect();
+    assert_eq!(columns.len(), 2);
+    assert_ne!(columns[0]["domId"], columns[1]["domId"]);
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    for (piece, label) in columns.iter().zip(["First", "Second"]) {
+        let span = &piece["labelSpan"];
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            label
+        );
+        let text = svg
+            .descendants()
+            .find(|n| {
+                n.attribute("data-mt-key") == piece["domId"].as_str()
+                    && n.attribute("data-mt-role") == Some("control-label")
+            })
+            .unwrap();
+        assert_eq!(
+            text.descendants()
+                .filter(|n| n.is_text())
+                .filter_map(|n| n.text())
+                .collect::<String>(),
+            label
+        );
+    }
 }

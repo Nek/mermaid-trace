@@ -107,3 +107,9 @@ The additional native corpus probe processed 409 fixtures in **9.19 seconds** wi
 There is still **no defensible remaining-hours forecast**. The audit separates four confirmed defects from missing evidence, but has measured no representative fixes. After agreement on the contract, first close K1 and the sequence provenance failures with TDD, record investigation/implementation/verification time separately, then reassess comparable remaining work. Reuse corpus gates for broad artifact checks and targeted browser cases for distinct interaction behavior; do not multiply every fixture by every browser gesture without a coverage reason.
 
 The audit stops here. No implementation goal was resumed, no requirement was weakened, and no new family was added.
+
+## Implementation checkpoints
+
+2026-09-28, following the user's instruction to proceed: **K1 resolved** under [KANBAN-2-OCCURRENCES](../planning-diagrams/spec.md#kanban-2-occurrences-implemented). The historical table above records the audit baseline. All 87 Kanban fixtures now render with static parity; repeated-card and metadata saved/live selection passes. S1–S3 and the other unverified acceptance areas remain open. Browser/fidelity choices remain unresolved; this common-behavior fix does not decide them or close the six-family goal.
+
+First timed sample: 20:11:40–20:20:38 UTC, approximately **nine AI agent wall-clock minutes** from source investigation to verified K1 checks, excluding final documentation/commit delivery. Native corpus verification took 3.15 seconds; the two focused browser tests took 4.78 seconds in the final run. This includes test development/corrections and overlapping verification; it is not nine minutes of production editing and cannot be extrapolated across unlike gaps.
