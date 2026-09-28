@@ -8,15 +8,15 @@ import test from 'node:test';
 import { chromium } from 'playwright';
 import { createMermanProducer } from '../src/producer/merman.js';
 
+const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+
 const source = 'sequenceDiagram\r\n%% 😀 same\r\nparticipant A as Same\r\nactor B as Same\r\nloop outer\r\nA->>+B: same😀\r\nnote over B: same\r\nopt inner\r\nB-->>-A: same😀\r\nend\r\nend\r\nA->>A: \r\n';
 
 test('SEQ-AC2/3: saved native SVG selects sequence pieces, labels and unlabeled connectors without a renderer', async () => {
   const producer = await createMermanProducer();
   const { svg } = await producer.render('sequence-native', source);
   await producer.close();
-  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
-  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
-    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
@@ -68,8 +68,6 @@ test('OWN-SEQ: saved and live note attachment selection stays with the note', { 
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-owner-'));
   const filename = join(directory, 'notes.md');
   const producer = await createMermanProducer();
-  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
-  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   const browser = await chromium.launch();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
@@ -124,8 +122,6 @@ test('SEQ-TITLE: saved and live titles retain effective and earlier source owner
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-title-'));
   const filename = join(directory, 'title.md');
   const producer = await createMermanProducer();
-  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
-  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   const browser = await chromium.launch();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
@@ -181,8 +177,6 @@ test('SEQ-PARTICIPANT-ORIGINS: aliases and earlier declarations retain saved/liv
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-participants-'));
   const filename = join(directory, 'participants.md');
   const producer = await createMermanProducer();
-  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
-  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   const browser = await chromium.launch();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
