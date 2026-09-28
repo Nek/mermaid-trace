@@ -6,7 +6,7 @@ Agreed process, 2026-09-28. Read this before reassessing or resuming the existin
 
 - The stored goal is `existing families`, currently blocked. Its wording is not a sufficient completion contract.
 - The working interpretation is full support for flowchart (including ELK), sequence, Gantt, user journey, Kanban and state. Freeze the exact boundary with the user before resuming implementation. This must not silently expand into the separate [all-family release gate](specs/diagram-coverage/spec.md), Class/ER work or other milestones.
-- State has a documented pinned inventory gate; the other five have open coverage. This is an evidence summary, not a completion percentage. See the [roadmap](ROADMAP.md) and linked family specs.
+- The [bounded audit](specs/diagram-coverage/existing-families-audit.md) records the pinned references, coverage evidence, four confirmed sequence/Kanban defects and remaining unverified areas. State's pinned inventory gate remains valid; it does not establish every Mermaid 12 configuration. This is an evidence summary, not a completion percentage.
 - The earlier 80–160 and 150–300+ AI wall-clock-hour forecasts, and the 8–16-hour inventory estimate, were withdrawn as unsupported. Do not reuse them as a baseline. There is no credible remaining-hours forecast yet.
 - This document records the audit process; it does not resume implementation or change the stored goal.
 
@@ -35,4 +35,4 @@ The audit ends after one defined pass through the named pinned sources and exist
 - A newly discovered bug within agreed behavior remains part of the work. If resolving a discovery requires changing the agreed goal or acceptance boundary, stop implementation immediately and discuss the scope with the user before proceeding.
 - Preserve full-feature coverage, source ownership, migration acceptance, TDD and atomic commits. Missing or failing acceptance must remain visible until resolved; do not weaken it to close a gate.
 
-Next step: carry out the bounded evidence audit and review its concrete completion checklist with the user before resuming the blocked implementation goal.
+Next step: review the audit's proposed six-family completion contract with the user, resolving the reference/fidelity and browser acceptance boundaries before resuming the blocked implementation goal. Calibrate a new estimate from measured representative fixes after that agreement.
