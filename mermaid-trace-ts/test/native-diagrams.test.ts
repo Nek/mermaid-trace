@@ -107,6 +107,66 @@ test('OWN-FLOW-ENDPOINT: saved and live references select owning connection grou
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FLOW-2-SUBGRAPH-ID-SHADOW: unrendered node source stays nonvisual while the subgraph selects', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-subgraph-shadow-'));
+  const filename = join(directory, 'groups.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+      const source = `${header}\na --> b\nsubgraph A\nB\nend\nsubgraph B\nb\nend\n`;
+      const shadowStart = source.indexOf('\nB\n') + 1;
+      const groupText = 'subgraph B\nb\nend';
+      const { svg } = await producer.render('shadowed-group', source);
+      await page.setContent(svg);
+      const originalSvg = await page.locator('svg').evaluate(element => element.outerHTML);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: any[] = [];
+        Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+      }, activation);
+      assert.equal(await page.locator('[data-mt-key="node:B"][data-mt-role=node]').count(), 0);
+      const group = page.locator('[data-mt-key="flowchart:subgraph:B"][data-mt-role=control]');
+      assert.equal(await group.count(), 1);
+      await page.evaluate(start => (window as any).handle.highlight([{ start, end: start + 1 }]), shadowStart);
+      assert.deepEqual(await page.locator('[data-mt-selected=true]').evaluateAll(elements => [...new Set(elements.map(element => element.getAttribute('data-mt-key')))]),
+        ['flowchart:subgraph:A'], 'shadowed source may select its enclosing block, not subgraph B');
+      await clickExposedTarget(group);
+      const span = await page.evaluate(() => (window as any).events.at(-1).span);
+      assert.equal(source.slice(span.start, span.end), groupText);
+      await page.evaluate(() => (window as any).handle.dispose());
+      assert.equal(await page.locator('svg').evaluate(element => element.outerHTML), originalSvg);
+
+      const markdown = `# Groups\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      await original.evaluate((element, start) => {
+        const range = element.ownerDocument.createRange();
+        range.setStart(element.firstChild!, start); range.setEnd(element.firstChild!, start + 1);
+        const selection = element.ownerDocument.getSelection()!;
+        selection.removeAllRanges(); selection.addRange(range);
+      }, markdown.indexOf(source) + shadowStart);
+      await page.waitForFunction(() => !document.querySelector('[data-mt-key="flowchart:subgraph:B"][data-mt-selected=true]'));
+      assert.equal(await page.locator('[data-mt-key="node:B"][data-mt-selected=true]').count(), 0);
+      const liveGroup = page.locator('[data-mt-key="flowchart:subgraph:B"][data-mt-role=control]');
+      await clickExposedTarget(liveGroup);
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), groupText);
+      const start = markdown.indexOf(groupText);
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+        formatLocation({ id: filename, source: markdown }, { start, end: start + groupText.length }));
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('OWN-STATE-ENDPOINT: saved and live references select their transition owner', { timeout: 240_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-state-owner-'));
   const filename = join(directory, 'states.md');

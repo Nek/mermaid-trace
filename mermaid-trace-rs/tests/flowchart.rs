@@ -146,6 +146,73 @@ fn flow_ac4_parallel_self_loops_classify_only_overwritten_dagre_occurrences() {
 }
 
 #[test]
+fn flow_ac4_subgraph_ids_shadow_unrendered_node_occurrences() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for (source, id, expected) in [
+        (
+            "flowchart LR\na --> b\nsubgraph A\nB\nend\nsubgraph B\nb\nend\n",
+            "B",
+            "B",
+        ),
+        (
+            "flowchart-elk LR\ndecision --> Work\nsubgraph Work [Work]\nA\nend\nclassDef hot fill:red\nclass decision,Work hot\n",
+            "Work",
+            "class decision,Work hot",
+        ),
+    ] {
+        let result = mermaid_trace_rs::render("shadowed-node", source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let node_key = format!("node:{id}");
+        let shadowed: Vec<_> = native
+            .iter()
+            .filter(|piece| piece["domId"] == node_key)
+            .collect();
+        assert_eq!(shadowed.len(), 1);
+        let piece = shadowed[0];
+        assert_eq!(piece["kind"], "nonvisual");
+        assert_eq!(piece["classification"], "subgraph-id-shadow");
+        let span = &piece["span"];
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            expected
+        );
+        let control_key = format!("flowchart:subgraph:{id}");
+        assert!(
+            result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["domId"] == control_key)
+        );
+        assert!(
+            !result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["domId"] == node_key)
+        );
+        let baseline = mermaid_trace_rs::render_with(&plain, "shadowed-node", source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
@@ -799,6 +866,28 @@ fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
         let result = mermaid_trace_rs::render_with(&renderer, "flow-inventory", &source)
             .unwrap_or_else(|error| panic!("{}: {error}", file.display()));
         let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let mapped: std::collections::HashSet<_> = result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|piece| piece["domId"].as_str())
+            .collect();
+        for piece in native.iter().filter(|piece| {
+            ["node", "edge", "control"].contains(&piece["kind"].as_str().unwrap_or(""))
+        }) {
+            assert!(
+                mapped.contains(piece["domId"].as_str().unwrap()),
+                "unclassified lost visual: {} {}",
+                file.display(),
+                piece
+            );
+        }
         for node in svg.descendants().filter(|node| node.has_tag_name("g")) {
             if node
                 .attribute("class")

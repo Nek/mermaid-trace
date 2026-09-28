@@ -31868,7 +31868,7 @@ index 06728f4c..f7de275b 100644
              fmt(-w / 2.0),
              fmt(-h / 2.0),
 diff --git a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs b/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
-index 8e2e7251..21732172 100644
+index 8e2e7251..05f7782c 100644
 --- a/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
 +++ b/crates/merman-render/src/svg/parity/flowchart/svg_emit.rs
 @@ -58,15 +58,6 @@ pub(super) fn render_flowchart_svg_model(
@@ -31887,12 +31887,29 @@ index 8e2e7251..21732172 100644
  
      let render_timing = options.timing();
      let measurer = options.text_measurer();
-@@ -450,6 +441,49 @@ pub(super) fn render_flowchart_svg_model(
+@@ -450,6 +441,66 @@ pub(super) fn render_flowchart_svg_model(
  
      let root_document = document.push_root_open(&mut out)?;
      document.push_accessibility_metadata(&mut out);
 +    if !render_context.source_occurrences().is_empty() {
 +        let mut occurrences = render_context.source_occurrences().to_vec();
++        // Flowchart nodes and subgraphs share a graph identity namespace. Once an ID becomes a
++        // subgraph, its former node occurrence has no separate leaf in either renderer.
++        let subgraph_ids: std::collections::HashSet<_> = model
++            .subgraphs
++            .iter()
++            .map(|group| group.id.as_str())
++            .collect();
++        for occurrence in &mut occurrences {
++            if occurrence["kind"] == "node"
++                && occurrence["semanticId"]
++                    .as_str()
++                    .is_some_and(|id| subgraph_ids.contains(id))
++            {
++                occurrence["kind"] = "nonvisual".into();
++                occurrence["classification"] = "subgraph-id-shadow".into();
++            }
++        }
 +        if !layout.uses_elk_adapter_dom {
 +            let visible: std::collections::HashSet<_> =
 +                layout.edges.iter().map(|edge| edge.id.as_str()).collect();
@@ -31937,7 +31954,7 @@ index 8e2e7251..21732172 100644
      out.push_str("<style>");
      out.push_str(&css);
      out.push_str("</style>");
-@@ -493,9 +527,14 @@ pub(super) fn render_flowchart_svg_model(
+@@ -493,9 +544,14 @@ pub(super) fn render_flowchart_svg_model(
          let title_y = -title_top_margin;
          let _ = write!(
              &mut out,
@@ -33798,10 +33815,10 @@ index 3b52053a..59c5680f 100644
  fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
      let plain =
 diff --git a/crates/merman-render/tests/flowchart_svg_test.rs b/crates/merman-render/tests/flowchart_svg_test.rs
-index 9741a84a..7372a18a 100644
+index 9741a84a..542bb060 100644
 --- a/crates/merman-render/tests/flowchart_svg_test.rs
 +++ b/crates/merman-render/tests/flowchart_svg_test.rs
-@@ -67,6 +67,43 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
+@@ -67,6 +67,89 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
      render_flowchart_svg_from_text_with_engine(Engine::new(), text)
  }
  
@@ -33840,6 +33857,52 @@ index 9741a84a..7372a18a 100644
 +            .count(),
 +        1
 +    );
++}
++
++#[test]
++fn subgraph_ids_shadow_node_occurrences_without_claiming_leaf_visuals() {
++    for (source, id) in [
++        (
++            "flowchart LR\na --> b\nsubgraph A\nB\nend\nsubgraph B\nb\nend\n",
++            "B",
++        ),
++        (
++            "flowchart LR\ndecision --> Work\nsubgraph Work [Work]\nA\nend\nclassDef hot fill:red\nclass decision,Work hot\n",
++            "Work",
++        ),
++    ] {
++        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
++            serde_json::json!({"traceSource": true}),
++        ));
++        let svg = render_flowchart_svg_from_text_with_engine(engine, source);
++        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
++        let metadata = document
++            .descendants()
++            .find_map(|node| node.attribute("data-mt-native"))
++            .expect("native source evidence");
++        let pieces: Vec<serde_json::Value> = serde_json::from_str(metadata).unwrap();
++        let node_key = format!("node:{id}");
++        let shadowed: Vec<_> = pieces
++            .iter()
++            .filter(|piece| piece["domId"] == node_key)
++            .collect();
++        assert!(!shadowed.is_empty());
++        assert!(
++            shadowed.iter().all(|piece| piece["kind"] == "nonvisual"
++                && piece["classification"] == "subgraph-id-shadow")
++        );
++        let control_key = format!("flowchart:subgraph:{id}");
++        assert!(
++            document
++                .descendants()
++                .any(|node| node.attribute("data-mt-key") == Some(control_key.as_str()))
++        );
++        assert!(
++            !document
++                .descendants()
++                .any(|node| node.attribute("data-mt-key") == Some(node_key.as_str()))
++        );
++    }
 +}
 +
  fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
