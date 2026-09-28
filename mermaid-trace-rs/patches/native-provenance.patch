@@ -29966,7 +29966,7 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/gantt.rs b/crates/merman-render/src/gantt.rs
-index 1031ff97..b7e2b188 100644
+index 1031ff97..0c15bb17 100644
 --- a/crates/merman-render/src/gantt.rs
 +++ b/crates/merman-render/src/gantt.rs
 @@ -1,8 +1,9 @@
@@ -29981,7 +29981,25 @@ index 1031ff97..b7e2b188 100644
  };
  use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
  use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
-@@ -964,7 +965,16 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -404,7 +405,6 @@ fn auto_tick_interval(min_ms: i64, max_ms: i64) -> (i64, &'static str) {
+ }
+ 
+ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
+-    let s = s.trim();
+     let mut num = String::new();
+     let mut idx = 0;
+     for ch in s.chars() {
+@@ -415,6 +415,9 @@ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
+             break;
+         }
+     }
++    if num.starts_with('0') {
++        return None;
++    }
+     let every = num.parse::<i64>().ok()?;
+     if every <= 0 {
+         return None;
+@@ -964,7 +967,16 @@ pub(crate) fn layout_gantt_diagram_typed(
      let grid_line_start_padding = cfg_f64(gantt_cfg, &["gridLineStartPadding"]).unwrap_or(35.0);
      let title_top_margin = cfg_f64(gantt_cfg, &["titleTopMargin"]).unwrap_or(25.0);
      let font_size = cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0);
@@ -29999,7 +30017,7 @@ index 1031ff97..b7e2b188 100644
      let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
  
      let cfg_display_mode = gantt_cfg
-@@ -1051,7 +1061,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1051,7 +1063,7 @@ pub(crate) fn layout_gantt_diagram_typed(
      } else {
          (0, 0)
      };
@@ -30008,7 +30026,7 @@ index 1031ff97..b7e2b188 100644
      let span_ms = absolute_millis_between(max_ms, min_ms);
      let max_exclude_span_ms = i128::from(MS_PER_DAY) * 365 * 5;
      let has_excludes_layer = has_tasks
-@@ -1197,7 +1207,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1197,7 +1209,7 @@ pub(crate) fn layout_gantt_diagram_typed(
          } else if t.vert {
              0.08 * bar_height
          } else {
@@ -30017,7 +30035,7 @@ index 1031ff97..b7e2b188 100644
          };
          let bar_height_actual = if t.vert {
              row_task_count as f64 * gap + bar_height * 2.0
-@@ -1272,7 +1282,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1272,7 +1284,7 @@ pub(crate) fn layout_gantt_diagram_typed(
  
          let label_x = if t.vert {
              start_x + left_padding
@@ -30026,7 +30044,7 @@ index 1031ff97..b7e2b188 100644
              if end_x_for_label + text_width + 1.5 * left_padding > width {
                  start_x_for_label + left_padding - 5.0
              } else {
-@@ -1296,7 +1306,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1296,7 +1308,7 @@ pub(crate) fn layout_gantt_diagram_typed(
  
          // Mermaid checks overflow for both horizontal and vertical labels:
          // `if (textWidth > endX - startX) { ... }` (Mermaid@11.12.2 ganttRenderer.js).
@@ -30035,7 +30053,7 @@ index 1031ff97..b7e2b188 100644
          let outside_left =
              class_overflows && (end_x_for_class + text_width + 1.5 * left_padding > width);
          let outside_right = class_overflows && !outside_left;
-@@ -1323,9 +1333,13 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1323,9 +1335,13 @@ pub(crate) fn layout_gantt_diagram_typed(
  
          tasks.push(GanttTaskLayout {
              id: t.id.clone(),
@@ -30049,7 +30067,7 @@ index 1031ff97..b7e2b188 100644
              order: t.order,
              start_ms: t.start_ms,
              end_ms: t.end_ms,
-@@ -1365,7 +1379,15 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1365,7 +1381,15 @@ pub(crate) fn layout_gantt_diagram_typed(
      }
  
      let axis_format = axis_format_to_strftime(&m.axis_format, &m.date_format, cfg_axis_format);
@@ -30066,7 +30084,7 @@ index 1031ff97..b7e2b188 100644
      let week_start = if m.weekday.trim().is_empty() {
          gantt_cfg.get("weekday").and_then(|v| v.as_str())
      } else {
-@@ -1429,7 +1451,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+@@ -1429,7 +1453,7 @@ pub(crate) fn layout_gantt_diagram_typed(
          },
          date_format: m.date_format.clone(),
          axis_format: m.axis_format.clone(),
@@ -30075,6 +30093,22 @@ index 1031ff97..b7e2b188 100644
          top_axis: top_axis_enabled,
          today_marker: m.today_marker.clone(),
          categories,
+@@ -1456,6 +1480,15 @@ mod tests {
+     use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+     use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
+ 
++    #[test]
++    fn tick_interval_requires_the_upstream_full_token() {
++        assert_eq!(super::parse_tick_interval("1day"), Some((1, "day")));
++        assert_eq!(super::parse_tick_interval("2day"), Some((2, "day")));
++        for invalid in ["01day", " 1day", "1day ", "0day", "1year"] {
++            assert_eq!(super::parse_tick_interval(invalid), None, "{invalid:?}");
++        }
++    }
++
+     #[test]
+     fn zero_section_styles_preserves_javascript_nan_class_suffix() {
+         let categories = vec!["first".to_string(), "second".to_string()];
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
 index c8ebca79..9e778388 100644
 --- a/crates/merman-render/src/journey.rs

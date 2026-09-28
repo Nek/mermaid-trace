@@ -1702,6 +1702,50 @@ fn gantt_2_configured_tick_interval_keeps_task_binding_and_static_parity() {
 }
 
 #[test]
+fn gantt_2_tick_interval_uses_the_pinned_full_string_rule() {
+    for (interval, expected_ticks) in [
+        ("1day", 16),
+        ("2day", 8),
+        ("01day", 8),
+        (" 1day", 8),
+        ("1day ", 8),
+    ] {
+        let source = format!(
+            "---\nconfig: {{ gantt: {{ useWidth: 600, tickInterval: '{interval}' }} }}\n---\ngantt\ndateFormat YYYY-MM-DD\naxisFormat %Y-%m-%d\ntodayMarker off\nsection Work\nTask :a, 2026-01-01, 15d\n"
+        );
+        let mapped = mermaid_trace_rs::render("gantt-tick-lexical", &source).unwrap();
+        let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+        let ticks: Vec<_> = svg
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("tick"))
+            .collect();
+        assert_eq!(ticks.len(), expected_ticks, "interval {interval:?}");
+        assert!(ticks.iter().all(|tick| tick.attribute("data-mt-role").is_none()));
+        let task = mapped["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|piece| piece["kind"] == "node" && piece["semanticId"] == "a")
+            .unwrap();
+        let span = &task["labelSpan"];
+        assert_eq!(
+            &source[span["start"].as_u64().unwrap() as usize
+                ..span["end"].as_u64().unwrap() as usize],
+            "Task"
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+            merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+        ));
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-tick-lexical", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap()),
+            "interval {interval:?}"
+        );
+    }
+}
+
+#[test]
 fn gantt_2_root_sizing_preserves_static_output_and_task_binding() {
     for (use_max_width, width, height) in [(true, "100%", None), (false, "420", Some("124"))] {
         let source = format!(

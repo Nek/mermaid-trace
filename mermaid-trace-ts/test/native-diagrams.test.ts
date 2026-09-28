@@ -574,6 +574,11 @@ test('GANTT-2-TICK-INTERVAL-CONFIG: configured ticks retain saved and live task 
   await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 14d', 'Task', [['gantt:section:Work', 'section Work', 'control']]);
 });
 
+test('GANTT-2-TICK-INTERVAL-LEXICAL: invalid interval fallback retains saved and live selection', { timeout: 60_000 }, async () => {
+  const source = "---\nconfig: { gantt: { useWidth: 600, tickInterval: '01day' } }\n---\ngantt\ndateFormat YYYY-MM-DD\naxisFormat %Y-%m-%d\ntodayMarker off\nsection Work\nTask :a, 2026-01-01, 15d\n";
+  await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 15d', 'Task', [['gantt:section:Work', 'section Work', 'control']]);
+});
+
 test('GANTT-2-ROOT-SIZING: fixed and responsive SVGs retain saved and live selection', { timeout: 120_000 }, async () => {
   for (const useMaxWidth of [false, true]) {
     const source = '---\nconfig:\n  gantt:\n    useWidth: 420\n    useMaxWidth: ' + useMaxWidth + '\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n';
