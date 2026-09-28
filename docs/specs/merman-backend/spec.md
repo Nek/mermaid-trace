@@ -1,5 +1,13 @@
 # Merman backend migration
 
+## MERMAN-FORK: pinned fork delivery (implemented)
+
+Replace the accumulated patch with the same native source committed in `Nek/merman`, retaining its history and the existing `vendor/merman` path. Pin a full commit SHA; do not upgrade renderer code or alter diagram acceptance. A fresh bootstrap must fetch that exact commit, repeat safely, and reject an existing dirty or differently pinned checkout without modifying it. Existing development symlinks remain usable when clean and pinned. Preserve licenses and keep the upstream remote separate from the fork used for pushes.
+
+Plan: publish the already verified native branch, add an offline bootstrap regression for pinning and checkout preservation, then replace patch application with checkout validation. Verify the fork tree equals the patched baseline, exercise a fresh network bootstrap/build, run existing native and saved/live integration checks, update current setup guidance, and remove the patch only after the fork is available. Historical audit references retain their original revisions.
+
+Verification: the bootstrap regression failed when a fresh checkout still required the absent patch; it now passes exact non-tip pinning, repeat runs, branch preservation, and refusal of dirty/untracked/differently pinned checkouts. A fresh network clone of `333b4c32dc2220a3356e6a4b93f8bd1160a525f5` matches the previous native source tree and passes the build and all 113 native tests. Seventeen bootstrap/producer/saved-live/CLI checks and TypeScript typechecking pass. This changes dependency delivery only, not diagram scope or behavior.
+
 Decision, 2026-09-26: use Merman as the new producer backend on `feat/merman-backend` in this repository. TypeScript remains the host and activation language; Merman supplies the Rust rendering core through its native Node binding. Use `mermaid-trace-ts/` and `mermaid-trace-rs/` as independent language package directories; shared docs remain at the root. Keep one repository because artifact, Markdown, viewer and CLI contracts remain shared. A future upstream Merman provenance patch belongs in a separate upstream checkout, not a second Trace product.
 
 ## Scope and contracts

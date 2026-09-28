@@ -20,7 +20,7 @@ Markdown integration is part of initial delivery: markdown-it fence provenance a
 ## Repository layout
 
 - `mermaid-trace-ts/`: TypeScript libraries, viewer, CLI, tests, package manifest, pnpm lockfile and dependencies. Its producer communicates with the Rust executable over JSON lines.
-- `mermaid-trace-rs/`: Rust library/executable, Cargo lockfile and a pinned Merman source patch. The upstream checkout is generated into ignored `vendor/merman/`.
+- `mermaid-trace-rs/`: Rust library/executable, Cargo lockfile and bootstrap for an exact commit of [our Merman fork](https://github.com/Nek/merman). The checkout lives in ignored `vendor/merman/`.
 - `docs/`: shared requirements, contracts, roadmap and examples.
 
 The root Makefile builds and tests Rust and TypeScript. Each language owns its manifest; pnpm and Cargo lockfiles pin their dependencies. Shared docs and artifact contracts govern both. See [native setup](docs/native-renderer.md).
@@ -52,7 +52,7 @@ The spec supersedes the initial `mermaid-source-mapping-requirements.md` draft a
 
 Use Rust 1.95+ and Node.js 24.x, as declared in `mermaid-trace-ts/package.json` engines, installed however you prefer. pnpm 11.28.0 is selected by `packageManager`; TypeScript and Node types are locked dependencies. With Corepack available, run from the repository root:
 
-Reference-baseline tests use the pinned, unmodified Mermaid npm release. The native renderer and its provenance patch are built by `make test`; no sibling Mermaid fork is needed.
+Reference-baseline tests use the pinned, unmodified Mermaid npm release. `make test` fetches and builds the pinned native fork automatically; no separately prepared checkout is needed.
 
 ```sh
 cd mermaid-trace-ts

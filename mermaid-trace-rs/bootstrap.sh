@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")" && pwd)
-upstream="$root/vendor/merman"
-revision=72c024776a4bf2dfb9a769b67910736229355906
-patch="$root/patches/native-provenance.patch"
-if [ ! -d "$upstream/.git" ]; then
+checkout="$root/vendor/merman"
+revision=333b4c32dc2220a3356e6a4b93f8bd1160a525f5
+if [ ! -e "$checkout/.git" ]; then
   mkdir -p "$root/vendor"
-  git clone --no-checkout --depth 1 https://github.com/Latias94/merman.git "$upstream"
-  git -C "$upstream" fetch --depth 1 origin "$revision"
-  git -C "$upstream" switch --detach "$revision"
+  git clone --no-checkout --depth 1 https://github.com/Nek/merman.git "$checkout"
+  git -C "$checkout" fetch --depth 1 origin "$revision"
+  git -C "$checkout" switch --detach "$revision"
 fi
-if git -C "$upstream" apply --reverse --check "$patch" 2>/dev/null; then
-  exit 0
-fi
-if [ "$(git -C "$upstream" rev-parse HEAD)" != "$revision" ]; then
-  echo "Merman source must be pinned to $revision; existing checkout was left untouched." >&2
+if [ "$(git -C "$checkout" rev-parse HEAD)" != "$revision" ] ||
+   [ -n "$(git -C "$checkout" status --porcelain)" ]; then
+  echo "Merman source must be clean and pinned to $revision; existing checkout was left untouched." >&2
   exit 1
 fi
-git -C "$upstream" apply --check "$patch"
-git -C "$upstream" apply "$patch"

@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+const fork = 'https://github.com/Nek/merman.git';
+
+test('MERMAN-FORK: bootstrap pins the fork and preserves existing checkouts', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-bootstrap-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const remote = join(directory, 'remote');
+  const root = join(directory, 'native');
+  await mkdir(remote); await mkdir(root);
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: join(directory, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git(remote, 'init', '-b', 'main');
+  git(remote, 'config', 'user.name', 'Bootstrap test');
+  git(remote, 'config', 'user.email', 'bootstrap@example.invalid');
+  await writeFile(join(remote, 'source'), 'pinned');
+  git(remote, 'add', '.'); git(remote, 'commit', '-m', 'pinned');
+  const pinned = git(remote, 'rev-parse', 'HEAD');
+  await writeFile(join(remote, 'source'), 'newer');
+  git(remote, 'commit', '-am', 'newer');
+  const newer = git(remote, 'rev-parse', 'HEAD');
+  // Real Git, offline transport: test a non-tip pin without depending on GitHub.
+  git(remote, 'config', '--global', `url.${remote}.insteadOf`, fork);
+  const script = (await readFile('../mermaid-trace-rs/bootstrap.sh', 'utf8')).replace(/^revision=.*$/m, `revision=${pinned}`);
+  const bootstrap = join(root, 'bootstrap.sh');
+  await writeFile(bootstrap, script);
+  const run = () => spawnSync('bash', [bootstrap], { env, encoding: 'utf8' });
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  const checkout = join(root, 'vendor', 'merman');
+  assert.equal(git(checkout, 'rev-parse', 'HEAD'), pinned);
+  assert.equal(git(checkout, 'config', '--get', 'remote.origin.url'), fork);
+  git(checkout, 'switch', '-c', 'development');
+  assert.equal(run().status, 0);
+  assert.equal(git(checkout, 'branch', '--show-current'), 'development');
+  await writeFile(join(checkout, 'source'), 'local edit');
+  assert.notEqual(run().status, 0);
+  assert.equal(await readFile(join(checkout, 'source'), 'utf8'), 'local edit');
+  git(checkout, 'restore', 'source');
+  await writeFile(join(checkout, 'draft'), 'untracked');
+  assert.notEqual(run().status, 0);
+  assert.equal(await readFile(join(checkout, 'draft'), 'utf8'), 'untracked');
+  await rm(join(checkout, 'draft'));
+  git(checkout, 'fetch', 'origin', newer);
+  git(checkout, 'switch', '--detach', newer);
+  assert.notEqual(run().status, 0);
+  assert.equal(git(checkout, 'rev-parse', 'HEAD'), newer);
+});
