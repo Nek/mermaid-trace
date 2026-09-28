@@ -42,6 +42,7 @@ This project uses Spec-Driven Development. The files below are instructions to r
 
 | Task or phase | Read |
 | --- | --- |
+| Reassess, estimate or resume the `existing families` goal | [Goal reassessment](docs/GOAL-REASSESSMENT.md) before changing scope or starting implementation |
 | Specify, plan, implement, test, or review project behavior | [SDD.md](docs/SDD.md) and the relevant existing feature artifacts |
 | Create or revise a spec, clarify requirements, select a story, define contracts, or plan implementation | Also [SDD-PLANNING.md](docs/SDD-PLANNING.md) |
 | Write tests, implement or fix behavior, verify work, or review an implementation | Also [SDD-DELIVERY.md](docs/SDD-DELIVERY.md) |

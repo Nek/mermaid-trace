@@ -1,0 +1,38 @@
+# Goal reassessment and estimation
+
+Agreed process, 2026-09-28. Read this before reassessing or resuming the existing-family goal, including after context compaction.
+
+## Current position
+
+- The stored goal is `existing families`, currently blocked. Its wording is not a sufficient completion contract.
+- The working interpretation is full support for flowchart (including ELK), sequence, Gantt, user journey, Kanban and state. Freeze the exact boundary with the user before resuming implementation. This must not silently expand into the separate [all-family release gate](specs/diagram-coverage/spec.md), Class/ER work or other milestones.
+- State has a documented pinned inventory gate; the other five have open coverage. This is an evidence summary, not a completion percentage. See the [roadmap](ROADMAP.md) and linked family specs.
+- The earlier 80–160 and 150–300+ AI wall-clock-hour forecasts, and the 8–16-hour inventory estimate, were withdrawn as unsupported. Do not reuse them as a baseline. There is no credible remaining-hours forecast yet.
+- This document records the audit process; it does not resume implementation or change the stored goal.
+
+## Reduce uncertainty
+
+1. **Freeze the reference and finish line.** Record exact Mermaid and Merman revisions, the applied patch, the six-family boundary, required syntax/configuration, renderer/browser variants and source-selection behavior. Explain any differences between reference versions. New upstream features do not automatically expand scope.
+2. **Inventory existing evidence.** Compare the pinned grammars, configuration schemas and renderer paths with existing tests and feature criteria. Reuse upstream fixtures. Separate missing functionality from missing test evidence; an unverified case may already work.
+3. **Probe unknowns in batches.** Use the existing artifact, mapping and saved/live interaction checks. Give each failure independent expected behavior. Group failures by demonstrated root cause and identify the responsible layer: mapping, native rendering, activation/Markdown integration or test harness. Do not count every failing fixture as a separate implementation task.
+4. **Calibrate after implementation resumes.** Close representative gaps through TDD and record investigation, implementation and verification time separately. Estimate comparable remaining work from those observations; disclose unresolved risks instead of assigning arbitrary hours to each family.
+
+## One audit artifact
+
+Keep one compact coverage table alongside the relevant specs. Link to existing requirements and tests rather than duplicating their prose.
+
+| Requirement / construct and variants | Status | Evidence or concrete missing check | Responsible layer / shared cause |
+| --- | --- | --- | --- |
+
+Use **verified**, **confirmed broken**, or **unverified**. Verified entries identify the revision, check and observed result. Confirmed failures retain a reproducer and expected behavior. Unverified entries explain what evidence is missing; a test name alone is not a passing result. Record any uncertainty in the inventory's completeness explicitly.
+
+The audit ends after one defined pass through the named pinned sources and existing tests, plus targeted probes declared for that pass. Deliver the table, unresolved questions and grouped gaps even if some entries remain unverified. Do not turn the audit into an implementation marathon or claim an incomplete inventory proves full support.
+
+## Checkpoints and scope control
+
+- At checkpoints, report remaining gaps, newly discovered gaps and closed gaps against the same baseline. Include unresolved risks and actual elapsed work; distinguish AI agent wall-clock time from human effort. Fixture counts alone are not a progress percentage.
+- If discoveries outpace closures or measured work invalidates an estimate, report it promptly and explain why. Do not silently replace the forecast.
+- A newly discovered bug within agreed behavior remains part of the work. If resolving a discovery requires changing the agreed goal or acceptance boundary, stop implementation immediately and discuss the scope with the user before proceeding.
+- Preserve full-feature coverage, source ownership, migration acceptance, TDD and atomic commits. Missing or failing acceptance must remain visible until resolved; do not weaken it to close a gate.
+
+Next step: carry out the bounded evidence audit and review its concrete completion checklist with the user before resuming the blocked implementation goal.
