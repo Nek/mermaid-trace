@@ -213,6 +213,106 @@ fn flow_ac4_subgraph_ids_shadow_unrendered_node_occurrences() {
 }
 
 #[test]
+fn flow_ac4_5_edge_occurrences_keep_exact_operators_across_renderers() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\nA[\"Actor 😀\"] & B -->|Group 😀| C & D\r\nA --> B --> C\r\nA -->|first| B\r\nA -->|second| B\r\nA e1@--> B\r\nA e1@--> B\r\nA --> A\r\nA --> A\r\n"
+                );
+                let result = mermaid_trace_rs::render("edge-occurrences", &source).unwrap();
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                let edges: Vec<_> = pieces
+                    .iter()
+                    .filter(|piece| piece["kind"] == "edge" && piece.get("relation").is_none())
+                    .collect();
+                let expected_count = if header.contains("elk") { 12 } else { 11 };
+                assert_eq!(edges.len(), expected_count, "{header} {look} {html}");
+                let ids: std::collections::HashSet<_> = edges
+                    .iter()
+                    .map(|piece| piece["domId"].as_str().unwrap())
+                    .collect();
+                assert_eq!(ids.len(), expected_count, "distinct authored connectors");
+
+                let utf16 = |byte: usize| source[..byte].encode_utf16().count();
+                let mut expected = Vec::new();
+                let group = source.find("-->|Group 😀|").unwrap();
+                expected.push((group, group + "-->|Group 😀|".len(), 4));
+                let chain = source.find("A --> B --> C").unwrap();
+                for (offset, _) in source[chain..chain + "A --> B --> C".len()].match_indices("-->")
+                {
+                    expected.push((chain + offset, chain + offset + 3, 1));
+                }
+                for label in ["first", "second"] {
+                    let operator = format!("-->|{label}|");
+                    let start = source.find(&operator).unwrap();
+                    expected.push((start, start + operator.len(), 1));
+                }
+                for (start, _) in source.match_indices("e1@-->") {
+                    expected.push((start, start + "e1@-->".len(), 1));
+                }
+                for (index, (statement, _)) in source.match_indices("A --> A").enumerate() {
+                    let start = statement + 2;
+                    expected.push((
+                        start,
+                        start + 3,
+                        usize::from(header.contains("elk") || index == 1),
+                    ));
+                }
+                for (start, end, count) in expected {
+                    let matching: Vec<_> = edges
+                        .iter()
+                        .filter(|piece| {
+                            piece["span"]
+                                == serde_json::json!({"start":utf16(start),"end":utf16(end)})
+                        })
+                        .collect();
+                    assert_eq!(
+                        matching.len(),
+                        count,
+                        "{header} {look} {html}: {}",
+                        &source[start..end]
+                    );
+                    if start == group {
+                        assert!(matching.iter().all(|piece| {
+                            piece["labelSpan"]
+                                == serde_json::json!({"start":utf16(group + 4),"end":utf16(end - 1)})
+                        }));
+                    }
+                }
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let native: Vec<Value> = serde_json::from_str(
+                    svg.descendants()
+                        .find_map(|node| node.attribute("data-mt-native"))
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    native
+                        .iter()
+                        .filter(|piece| piece["classification"] == "overwritten-self-loop")
+                        .count(),
+                    if header.contains("elk") { 0 } else { 3 }
+                );
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "edge-occurrences", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));

@@ -21,7 +21,7 @@ async function clickExposedTarget(target: Locator) {
   await target.click({ position });
 }
 
-async function noteConnectorPoint(target: Locator) {
+async function connectorPoint(target: Locator) {
   await target.scrollIntoViewIfNeeded();
   return target.evaluate(element => {
     const path = element as SVGGeometryElement;
@@ -163,6 +163,94 @@ test('FLOW-2-SUBGRAPH-ID-SHADOW: unrendered node source stays nonvisual while th
       await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
         formatLocation({ id: filename, source: markdown }, { start, end: start + groupText.length }));
       await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('FLOW-2-EDGE-OCCURRENCES: grouped and repeated connectors retain one source selection per operator', { timeout: 240_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-edge-occurrences-'));
+  const filename = join(directory, 'edges.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
+      const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  handDrawnSeed: 42\n---\n${header}\nA["Actor 😀"] & B -->|Group 😀| C & D\nA --> B --> C\nA -->|first| B\nA -->|second| B\nA e1@--> B\nA e1@--> B\nA --> A\nA --> A\n`;
+      const groupStart = source.indexOf('-->|Group 😀|');
+      const labelStart = groupStart + 4;
+      const repeated = [...source.matchAll(/e1@-->/g)].map(match => match.index);
+      const { svg } = await producer.render('edge-occurrences', source);
+      await page.setContent(svg + svg.replaceAll('edge-occurrences', 'edge-copy'));
+      const original = await page.locator('svg').first().evaluate(element => element.outerHTML);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: any[] = [];
+        Object.assign(window, { events, handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => events.push(event) })) });
+      }, activation);
+      const first = page.locator('svg').first();
+      const group = first.locator(`[data-mt-role=edge][data-mt-start="${groupStart}"]`);
+      const labels = first.locator(`[data-mt-role=edge-label][data-mt-start="${labelStart}"]`);
+      assert.equal(await group.count(), 4, `${header} ${look} ${html}`);
+      assert.equal(await labels.count(), 4);
+      assert.equal(await group.evaluateAll(elements => elements.filter(element => element.getAttribute('tabindex') === '0').length), 1);
+      { const point = await connectorPoint(group.first()); await page.mouse.click(point.x, point.y); }
+      assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 4);
+      assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 0);
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), { start: groupStart, end: groupStart + '-->|Group 😀|'.length });
+      await group.first().focus(); await group.first().press('Enter');
+      assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 4);
+      await group.first().press('Space');
+      assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 4);
+      await clickExposedTarget(labels.first());
+      assert.equal(await first.locator('[data-mt-role=edge-label][data-mt-selected=true]').count(), 4);
+      assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 0);
+      await page.evaluate(start => (window as any).handles[0].highlight([{ start, end: start + 1 }]), labelStart);
+      assert.equal(await first.locator('[data-mt-role=edge-label][data-mt-selected=true]').count(), 4);
+      for (const start of repeated) {
+        const edge = first.locator(`[data-mt-role=edge][data-mt-start="${start}"]`);
+        assert.equal(await edge.count(), 1);
+        { const point = await connectorPoint(edge); await page.mouse.click(point.x, point.y); }
+        assert.equal(await first.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 1);
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), { start, end: start + 6 });
+      }
+      assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+      await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+      assert.equal(await first.evaluate(element => element.outerHTML), original);
+
+      if (look === 'classic' && !html) {
+        const markdown = `# Edges\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+        await writeFile(filename, markdown);
+        preview = await watchPreview(filename, { port: 0, sourceView: true });
+        await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+        const originalSource = page.frameLocator('#source-frame').locator('#source');
+        const liveGroup = page.locator(`[data-mt-role=edge][data-mt-start="${groupStart}"]`);
+        assert.equal(await liveGroup.count(), 4);
+        { const point = await connectorPoint(liveGroup.first()); await page.mouse.click(point.x, point.y); }
+        assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.toString()), '-->|Group 😀|');
+        const start = markdown.indexOf('-->|Group 😀|');
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+          formatLocation({ id: filename, source: markdown }, { start, end: start + '-->|Group 😀|'.length }));
+        const later = [...markdown.matchAll(/e1@-->/g)][1]!.index;
+        const laterEdge = page.locator(`[data-mt-role=edge][data-mt-start="${repeated[1]}"]`);
+        { const point = await connectorPoint(laterEdge); await page.mouse.click(point.x, point.y); }
+        assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'e1@-->');
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+          formatLocation({ id: filename, source: markdown }, { start: later, end: later + 6 }));
+        await originalSource.evaluate((element, start) => {
+          const range = element.ownerDocument.createRange();
+          range.setStart(element.firstChild!, start); range.setEnd(element.firstChild!, start + 1);
+          const selection = element.ownerDocument.getSelection()!;
+          selection.removeAllRanges(); selection.addRange(range);
+        }, markdown.indexOf(source) + labelStart);
+        await page.waitForFunction(() => document.querySelectorAll('[data-mt-role=edge-label][data-mt-selected=true]').length === 4);
+        assert.equal(await page.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 0);
+        await preview.close(); preview = undefined;
+      }
     }
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
@@ -380,7 +468,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       const target = controlKey === "state:note:first" ? first.locator("path.note-edge").first() : controlKey === "state:note:last" ? first.locator("path.note-edge").last() : controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
-        const point = controlKey.startsWith('state:note:') ? await noteConnectorPoint(target) : await target.evaluate(element => {
+        const point = controlKey.startsWith('state:note:') ? await connectorPoint(target) : await target.evaluate(element => {
           const shape = element as SVGGeometryElement;
           const point = shape.getPointAtLength(shape.getTotalLength() * (element.tagName === 'path' ? 0.2 : 0.5)).matrixTransform(shape.getScreenCTM()!);
           return { x: point.x, y: point.y };
@@ -553,7 +641,7 @@ async function verifyNative(source: string, key: string, expected: string, label
         }, { start: toMarkdown(attachmentStart), end: toMarkdown(attachmentStart + attachment.length) });
         await page.waitForSelector('[data-mt-role=control][data-mt-selected=true]');
         assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true], [data-mt-role=node-label][data-mt-selected=true]').count(), 0, 'source note attachment must not select its referenced state');
-        const point = await noteConnectorPoint(target);
+        const point = await connectorPoint(target);
         await page.mouse.click(point.x, point.y);
         const body = page.locator(`[data-mt-role=control][data-mt-selected=true]`);
         assert.equal(await body.count(), 1, 'live connector activation selects the note body');
