@@ -176,3 +176,66 @@ test('SEQ-TITLE: saved and live titles retain effective and earlier source owner
     }
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('SEQ-PARTICIPANT-ORIGINS: aliases and earlier declarations retain saved/live ownership', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-seq-participants-'));
+  const filename = join(directory, 'participants.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    for (const [first, declaration, expected] of [
+      ['', 'participant A@{ alias: "Client 😀", type: boundary }', 'Client 😀'],
+      ['participant A as Old\n', 'participant A@{ alias: "Cli\\u0065nt" }', 'Cli\\u0065nt'],
+      ['participant A as Current\n', 'participant A as Current', 'Current'],
+      ['A->>B: Initial\n', 'actor A@{alias: Ignored} as Explicit', 'Explicit'],
+    ] as const) {
+      const source = `sequenceDiagram\n${first}${declaration}\nA->>B: Hello\n`;
+      const { svg } = await producer.render('seq-origin', source);
+      await page.setContent(svg + svg.replaceAll('seq-origin', 'seq-copy'));
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: any[] = [];
+        Object.assign(window, { events, handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: any) => events.push(event) })) });
+      }, activation);
+      const pieces = await page.evaluate(() => (window as any).handles[0].mapping.pieces.filter((p: any) => p.domId === 'actor:A'));
+      assert.equal(pieces.length, first ? 2 : 1);
+      const current = pieces.at(-1);
+      const labelSelector = `[data-mt-role=node-label][data-mt-refs="${current.id}"]`;
+      const saved = page.locator('svg').first();
+      const span = { start: source.lastIndexOf(expected), end: source.lastIndexOf(expected) + expected.length };
+      for (const label of await saved.locator(labelSelector).all()) {
+        await label.click(); await label.press('Enter');
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+      }
+      assert.ok(await saved.locator(labelSelector).count());
+      const oldStart = source.indexOf(first ? first.trimEnd() : declaration);
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: oldStart, end: oldStart + 1 });
+      assert.ok(await saved.locator('[data-mt-key="actor:A"][data-mt-role=node][data-mt-selected=true]').count());
+      assert.equal(await saved.locator('[data-mt-key="actor:B"][data-mt-selected=true]').count(), 0);
+      assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+      await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+      const markdown = '# Participants\n\n```mermaid\n' + source + '```\n';
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const original = page.frameLocator('#source-frame').locator('#source');
+      const label = page.locator(labelSelector).first();
+      await label.click(); await label.press('Enter');
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), expected);
+      const offset = markdown.indexOf(source);
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: offset + span.start, end: offset + span.end }));
+      await original.evaluate((element, start) => {
+        const range = element.ownerDocument.createRange(); range.setStart(element.firstChild!, start); range.setEnd(element.firstChild!, start + 1);
+        const selection = element.ownerDocument.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+      }, offset + oldStart);
+      await page.waitForSelector('[data-mt-key="actor:A"][data-mt-role=node][data-mt-selected=true]:visible');
+      assert.equal(await page.locator('[data-mt-key="actor:B"][data-mt-selected=true]').count(), 0);
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});

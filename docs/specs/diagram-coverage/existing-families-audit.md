@@ -1,6 +1,6 @@
 # Existing-family goal: evidence audit
 
-2026-09-28. Read-only behavioral audit of the Trace revision recorded below. The implementation goal remains blocked; this report proposes a completion contract, not a scope change or permission to resume. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
+2026-09-28. The baseline below records the read-only audit at the named Trace revision; subsequent authorized fixes are recorded under [implementation checkpoints](#implementation-checkpoints). The broader goal remains blocked pending its completion contract. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
 
 ## Reference and audit boundary
 
@@ -115,3 +115,13 @@ The audit stops here. No implementation goal was resumed, no requirement was wea
 First timed sample: 20:11:40–20:20:38 UTC, approximately **nine AI agent wall-clock minutes** from source investigation to verified K1 checks, excluding final documentation/commit delivery. Native corpus verification took 3.15 seconds; the two focused browser tests took 4.78 seconds in the final run. This includes test development/corrections and overlapping verification; it is not nine minutes of production editing and cannot be extrapolated across unlike gaps.
 
 **S1 resolved:** [SEQ-TITLE](../sequence-mapping/spec.md#seq-title-implemented) retains body/repeated/frontmatter title origins without changing static output. Five sequence native tests and four saved/live/shared-provenance tests passed. Measured interval 20:22:13–20:29:54 UTC: **7 minutes 41 seconds**, including participant-origin investigation reused by the next fix. S2–S3 and the unverified inventory remain open; neither family nor the overall goal is complete.
+
+**S2–S3 resolved:** [SEQ-PARTICIPANT-ORIGINS](../sequence-mapping/spec.md#seq-participant-origins-implemented) reuses the canonical inline configuration capture for alias ranges and retains every participant declaration. Earlier origins select the participant; the effective declaration owns its displayed label. Seven sequence integration tests, 84 native core and 66 native renderer sequence tests, and five targeted saved/live/shared-provenance browser tests pass. Mapped/plain parity remains unchanged. The pinned patch reproduces all 130 changed native files exactly.
+
+Measured interval 20:30:50–20:38:43 UTC: approximately **eight AI agent wall-clock minutes** for S2–S3 investigation, regression construction, implementation and focused verification. Those phases were not independently clocked, so no separate estimates are inferred. The browser test initially waited on the first selected wrapper, a zero-width vertical lifeline; it now requires a visible selected actor wrapper. This was a test assertion correction, not a change to selection behavior. Documentation, final full regression and delivery time are separate.
+
+The post-fix 409-fixture render/bounds probe took **8.70 seconds**: all 87 Kanban inputs and 321 of 322 sequence inputs render with valid bounds. The same invalid sequence input is still rejected by both renderers. Unbound occurrence counts remain 62 sequence/eight Kanban fixtures and still require classification; they are not automatically defects. All four baseline confirmed defects are closed, while the twelve unverified inventory rows remain open. No family completion, browser/fidelity decision or new total-hours forecast is implied. These measurements show the known local defects were short fixes; they do not price the unclassified remainder.
+
+Post-fix native development revision: `edec3fa4`; pinned base unchanged. Patch SHA-256: `073c12cae86c3de4db75781f7a3460d00a323f4908e7b736a5a8e565ecbfc10d`. The native commits remain local; the reproducible patch is delivered through Trace's origin.
+
+Final delivery gate: `make test typecheck` passes **113 Rust tests and 101 TypeScript/browser tests**, with zero failures or skipped tests, plus typechecking. The TypeScript/browser runner took **800.9 seconds (13.35 minutes)**; the full gate, including native build/tests, ran approximately 20:39–20:54 UTC. This one batched regression run is verification overhead, separate from the three focused fix intervals above. Relative documentation links and staged diff checks pass.

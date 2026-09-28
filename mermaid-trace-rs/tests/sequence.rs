@@ -259,3 +259,117 @@ fn seq_title_preserves_body_occurrences_and_frontmatter_fallback() {
         );
     }
 }
+
+#[test]
+fn seq_participant_alias_spans_follow_canonical_config_and_as_precedence() {
+    for (config, suffix, expected) in [
+        (r#"alias: "Client 😀", type: boundary"#, "", "Client 😀"),
+        (r#"alias: "Cli\u0065nt""#, "", r#"Cli\u0065nt"#),
+        ("alias: 42", "", "42"),
+        ("alias: true", "", "true"),
+        ("alias: Ignored", " as Explicit 😀", "Explicit 😀"),
+        ("alias: null", "", "A"),
+    ] {
+        for declaration in ["participant", "actor", "create participant"] {
+            let source = format!(
+                "sequenceDiagram\r\n%% 😀\r\n{declaration} A@{{ {config} }}{suffix}\r\nB->>A: Hello\r\n"
+            );
+            let result = mermaid_trace_rs::render("seq-alias", &source).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let actor = pieces.iter().find(|p| p["domId"] == "actor:A").unwrap();
+            let start = if expected == "A" {
+                source.find("A@{").unwrap()
+            } else {
+                source.find(expected).unwrap()
+            };
+            assert_eq!(
+                actor["labelSpan"],
+                serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+expected.len()].encode_utf16().count()}),
+                "{source}"
+            );
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let label = svg
+                .descendants()
+                .find(|n| {
+                    n.attribute("data-mt-role") == Some("node-label")
+                        && n.attribute("data-mt-refs") == actor["id"].as_str()
+                })
+                .unwrap();
+            assert_eq!(
+                label
+                    .attribute("data-mt-start")
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap(),
+                actor["labelSpan"]["start"].as_u64().unwrap()
+            );
+            let plain = Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline = mermaid_trace_rs::render_with(&plain, "seq-alias", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(result["svg"].as_str().unwrap()),
+                support::strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
+fn seq_participant_redeclarations_preserve_every_origin_and_effective_label() {
+    for first in [
+        "participant A as First",
+        "participant A as Second",
+        "A->>B: Hello",
+    ] {
+        let source = format!(
+            "sequenceDiagram\r\n%% 😀\r\n{first}\r\nparticipant A as Second\r\nA->>B: Done\r\n"
+        );
+        let result = mermaid_trace_rs::render("seq-declarations", &source).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let actors: Vec<_> = pieces.iter().filter(|p| p["domId"] == "actor:A").collect();
+        assert_eq!(actors.len(), 2, "{source}");
+        assert_eq!(actors[0]["effective"], false);
+        assert_eq!(actors[1]["effective"], true);
+        assert_ne!(actors[0]["id"], actors[1]["id"]);
+        let utf16: Vec<_> = source.encode_utf16().collect();
+        let slice = |span: &serde_json::Value| {
+            String::from_utf16(
+                &utf16[span["start"].as_u64().unwrap() as usize
+                    ..span["end"].as_u64().unwrap() as usize],
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            slice(&actors[0]["span"]),
+            if first.starts_with("participant") {
+                first
+            } else {
+                "A"
+            }
+        );
+        assert_eq!(slice(&actors[1]["span"]), "participant A as Second");
+        assert_eq!(slice(&actors[1]["labelSpan"]), "Second");
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        for label in svg.descendants().filter(|n| {
+            n.attribute("data-mt-role") == Some("node-label")
+                && n.ancestors()
+                    .any(|n| n.attribute("data-mt-key") == Some("actor:A"))
+        }) {
+            assert_eq!(label.attribute("data-mt-refs"), actors[1]["id"].as_str());
+        }
+        let bodies: Vec<_> = svg
+            .descendants()
+            .filter(|n| {
+                n.attribute("data-mt-key") == Some("actor:A")
+                    && n.attribute("data-mt-role") == Some("node")
+            })
+            .collect();
+        assert!(!bodies.is_empty());
+        for body in bodies {
+            assert!(
+                body.attribute("data-mt-refs")
+                    .unwrap()
+                    .contains(actors[0]["id"].as_str().unwrap())
+            );
+        }
+    }
+}

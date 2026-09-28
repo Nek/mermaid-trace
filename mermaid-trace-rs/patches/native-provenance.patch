@@ -15095,9 +15095,15 @@ index e42b2af3..f84a2bb7 100644
      SetAccTitle(String),
      SetAccDescr(String),
 diff --git a/crates/merman-core/src/diagrams/sequence/db.rs b/crates/merman-core/src/diagrams/sequence/db.rs
-index 1763d899..fbfffec8 100644
+index 1763d899..5b75fc45 100644
 --- a/crates/merman-core/src/diagrams/sequence/db.rs
 +++ b/crates/merman-core/src/diagrams/sequence/db.rs
+@@ -1,4 +1,4 @@
+-use crate::{OperationControl, OperationControlResult, ParseMetadata};
++use crate::{OperationControl, OperationControlResult, ParseMetadata, SourceSpan};
+ use rustc_hash::FxHashMap;
+ use serde_json::{Value, json};
+ use std::collections::BTreeMap;
 @@ -32,10 +32,10 @@ struct Actor {
  }
  
@@ -15137,7 +15143,34 @@ index 1763d899..fbfffec8 100644
      current_box: Option<usize>,
      wrap_enabled: Option<bool>,
  
-@@ -384,6 +385,9 @@ impl SequenceDb {
+@@ -354,9 +355,9 @@ impl SequenceDb {
+         &mut self,
+         action: Action,
+         control: &OperationControl,
+-    ) -> OperationControlResult<std::result::Result<(), String>> {
++    ) -> OperationControlResult<std::result::Result<Option<SourceSpan>, String>> {
+         control.checkpoint()?;
+-        let participant_meta = match &action {
++        let (participant_meta, alias_span) = match &action {
+             Action::AddParticipant { config, .. } => {
+                 match parse_participant_meta_controlled(config.as_deref(), control)? {
+                     Ok(meta) => meta,
+@@ -372,10 +373,12 @@ impl SequenceDb {
+                     Err(error) => return Ok(Err(error)),
+                 }
+             }
+-            _ => None,
++            _ => (None, None),
+         };
+         control.checkpoint()?;
+-        Ok(self.apply_prepared(action, participant_meta))
++        Ok(self
++            .apply_prepared(action, participant_meta)
++            .map(|()| alias_span))
+     }
+ 
+     fn apply_prepared(
+@@ -384,6 +387,9 @@ impl SequenceDb {
          participant_meta: Option<Value>,
      ) -> std::result::Result<(), String> {
          match action {
@@ -15147,7 +15180,7 @@ index 1763d899..fbfffec8 100644
              Action::SetTitle(t) => {
                  self.title = Some(t.trim().to_string());
                  Ok(())
-@@ -733,6 +737,7 @@ impl SequenceDb {
+@@ -733,6 +739,7 @@ impl SequenceDb {
              .collect();
  
          SequenceDiagramRenderModel {
@@ -15155,8 +15188,41 @@ index 1763d899..fbfffec8 100644
              title: self.title,
              acc_title: self.acc_title,
              acc_descr: self.acc_descr,
+@@ -755,11 +762,29 @@ impl SequenceDb {
+ fn parse_participant_meta_controlled(
+     input: Option<&str>,
+     control: &OperationControl,
+-) -> OperationControlResult<std::result::Result<Option<Value>, String>> {
++) -> OperationControlResult<std::result::Result<(Option<Value>, Option<SourceSpan>), String>> {
+     let Some(input) = input else {
+-        return Ok(Ok(None));
++        return Ok(Ok((None, None)));
+     };
+-    Ok(crate::inline_config::parse_mermaid_inline_object_controlled(input, control)?.map(Some))
++    let capture =
++        crate::inline_config::parse_mermaid_inline_object_capture_controlled(input, control)?;
++    let value = match capture.value {
++        Ok(value) => value,
++        Err(error) => return Ok(Err(error)),
++    };
++    let alias_span = value
++        .get("alias")
++        .and_then(crate::inline_config::value_to_string)
++        .and_then(|_| {
++            capture
++                .keys
++                .into_iter()
++                .rev()
++                .find(|key| key.path.matches(&["alias"]))
++                .and_then(|key| key.value_selection.or(key.value_span))
++                .map(|range| SourceSpan::new(range.start, range.end))
++        });
++    Ok(Ok((Some(value), alias_span)))
+ }
+ 
+ #[derive(Debug, Clone)]
 diff --git a/crates/merman-core/src/diagrams/sequence/parse.rs b/crates/merman-core/src/diagrams/sequence/parse.rs
-index f84737e3..66bea290 100644
+index f84737e3..4d562942 100644
 --- a/crates/merman-core/src/diagrams/sequence/parse.rs
 +++ b/crates/merman-core/src/diagrams/sequence/parse.rs
 @@ -68,19 +68,20 @@ impl SequenceSyntax {
@@ -15221,7 +15287,7 @@ index f84737e3..66bea290 100644
          Ok(db) => db,
          Err(message) => {
              return Ok(Err(Box::new(SequenceSemanticFailure::Db {
-@@ -235,16 +248,197 @@ fn construct_sequence_semantic_source(
+@@ -235,15 +248,223 @@ fn construct_sequence_semantic_source(
  fn build_sequence_db(
      actions: Vec<super::Action>,
      wrap_enabled: Option<bool>,
@@ -15241,6 +15307,7 @@ index f84737e3..66bea290 100644
              control.checkpoint()?;
          }
 -        if let Err(error) = db.apply_controlled(action, control)? {
+-            return Ok(Err(error));
 +        let super::Action::Located { span, action } = action else {
 +            return Ok(Err("sequence action lost its source location".into()));
 +        };
@@ -15279,6 +15346,16 @@ index f84737e3..66bea290 100644
 +        if let super::Action::SetTitle(text) = action.as_ref() {
 +            visible_title = !text.trim().is_empty();
 +        }
++        let uses_config_alias = matches!(
++            action.as_ref(),
++            super::Action::AddParticipant {
++                description: None,
++                ..
++            } | super::Action::CreateParticipant {
++                description: None,
++                ..
++            }
++        );
 +        let actor = match action.as_ref() {
 +            super::Action::AddParticipant { id, .. }
 +            | super::Action::CreateParticipant { id, .. } => Some((id.clone(), true)),
@@ -15318,9 +15395,23 @@ index f84737e3..66bea290 100644
 +                | super::Action::ActiveStart { .. }
 +                | super::Action::ActiveEnd { .. }
 +        );
-+        if let Err(error) = db.apply_controlled(*action, control)? {
-             return Ok(Err(error));
-         }
++        let alias_span = match db.apply_controlled(*action, control)? {
++            Ok(span) => span,
++            Err(error) => return Ok(Err(error)),
++        };
++        let label = label.or_else(|| {
++            let alias = alias_span.filter(|_| uses_config_alias)?;
++            within.iter().find_map(|(start, token, end)| {
++                let Tok::Config(input) = token else {
++                    return None;
++                };
++                let payload = sequence_payload_selection(input, *start, *end, code)?;
++                Some(SourceSpan::new(
++                    payload.start + alias.start,
++                    payload.start + alias.end,
++                ))
++            })
++        });
 +        if title {
 +            for previous in db
 +                .source_occurrences
@@ -15348,12 +15439,15 @@ index f84737e3..66bea290 100644
 +                });
 +                if let Some(token_span) = token_span {
 +                    let occurrence = serde_json::json!({"kind":"node", "semanticId": id, "domId":key,
-+                        "span":if declaration {span} else {token_span}, "labelSpan": if declaration {label.unwrap_or(token_span)} else {token_span}});
-+                    if let Some(index) = previous {
-+                        db.source_occurrences[index] = occurrence;
-+                    } else {
-+                        db.source_occurrences.push(occurrence);
++                        "span":if declaration {span} else {token_span}, "labelSpan": if declaration {label.unwrap_or(token_span)} else {token_span}, "declaration":declaration, "effective":true});
++                    for previous in db
++                        .source_occurrences
++                        .iter_mut()
++                        .filter(|p| p["domId"] == key)
++                    {
++                        previous["effective"] = serde_json::json!(false);
 +                    }
++                    db.source_occurrences.push(occurrence);
 +                }
 +            }
 +        }
@@ -15416,11 +15510,10 @@ index f84737e3..66bea290 100644
 +            .any(|piece| piece["domId"] == key)
 +        {
 +            db.source_occurrences.push(serde_json::json!({"kind":"decoration", "semanticId":target, "domId":key, "classification":"note-implied-anchor"}));
-+        }
+         }
      }
      Ok(Ok(db))
- }
-@@ -825,4 +1019,43 @@ mod tests {
+@@ -825,4 +1046,43 @@ mod tests {
                  .all(|symbol| symbol.role == EditorSemanticRole::Reference)
          );
      }
