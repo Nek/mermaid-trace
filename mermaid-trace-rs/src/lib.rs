@@ -26,6 +26,9 @@ pub fn render_with(renderer: &Renderer, id: &str, source: &str) -> Result<Value,
     let mut options = SvgRequest::default();
     options.options.diagram_id = Some(id.into());
     options.pipeline = Some(merman::svg::SvgPipeline::resvg_safe());
+    options.environment = merman::SvgEnvironment::deterministic().with_resource_policy(
+        merman::svg::RenderResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
+    );
     let output = renderer
         .render(RenderRequest::svg(source, OperationControl::new(), options))
         .map_err(|e| e.to_string())?;

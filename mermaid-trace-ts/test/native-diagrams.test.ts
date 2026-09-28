@@ -417,6 +417,46 @@ test('FLOW-2-EDGE-LABEL-FORMS: saved and live connector labels select authored p
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FLOW-2-LOCAL-LAYOUT-BUDGET: moderate ELK document renders with saved and live label selection', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-elk-budget-'));
+  const filename = join(directory, 'graph.md');
+  const source = `---\r\nconfig:\r\n  look: classic\r\n  htmlLabels: false\r\n---\r\nflowchart-elk LR\r\n${Array.from({ length: 22 }, (_, index) => `A${index} -->|label${index}| B${index}\r\n`).join('')}`;
+  const markdown = `# Graph\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+      .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    const { svg } = await producer.render('moderate-elk', source);
+    await page.setContent(svg);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      Object.assign(window, { handle: activateSvg(document.querySelector('svg')!, { onSelect() {} }) });
+    }, activation);
+    assert.equal(await page.locator('[data-mt-role="edge-label"]').count(), 22);
+    const label = page.locator('[data-mt-key="edge:L_A21_B21_0"][data-mt-role="edge-label"]');
+    await clickExposedTarget(label);
+    assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+    await page.evaluate(() => (window as any).handle.dispose());
+
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await page.locator('[data-mt-role="edge-label"]').count(), 22);
+    const liveLabel = page.locator('[data-mt-key="edge:L_A21_B21_0"][data-mt-role="edge-label"]');
+    await clickExposedTarget(liveLabel);
+    assert.equal(await page.frameLocator('#source-frame').locator('#source')
+      .evaluate(element => element.ownerDocument.getSelection()!.toString()), 'label21');
+    const start = markdown.indexOf('label21');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+      formatLocation({ id: filename, source: markdown }, { start, end: start + 'label21'.length }));
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('OWN-STATE-ENDPOINT: saved and live references select their transition owner', { timeout: 240_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-state-owner-'));
   const filename = join(directory, 'states.md');

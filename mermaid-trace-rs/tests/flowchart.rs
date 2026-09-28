@@ -538,6 +538,65 @@ fn flow_ac4_5_edge_label_forms_keep_exact_payloads_and_only_painted_controls() {
 }
 
 #[test]
+fn flow_ac5_local_preview_renders_moderate_elk_graph_with_exact_label_mappings() {
+    let source = format!(
+        "---\r\nconfig:\r\n  look: classic\r\n  htmlLabels: false\r\n---\r\nflowchart-elk LR\r\n{}",
+        (0..22)
+            .map(|index| format!("A{index} -->|label{index}| B{index}\r\n"))
+            .collect::<String>()
+    );
+    let result = mermaid_trace_rs::render("moderate-elk", &source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let utf16 = |byte: usize| source[..byte].encode_utf16().count();
+    for index in 0..22 {
+        let key = format!("edge:L_A{index}_B{index}_0");
+        let edge = pieces
+            .iter()
+            .find(|piece| {
+                piece["kind"] == "edge" && piece["domId"] == key && piece.get("relation").is_none()
+            })
+            .unwrap();
+        let operator = format!("-->|label{index}|");
+        let start = source
+            .find(&format!("A{index} {operator} B{index}"))
+            .unwrap()
+            + format!("A{index} ").len();
+        assert_eq!(
+            edge["span"],
+            serde_json::json!({"start":utf16(start),"end":utf16(start + operator.len())})
+        );
+        assert_eq!(
+            edge["labelSpan"],
+            serde_json::json!({"start":utf16(start + 4),"end":utf16(start + operator.len() - 1)})
+        );
+        assert_eq!(
+            svg.descendants()
+                .filter(|node| node.attribute("data-mt-key") == Some(key.as_str())
+                    && node.attribute("data-mt-role") == Some("edge-label"))
+                .count(),
+            1
+        );
+    }
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    let baseline = mermaid_trace_rs::render_with(&plain, "moderate-elk", &source).unwrap();
+    assert_eq!(
+        strip_trace(result["svg"].as_str().unwrap()),
+        strip_trace(baseline["svg"].as_str().unwrap())
+    );
+    assert_eq!(
+        mermaid_trace_rs::render("too-long", &"A".repeat(50_001)).unwrap_err(),
+        "Invalid Mermaid source length"
+    );
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));

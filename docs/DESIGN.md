@@ -76,6 +76,8 @@ The [watch CLI](specs/watch-cli/spec.md) serves a minimal rendered document usin
 
 The production preview uses the Trace-owned Rust renderer for every family. Flowchart, sequence, planning and state provenance travel from native grammar actions through semantic construction and explicit SVG identities. Remaining families receive empty maps and an explicit diagram-only diagnostic. The legacy Mermaid producer is reference test tooling.
 
+Local file rendering uses Merman's bounded `CLI_DEFAULT_RESOURCE_PROFILE` for SVG layout and export. Trace retains its 50,000-UTF-16-unit source cap and Merman's default input admission and hard backend caps. A future browser/WASM host must choose a policy suited to its own trust boundary.
+
 ## Required diagram coverage
 
 User decision, 2026-09-26: every built-in Mermaid diagram family is required for the first usable release. The [coverage spec](specs/diagram-coverage/spec.md) is the release checklist. Earlier flowchart-first work is a feasibility slice; it does not limit the product to flowcharts. Partial flowchart/sequence coverage and diagram-only viewer paths are incomplete implementations of the release requirement.
