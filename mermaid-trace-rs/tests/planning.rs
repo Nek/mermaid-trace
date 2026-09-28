@@ -371,6 +371,98 @@ fn gantt_2_repeated_ids_keep_individual_native_label_styles() {
 }
 
 #[test]
+fn gantt_2_pinned_corpus_keeps_task_origins_visual_bindings_and_static_svg() {
+    let directory =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/merman/fixtures/gantt");
+    let mut fixtures: Vec<_> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect();
+    fixtures.sort();
+    assert_eq!(
+        fixtures.len(),
+        157,
+        "review the pinned Gantt inventory when it changes"
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"traceSource":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for path in fixtures {
+        let source = std::fs::read_to_string(&path).unwrap();
+        let golden: Value = serde_json::from_str(
+            &std::fs::read_to_string(path.with_extension("golden.json")).unwrap(),
+        )
+        .unwrap();
+        let result = mermaid_trace_rs::render("gantt-corpus", &source)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        let document = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let tasks: Vec<_> = pieces
+            .iter()
+            .filter(|piece| piece["kind"] == "node" && piece["relation"].is_null())
+            .collect();
+        let expected = golden["model"]["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), expected.len(), "{}", path.display());
+        let source_utf16: Vec<_> = source.encode_utf16().collect();
+        let mut task_keys = std::collections::HashSet::new();
+        for (piece, task) in tasks.iter().zip(expected) {
+            let span = &piece["labelSpan"];
+            let start = span["start"].as_u64().unwrap() as usize;
+            let end = span["end"].as_u64().unwrap() as usize;
+            assert_eq!(
+                String::from_utf16(&source_utf16[start..end]).unwrap(),
+                task["task"].as_str().unwrap().trim(),
+                "{}",
+                path.display()
+            );
+            let key = piece["domId"].as_str().unwrap();
+            assert!(
+                task_keys.insert(key),
+                "repeated visual owner in {}: {key}",
+                path.display()
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.attribute("data-mt-key") == Some(key)
+                        && matches!(node.attribute("data-mt-role"), Some("node" | "node-label"))),
+                "task without a visual binding in {}: {key}",
+                path.display()
+            );
+        }
+        for node in document.descendants().filter(|node| node.is_element()) {
+            let classes: Vec<_> = node
+                .attribute("class")
+                .unwrap_or("")
+                .split_whitespace()
+                .collect();
+            let task_bar = node.has_tag_name("rect") && classes.contains(&"task");
+            let authored_label = ["taskText", "sectionTitle", "titleText"]
+                .iter()
+                .any(|class| classes.contains(class))
+                && node
+                    .descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .any(|text| !text.is_empty());
+            if task_bar || authored_label {
+                assert!(
+                    node.attribute("data-mt-key").is_some(),
+                    "unbound visible {classes:?} in {}",
+                    path.display()
+                );
+            }
+        }
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-corpus", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap()),
+            "{}",
+            path.display()
+        );
+    }
+}
+
+#[test]
 fn gantt_2_task_fields_keep_parsed_roles_and_original_source_ranges() {
     let source = "gantt\r\n%% 😀\r\ndateFormat YYYY-MM-DD\r\nBase 😀 :done, done, base, 2026-01-01, 1d\r\nDeadline :deadline, 2026-01-10, 1d\r\nMain :active, crit, main, after base, until deadline\r\nAuto :milestone, 2d\r\nMarker :vert, marker, 2026-01-02, 1d ; ignored\r\n";
     let result = mermaid_trace_rs::render("gantt-fields", source).unwrap();
