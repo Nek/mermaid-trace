@@ -33,7 +33,8 @@ All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs
 - Documentation-only changes need appropriate review/link checks, not artificial behavior tests.
 - Always use atomic commits: each commit contains one coherent change, including its relevant tests and documentation. Verify it before committing, keep unrelated changes separate, and never bundle unrelated user work into a commit.
 - Commit each completed, verified atomic change as soon as it is ready; do not wait for the user to ask. Before ending a task, inspect Git status and commit all completed changes belonging to the task. Report any remaining uncommitted work and why it remains. Do not commit knowingly failing or unfinished work just to make the tree clean.
-- Use Conventional Commits and Semantic Versioning as defined in [Commit and release conventions](docs/SDD-DELIVERY.md#commit-and-release-conventions). Local commits do not authorize pushing, publishing, or creating a release.
+- Push completed, verified commits to this project's `origin` periodically, including after a coherent implementation milestone. Check the remote and branch before pushing; do not force-push. The separate Merman checkout points at upstream's repository, so carry its native changes through the pinned patch in this project instead of pushing that upstream remote.
+- Use Conventional Commits and Semantic Versioning as defined in [Commit and release conventions](docs/SDD-DELIVERY.md#commit-and-release-conventions). Routine origin pushes follow the rule above; publishing or creating a release requires separate authorization.
 
 ## SDD Routing
 
