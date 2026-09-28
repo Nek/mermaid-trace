@@ -81,6 +81,71 @@ fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
 }
 
 #[test]
+fn flow_ac4_parallel_self_loops_classify_only_overwritten_dagre_occurrences() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        let source = format!("{header}\r\nA -->|first 😀| A\r\nA -->|second| A\r\n");
+        let result = mermaid_trace_rs::render("parallel-self", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let first: Vec<_> = native
+            .iter()
+            .filter(|piece| piece["domId"] == "edge:L_A_A_0")
+            .collect();
+        assert!(
+            !first.is_empty(),
+            "the earlier authored loop must survive: {header}"
+        );
+        assert!(first.iter().any(|piece| {
+            let span = &piece["span"];
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize]
+                == "-->|first 😀|"
+        }));
+        assert!(first.iter().any(|piece| {
+            piece["relation"] == "endpoint-reference"
+                && &source[piece["span"]["start"].as_u64().unwrap() as usize
+                    ..piece["span"]["end"].as_u64().unwrap() as usize]
+                    == "A"
+        }));
+        for piece in &first {
+            if header == "flowchart LR" {
+                assert_eq!(piece["kind"], "nonvisual");
+                assert_eq!(piece["classification"], "overwritten-self-loop");
+            } else {
+                assert_eq!(piece["kind"], "edge");
+                assert!(piece.get("classification").is_none());
+            }
+        }
+        let mapped = result["mapping"]["pieces"].as_array().unwrap();
+        assert_eq!(
+            mapped
+                .iter()
+                .filter(|piece| piece["domId"] == "edge:L_A_A_0")
+                .count(),
+            usize::from(header == "flowchart-elk LR") * first.len(),
+        );
+        assert!(mapped.iter().any(|piece| piece["domId"] == "edge:L_A_A_2"));
+        let baseline = mermaid_trace_rs::render_with(&plain, "parallel-self", &source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));

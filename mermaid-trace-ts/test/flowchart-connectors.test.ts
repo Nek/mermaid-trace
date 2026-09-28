@@ -95,6 +95,70 @@ test('FLOW AC4/6: layout links retain source without invisible pointer or keyboa
   }
 });
 
+test('FLOW-2-SELF-LOOP-OVERWRITE: saved and live selection follows surviving visual loops', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-self-loops-'));
+  const filename = join(directory, 'self-loops.md');
+  const browser = await chromium.launch();
+  const producer = await createMermanProducer();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+      .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) {
+      const source = `${header}\nA -->|first 😀| A\nA -->|second| A\n`;
+      const { svg, mapping } = await producer.render('self-loops', source);
+      const firstSpan = { start: source.indexOf('-->|first 😀|'), end: source.indexOf('-->|first 😀|') + '-->|first 😀|'.length };
+      const secondSpan = { start: source.indexOf('-->|second|'), end: source.indexOf('-->|second|') + '-->|second|'.length };
+      await page.setContent(svg);
+      const original = await page.locator('svg').evaluate(element => element.outerHTML);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: any[] = [];
+        Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+      }, activation);
+      const first = page.locator('[data-mt-key="edge:L_A_A_0"][data-mt-role=edge]');
+      const second = page.locator('[data-mt-key="edge:L_A_A_2"][data-mt-role=edge]');
+      assert.equal(await first.count(), Number(header === 'flowchart-elk LR'));
+      assert.equal(await second.count(), 1);
+      for (const [edge, span] of [[first, firstSpan], [second, secondSpan]] as const) {
+        await page.evaluate(span => (window as any).handle.highlight([span]), span);
+        if (await edge.count() === 0) {
+          assert.equal(await page.locator('[data-mt-role=edge][data-mt-selected=true]').count(), 0);
+          continue;
+        }
+        assert.equal(await edge.getAttribute('data-mt-selected'), 'true');
+        const key = await edge.getAttribute('data-mt-key');
+        const point = await connectorPoint(page, key!);
+        await page.mouse.click(point.x, point.y);
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+        await edge.focus(); await edge.press('Enter');
+        assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+      }
+      await page.evaluate(() => (window as any).handle.dispose());
+      assert.equal(await page.locator('svg').evaluate(element => element.outerHTML), original);
+
+      const markdown = `# Self loops\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      for (const [key, text] of [['edge:L_A_A_0', '-->|first 😀|'], ['edge:L_A_A_2', '-->|second|']] as const) {
+        const edge = page.locator(`[data-mt-key="${key}"][data-mt-role=edge]`);
+        if (await edge.count() === 0) continue;
+        await edge.focus(); await edge.press('Enter');
+        const originalSource = page.frameLocator('#source-frame').locator('#source');
+        assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.toString()), text);
+        const start = markdown.indexOf(text);
+        await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+          formatLocation({ id: filename, source: markdown }, { start, end: start + text.length }));
+      }
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await producer.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('FLOW AC4/5/6: pinned operator inventory retains saved/live connector selection and original locations', { timeout: 600_000 }, async () => {
   const inventory: { operators: string[] } = JSON.parse(await readFile('test/fixtures/flowchart/operators.json', 'utf8'));
   assert.equal(inventory.operators.length, 195);
