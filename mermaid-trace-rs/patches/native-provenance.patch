@@ -13014,7 +13014,7 @@ index 4ca3acbd..d3c86d82 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..f9f184f1 100644
+index 242dc0f3..f6213f21 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13026,7 +13026,30 @@ index 242dc0f3..f9f184f1 100644
      family::CombinedSemanticFailure,
  };
  use serde_json::Map;
-@@ -961,6 +961,12 @@ fn parse_gantt_semantic_source_once(
+@@ -638,6 +638,22 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
+     )
+ }
+ 
++fn record_gantt_accessibility(
++    db: &mut GanttDb,
++    semantic_id: &str,
++    statement: SourceSpan,
++    payload: Option<SourceSpan>,
++) {
++    if !db.trace_source {
++        return;
++    }
++    let mut occurrence = json!({"kind":"nonvisual","classification":"accessibility","semanticId":semantic_id,"origin":"body","span":statement});
++    if let Some(payload) = payload.filter(|span| span.start < span.end) {
++        occurrence["labelSpan"] = json!(payload);
++    }
++    db.source_occurrences.push(occurrence);
++}
++
+ fn collect_gantt_task_field_symbols(
+     fields: &[SpannedText<'_>],
+     statement_span: SourceSpan,
+@@ -961,6 +977,12 @@ fn parse_gantt_semantic_source_once(
      control.checkpoint()?;
      let mut db = GanttDb::default();
      db.clear();
@@ -13039,7 +13062,7 @@ index 242dc0f3..f9f184f1 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1211,8 +1217,59 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1233,75 @@ pub(super) fn gantt_db_to_render_model_controlled(
          }
      }
  
@@ -13049,6 +13072,12 @@ index 242dc0f3..f9f184f1 100644
 +            .iter()
 +            .rposition(|piece| piece["origin"] == "body" && piece["semanticId"] == "title");
 +        let visible_title = !db.diagram_title.trim().is_empty();
++        let last_acc_title = db.source_occurrences.iter().rposition(|piece| {
++            piece["classification"] == "accessibility" && piece["semanticId"] == "accTitle"
++        });
++        let last_acc_descr = db.source_occurrences.iter().rposition(|piece| {
++            piece["classification"] == "accessibility" && piece["semanticId"] == "accDescr"
++        });
 +        let mut used = vec![false; db.sections.len()];
 +        let mut effective_by_name: HashMap<&str, usize> = HashMap::new();
 +        for task in &tasks {
@@ -13075,6 +13104,16 @@ index 242dc0f3..f9f184f1 100644
 +                        .remove("domId");
 +                }
 +            }
++            if occurrence["classification"] == "accessibility" {
++                occurrence["effective"] = json!(
++                    Some(position)
++                        == if occurrence["semanticId"] == "accTitle" {
++                            last_acc_title
++                        } else {
++                            last_acc_descr
++                        }
++                );
++            }
 +            let Some(index) = occurrence["sectionIndex"]
 +                .as_u64()
 +                .map(|index| index as usize)
@@ -13099,7 +13138,7 @@ index 242dc0f3..f9f184f1 100644
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1503,12 +1560,20 @@ fn parse_gantt_statement(
+@@ -1503,12 +1592,20 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13120,7 +13159,49 @@ index 242dc0f3..f9f184f1 100644
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1612,9 +1677,37 @@ fn parse_gantt_statement(
+@@ -1522,6 +1619,12 @@ fn parse_gantt_statement(
+             EditorSemanticKind::String,
+             facts,
+         );
++        record_gantt_accessibility(
++            db,
++            "accTitle",
++            gantt_statement_span(stripped, line_start),
++            v.trim().map(SpannedText::span),
++        );
+         db.set_acc_title(v.text.trim());
+         return Ok(Ok(()));
+     }
+@@ -1535,6 +1638,12 @@ fn parse_gantt_statement(
+             EditorSemanticKind::String,
+             facts,
+         );
++        record_gantt_accessibility(
++            db,
++            "accDescr",
++            gantt_statement_span(stripped, line_start),
++            v.trim().map(SpannedText::span),
++        );
+         db.set_acc_descr(v.text.trim());
+         return Ok(Ok(()));
+     }
+@@ -1542,6 +1651,15 @@ fn parse_gantt_statement(
+         facts.push_directive_prefix("accDescr");
+         let block = block.consume_remaining(cursor, control)?;
+         block.resume_after_closing_brace(cursor);
++        record_gantt_accessibility(
++            db,
++            "accDescr",
++            block.statement_span(),
++            block
++                .first_content_start
++                .zip(block.last_content_end)
++                .map(|(start, end)| SourceSpan::new(start, end)),
++        );
+         db.set_acc_descr(block.value());
+         block.emit_symbol(facts);
+         if !block.is_complete() {
+@@ -1612,9 +1730,37 @@ fn parse_gantt_statement(
          .copied()
          .filter_map(SpannedText::trim)
          .collect::<Vec<_>>();

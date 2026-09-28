@@ -600,6 +600,32 @@ test('GANTT-2-TITLE-ORIGINS: body replacements and frontmatter fallback keep exa
   ]);
 });
 
+test('GANTT-2-ACCESSIBILITY: source-only title and description evidence survives saved/live SVG', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const source = `gantt\naccTitle: First 😀\naccTitle: Last 😀\naccDescr: Old text\naccDescr {\n  New 😀 line\n  second line\n}\ndateFormat YYYY-MM-DD\n${task}\n`;
+  const statements = ['accTitle: First 😀', 'accTitle: Last 😀', 'accDescr: Old text', 'accDescr {\n  New 😀 line\n  second line\n}'];
+  await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false,
+    statements.map(statement => ({ start: source.indexOf(statement), end: source.indexOf(statement) + statement.length })));
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-acc-'));
+  const filename = join(directory, 'gantt.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg } = await producer.render('gantt-acc', source);
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    const saved = JSON.parse((await page.locator('[data-mt-native]').getAttribute('data-mt-native'))!);
+    assert.equal(saved.filter((piece: any) => piece.classification === 'accessibility').length, 4);
+    await writeFile(filename, '```mermaid\n' + source + '```\n');
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const live = JSON.parse((await page.locator('[data-mt-native]').getAttribute('data-mt-native'))!);
+    assert.deepEqual(live, saved, 'Markdown embedding retains every original accessibility occurrence');
+    assert.equal(await page.locator('svg title[tabindex], svg desc[tabindex], svg title[data-mt-role], svg desc[data-mt-role]').count(), 0);
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });

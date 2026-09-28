@@ -112,6 +112,117 @@ fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements()
 }
 
 #[test]
+fn gantt_2_accessibility_statements_keep_exact_nonvisual_origins() {
+    let source = "gantt\r\n  accTitle: First 😀\r\n  accTitle: Last 😀\r\n  accDescr: Old text\r\n  accDescr {\r\n    New 😀 line\r\n    second line\r\n  }\r\n  dateFormat YYYY-MM-DD\r\n  Task :a, 2026-01-01, 1d\r\n";
+    let result = mermaid_trace_rs::render("gantt-accessibility", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let accessibility: Vec<_> = native
+        .iter()
+        .filter(|item| item["classification"] == "accessibility")
+        .collect();
+    assert_eq!(
+        accessibility.len(),
+        4,
+        "every authored accessibility statement survives"
+    );
+    for (index, (kind, statement, payload, effective)) in [
+        ("accTitle", "accTitle: First 😀", "First 😀", false),
+        ("accTitle", "accTitle: Last 😀", "Last 😀", true),
+        ("accDescr", "accDescr: Old text", "Old text", false),
+        (
+            "accDescr",
+            "accDescr {\r\n    New 😀 line\r\n    second line\r\n  }",
+            "New 😀 line\r\n    second line",
+            true,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let occurrence = accessibility[index];
+        let start = source.find(statement).unwrap();
+        let label_start = source.find(payload).unwrap();
+        assert_eq!(occurrence["kind"], "nonvisual");
+        assert_eq!(occurrence["semanticId"], kind);
+        assert_eq!(occurrence["origin"], "body");
+        assert_eq!(occurrence["effective"], effective);
+        assert_eq!(
+            occurrence["span"],
+            serde_json::json!({"start":start,"end":start+statement.len()})
+        );
+        assert_eq!(
+            occurrence["labelSpan"],
+            serde_json::json!({"start":label_start,"end":label_start+payload.len()})
+        );
+        assert!(occurrence["domId"].is_null());
+    }
+    assert!(
+        result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["semanticId"] != "accTitle" && item["semanticId"] != "accDescr")
+    );
+    let title = svg
+        .descendants()
+        .find(|node| node.has_tag_name("title"))
+        .unwrap();
+    let description = svg
+        .descendants()
+        .find(|node| node.has_tag_name("desc"))
+        .unwrap();
+    assert_eq!(title.text(), Some("Last 😀"));
+    assert_eq!(description.text(), Some("New 😀 line\nsecond line"));
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-accessibility", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+
+    let cleared = "gantt\naccTitle: First\naccTitle:\naccDescr: Before\naccDescr { }\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 1d\n";
+    let result = mermaid_trace_rs::render("gantt-accessibility-clear", cleared).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let records: Vec<_> = native
+        .iter()
+        .filter(|item| item["classification"] == "accessibility")
+        .collect();
+    assert_eq!(records.len(), 4);
+    assert_eq!(
+        records
+            .iter()
+            .map(|item| item["effective"].as_bool().unwrap())
+            .collect::<Vec<_>>(),
+        [false, true, false, true]
+    );
+    assert!(
+        records
+            .iter()
+            .all(|item| item["kind"] == "nonvisual" && item["domId"].is_null())
+    );
+    assert!(
+        svg.descendants()
+            .all(|node| !node.has_tag_name("title") && !node.has_tag_name("desc"))
+    );
+    assert!(
+        mermaid_trace_rs::render("gantt-accessibility-invalid", "gantt\naccDescr {unclosed\n")
+            .is_err()
+    );
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();
