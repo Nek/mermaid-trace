@@ -19,7 +19,15 @@ export function activateSvg(svg: SVGSVGElement, options: {
   if (active.has(svg)) throw new Error('SVG is already activated');
   const mapping = readSvgMapping(new XMLSerializer().serializeToString(svg), options.source);
   const byId = new Map(mapping.pieces.map(piece => [piece.id, piece]));
+  const viewport = svg.getBoundingClientRect();
+  const clipped = svg.isConnected && viewport.width > 0 && viewport.height > 0
+    && svg.ownerDocument.defaultView?.getComputedStyle(svg).overflow !== 'visible';
   const elements = [...svg.querySelectorAll('[data-mt-refs]')].filter(element => {
+    if (clipped) {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.right < viewport.left || bounds.left > viewport.right
+        || bounds.bottom < viewport.top || bounds.top > viewport.bottom) return false;
+    }
     if (!element.querySelector('rect,path,line,polygon,circle,ellipse,foreignObject,image,use')) {
       const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
       if (text.length && text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;

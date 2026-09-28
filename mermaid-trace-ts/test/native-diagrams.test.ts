@@ -641,6 +641,76 @@ test('GANTT-2-NARROW-PLOT-WIDTH: visible label selects its task without a phanto
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-CLIPPED-VIEWPORT: zero and off-viewport labels have no keyboard target', { timeout: 60_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-clipped-'));
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    for (const width of [-1, 0, 1, 149]) {
+      const source = `---\nconfig: { gantt: { useWidth: ${width}, useMaxWidth: false } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n`;
+      const { svg } = await producer.render(`gantt-clipped-${width}`, source);
+      await page.setContent(svg);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        Object.assign(window, { handle: activateSvg(document.querySelector('svg')!, { onSelect() {} }) });
+      }, activation);
+      const root = page.locator('svg');
+      const task = root.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+      assert.equal(await root.getAttribute('viewBox'), `0 0 ${Math.max(width, 1)} 124`);
+      assert.equal(await root.getAttribute('tabindex'), '0');
+      assert.equal(await task.count(), width <= 0 ? 0 : 1, `width ${width}`);
+      if (width > 0) assert.equal(await task.getAttribute('tabindex'), width === 149 ? '0' : null, `width ${width}`);
+      assert.equal(await root.locator('[data-mt-role][tabindex="0"]').count(), width === 149 ? 2 : 0, `width ${width}`);
+      if (width <= 1) {
+        const start = source.indexOf('Task :a');
+        await page.evaluate(span => (window as any).handle.highlight([span]), { start, end: start + 4 });
+        assert.equal(await root.locator('[data-mt-role][data-mt-selected="true"]').count(), 0);
+      }
+      await page.evaluate(() => (window as any).handle.dispose());
+      if (width === 1) {
+        await root.evaluate(element => { (element as SVGSVGElement).style.overflow = 'visible'; });
+        await page.evaluate(async activation => {
+          const { activateSvg } = await import(activation);
+          Object.assign(window, { handle: activateSvg(document.querySelector('svg')!, { onSelect() {} }) });
+        }, activation);
+        assert.equal(await task.getAttribute('tabindex'), '0', 'visible overflow exposes the label');
+        await page.evaluate(() => (window as any).handle.dispose());
+      }
+    }
+    const filename = join(directory, 'gantt.md');
+    for (const width of [-1, 0, 1]) {
+      const source = `---\nconfig: { gantt: { useWidth: ${width}, useMaxWidth: false } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n`;
+      const markdown = `# Narrow\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+      const root = page.locator('svg[data-mt-map]');
+      assert.equal(await root.locator('[data-mt-role][tabindex="0"]').count(), 0, `live width ${width}`);
+      const original = page.frameLocator('#source-frame').locator('#source');
+      const start = markdown.indexOf('Task :a');
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange();
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        const selection = element.ownerDocument.getSelection()!;
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start, end: start + 4 });
+      assert.equal(await root.locator('[data-mt-role][data-mt-selected="true"]').count(), 0);
+      await root.click({ force: true });
+      assert.equal(await root.getAttribute('data-mt-selected'), 'true');
+      const fence = markdown.indexOf('```mermaid');
+      const end = markdown.indexOf('```', fence + 10) + 4;
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+        formatLocation({ id: filename, source: markdown }, { start: fence, end }));
+      await preview.close(); preview = undefined;
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('GANTT-2-SUBPIXEL-TEXT: zero-size label has no invisible keyboard target', { timeout: 30_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await chromium.launch();

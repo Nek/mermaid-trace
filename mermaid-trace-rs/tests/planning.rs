@@ -1350,6 +1350,53 @@ fn gantt_2_narrow_plot_drops_nonpositive_bars_without_losing_visible_labels() {
 }
 
 #[test]
+fn gantt_2_nonpositive_width_root_retains_source_evidence_without_visual_mappings() {
+    let plain = merman::Renderer::new();
+    for width in [-1, 0] {
+        for use_max_width in [false, true] {
+            let source = format!(
+                "---\nconfig: {{ gantt: {{ useWidth: {width}, useMaxWidth: {use_max_width} }} }}\n---\ngantt\naccTitle: Empty chart\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n"
+            );
+            let mapped = mermaid_trace_rs::render("gantt-zero", &source).unwrap();
+            let baseline = mermaid_trace_rs::render_with(&plain, "gantt-zero", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(mapped["svg"].as_str().unwrap()),
+                support::strip_trace(baseline["svg"].as_str().unwrap())
+            );
+            let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+            let root = svg.root_element();
+            assert_eq!(root.attribute("viewBox"), Some("0 0 1 124"));
+            assert_eq!(
+                root.attribute("width"),
+                Some(if use_max_width { "100%" } else { "1" })
+            );
+            assert!(mapped["mapping"]["pieces"].as_array().unwrap().is_empty());
+            assert_eq!(mapped["mapping"]["source"], source);
+            assert!(!svg.descendants().any(|node| {
+                ["rect", "path", "line", "text"]
+                    .iter()
+                    .any(|tag| node.has_tag_name(*tag))
+            }));
+            let metadata = svg
+                .descendants()
+                .find(|node| node.has_tag_name("metadata") && node.has_attribute("data-mt-native"))
+                .unwrap();
+            let occurrences: serde_json::Value =
+                serde_json::from_str(metadata.attribute("data-mt-native").unwrap()).unwrap();
+            assert!(occurrences.as_array().unwrap().iter().any(|piece| {
+                piece["semanticId"] == "a"
+                    && piece["span"]["start"] == source.find("Task :a").unwrap()
+            }));
+            assert!(occurrences.as_array().unwrap().iter().any(|piece| {
+                piece["path"] == serde_json::json!(["config", "gantt", "useWidth"])
+                    && piece["labelSpan"]["start"]
+                        == source.find(&format!("{width}, useMaxWidth")).unwrap()
+            }));
+        }
+    }
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();
