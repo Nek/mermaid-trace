@@ -829,6 +829,99 @@ test('GANTT-2-TASK-FIELDS: parsed task properties select their owner without sel
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-REPEATED-IDS: each duplicate declaration owns its own saved and live visual', { timeout: 60_000 }, async () => {
+  const source = 'gantt\ndateFormat YYYY-MM-DD\nSame 😀 :dup, 2026-01-01, 1d\nUnique :other, 2026-01-02, 1d\nSame 😀 :dup, 2026-01-03, 1d\nclick dup href "https://middle.test"\nDifferent :dup, 2026-01-05, 1d\nDependent :dep, after dup, 1d\nclick dup href "https://latest.test"\n';
+  const statements = ['Same 😀 :dup, 2026-01-01, 1d', 'Same 😀 :dup, 2026-01-03, 1d', 'Different :dup, 2026-01-05, 1d'];
+  const markdown = '```mermaid\n' + source + '```\n';
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-duplicate-'));
+  const filename = join(directory, 'gantt.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg, mapping } = await producer.render('gantt-duplicate', source);
+    const owners = statements.map(statement => mapping.pieces.find(piece => piece.kind === 'node' && piece.semanticId === 'dup' && piece.span.start === source.indexOf(statement) && piece.span.end === source.indexOf(statement) + statement.length)!);
+    assert.equal(new Set(owners.map(piece => piece.domId)).size, 3);
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.setContent(svg + svg.replaceAll('gantt-duplicate', 'gantt-copy'));
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const events: unknown[] = [];
+      Object.assign(window, { events, handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (selection: unknown) => events.push(selection) })) });
+    }, activation);
+    const first = page.locator('svg').first();
+    const bar = (index: number) => first.locator(`[data-mt-key="${owners[index]!.domId}"][data-mt-role=node]`);
+    const label = (index: number) => first.locator(`[data-mt-key="${owners[index]!.domId}"][data-mt-role=node-label]`);
+    for (const [index, statement] of statements.entries()) {
+      await clickExposedTarget(bar(index));
+      const event = await page.evaluate(() => (window as any).events.at(-1));
+      assert.equal(source.slice(event.span.start, event.span.end), statement);
+      await clickExposedTarget(label(index));
+      const labelEvent = await page.evaluate(() => (window as any).events.at(-1));
+      assert.equal(source.slice(labelEvent.span.start, labelEvent.span.end), index === 2 ? 'Different' : 'Same 😀');
+      await bar(index).focus(); await bar(index).press('Enter');
+      const keyboard = await page.evaluate(() => (window as any).events.at(-1));
+      assert.deepEqual(keyboard.span, event.span);
+      const idStart = source.indexOf(':dup', source.indexOf(statement)) + 1;
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: idStart, end: idStart + 3 });
+      for (let other = 0; other < 3; other++) assert.equal(await bar(other).getAttribute('data-mt-selected'), other === index ? 'true' : null);
+      assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+      const labelStart = source.indexOf(index === 2 ? 'Different' : 'Same 😀', source.indexOf(statement));
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: labelStart, end: labelStart + (index === 2 ? 'Different' : 'Same 😀').length });
+      for (let other = 0; other < 3; other++) assert.equal(await label(other).getAttribute('data-mt-selected'), other === index ? 'true' : null, 'same-text labels retain separate source occurrences');
+    }
+    for (const [text, owner] of [['https://middle.test', 1], ['https://latest.test', 2]] as const) {
+      const start = source.indexOf(text);
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + text.length });
+      for (let index = 0; index < 3; index++) assert.equal(await bar(index).getAttribute('data-mt-selected'), index === owner ? 'true' : null);
+    }
+    await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const original = page.frameLocator('#source-frame').locator('#source');
+    const liveBar = (index: number) => page.locator(`svg[data-mt-map] [data-mt-key="${owners[index]!.domId}"][data-mt-role=node]`);
+    const liveLabel = (index: number) => page.locator(`svg[data-mt-map] [data-mt-key="${owners[index]!.domId}"][data-mt-role=node-label]`);
+    for (const [index, statement] of statements.entries()) {
+      const idStart = markdown.indexOf(':dup', markdown.indexOf(statement)) + 1;
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start: idStart, end: idStart + 3 });
+      await page.waitForFunction(key => document.querySelector(`svg[data-mt-map] [data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`), owners[index]!.domId);
+      for (let other = 0; other < 3; other++) assert.equal(await liveBar(other).getAttribute('data-mt-selected'), other === index ? 'true' : null);
+      const label = index === 2 ? 'Different' : 'Same 😀';
+      const labelStart = markdown.indexOf(label, markdown.indexOf(statement));
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start: labelStart, end: labelStart + label.length });
+      await page.waitForFunction(key => document.querySelector(`svg[data-mt-map] [data-mt-key="${key}"][data-mt-role=node-label][data-mt-selected=true]`), owners[index]!.domId);
+      for (let other = 0; other < 3; other++) assert.equal(await liveLabel(other).getAttribute('data-mt-selected'), other === index ? 'true' : null);
+      await clickExposedTarget(liveBar(index));
+      assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), statement);
+      const start = markdown.indexOf(statement);
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + statement.length }));
+    }
+    for (const [text, owner] of [['https://middle.test', 1], ['https://latest.test', 2]] as const) {
+      const start = markdown.indexOf(text);
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start, end: start + text.length });
+      await page.waitForFunction(key => document.querySelector(`svg[data-mt-map] [data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`), owners[owner]!.domId);
+      for (let index = 0; index < 3; index++) assert.equal(await liveBar(index).getAttribute('data-mt-selected'), index === owner ? 'true' : null);
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });

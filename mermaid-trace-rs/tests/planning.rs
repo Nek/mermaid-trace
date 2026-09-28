@@ -240,6 +240,91 @@ fn gantt_2_click_action_orders_and_quoted_tails_keep_native_ranges() {
 }
 
 #[test]
+fn gantt_2_repeated_task_ids_keep_distinct_declaration_and_visual_owners() {
+    let source = "gantt\r\ndateFormat YYYY-MM-DD\r\nSame 😀 :dup, 2026-01-01, 1d\r\nUnique :other, 2026-01-02, 1d\r\nSame 😀 :dup, 2026-01-03, 1d\r\nclick dup href \"https://middle.test\"\r\nDifferent :dup, 2026-01-05, 1d\r\nDependent :dep, after dup, 1d\r\nclick dup href \"https://latest.test\"\r\n";
+    let result = mermaid_trace_rs::render("gantt-duplicates", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let statements = [
+        "Same 😀 :dup, 2026-01-01, 1d",
+        "Same 😀 :dup, 2026-01-03, 1d",
+        "Different :dup, 2026-01-05, 1d",
+    ];
+    let tasks: Vec<_> = native
+        .iter()
+        .filter(|item| {
+            item["kind"] == "node" && item["semanticId"] == "dup" && item["relation"].is_null()
+        })
+        .collect();
+    assert_eq!(tasks.len(), statements.len());
+    let keys: Vec<_> = tasks
+        .iter()
+        .map(|item| item["domId"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        keys.iter().collect::<std::collections::HashSet<_>>().len(),
+        3,
+        "each declaration needs its own visual identity"
+    );
+    for (index, statement) in statements.iter().enumerate() {
+        let start = source.find(statement).unwrap();
+        assert_eq!(
+            tasks[index]["span"],
+            serde_json::json!({"start":start,"end":start+statement.len()})
+        );
+        let key = keys[index];
+        assert_eq!(
+            svg.descendants()
+                .filter(|node| node.attribute("data-mt-key") == Some(key))
+                .count(),
+            2,
+            "each task has one bar and one label binding"
+        );
+        assert!(result["mapping"]["pieces"].as_array().unwrap().iter().any(|item| item["domId"] == key && item["span"] == serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+statement.len()].encode_utf16().count()})));
+    }
+    assert!(
+        native
+            .iter()
+            .any(|item| item["semanticId"] == "other" && item["domId"] == "gantt:task:other"),
+        "unique ID keys remain stable"
+    );
+    for (url, key) in [
+        ("https://middle.test", keys[1]),
+        ("https://latest.test", keys[2]),
+    ] {
+        let start = source.find(url).unwrap();
+        assert!(
+            native.iter().any(|item| item["relation"] == "click-href"
+                && item["span"] == serde_json::json!({"start":start,"end":start+url.len()})
+                && item["domId"] == key),
+            "click {url} owns the latest existing declaration at its statement"
+        );
+    }
+    let dep = source.find("after dup").unwrap() + "after ".len();
+    assert!(
+        native
+            .iter()
+            .any(|item| item["relation"] == "dependency-reference"
+                && item["semanticId"] == "dep"
+                && item["target"] == "dup"
+                && item["domId"] == "gantt:task:dep"
+                && item["span"] == serde_json::json!({"start":dep,"end":dep+3})),
+        "dependency syntax stays with its owning task"
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"traceSource":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-duplicates", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
+#[test]
 fn gantt_2_task_fields_keep_parsed_roles_and_original_source_ranges() {
     let source = "gantt\r\n%% 😀\r\ndateFormat YYYY-MM-DD\r\nBase 😀 :done, done, base, 2026-01-01, 1d\r\nDeadline :deadline, 2026-01-10, 1d\r\nMain :active, crit, main, after base, until deadline\r\nAuto :milestone, 2d\r\nMarker :vert, marker, 2026-01-02, 1d ; ignored\r\n";
     let result = mermaid_trace_rs::render("gantt-fields", source).unwrap();

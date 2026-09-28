@@ -12992,7 +12992,7 @@ index 185ff516..43c52684 100644
 +  => (Vec::new(), None),
  };
 diff --git a/crates/merman-core/src/diagrams/gantt/model.rs b/crates/merman-core/src/diagrams/gantt/model.rs
-index 4ca3acbd..d3c86d82 100644
+index 4ca3acbd..beed0638 100644
 --- a/crates/merman-core/src/diagrams/gantt/model.rs
 +++ b/crates/merman-core/src/diagrams/gantt/model.rs
 @@ -3,6 +3,8 @@ use crate::{OperationControl, OperationControlResult};
@@ -13004,7 +13004,16 @@ index 4ca3acbd..d3c86d82 100644
      #[serde(default)]
      pub title: Option<String>,
      #[serde(default, rename = "accTitle")]
-@@ -235,6 +237,8 @@ pub(super) struct RawTask {
+@@ -68,6 +70,8 @@ impl GanttDiagramRenderModel {
+ #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+ pub struct GanttRenderTask {
+     pub id: String,
++    #[serde(skip)]
++    pub trace_key: Option<String>,
+     pub task: String,
+     pub section: String,
+     #[serde(default, rename = "sectionIndex")]
+@@ -235,6 +239,8 @@ pub(super) struct RawTask {
  
  #[derive(Debug, Clone, Default)]
  pub(super) struct GanttDb {
@@ -13014,7 +13023,7 @@ index 4ca3acbd..d3c86d82 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..39072a46 100644
+index 242dc0f3..c61046e6 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13083,7 +13092,7 @@ index 242dc0f3..39072a46 100644
      facts: &mut EditorSemanticFacts,
  ) {
      let statement_span = gantt_statement_span(line, line_start);
-@@ -584,6 +593,85 @@ fn collect_gantt_click_symbols(
+@@ -584,6 +593,87 @@ fn collect_gantt_click_symbols(
              );
          }
      }
@@ -13122,6 +13131,7 @@ index 242dc0f3..39072a46 100644
 +    {
 +        let id = symbol.name.as_str();
 +        let resolved = db.find_task_by_id(id).is_some();
++        let task_index = resolved.then(|| *db.task_index.get(id).expect("resolved click target"));
 +        let dom_id = format!("gantt:task:{id}");
 +        let mut record = |relation: &str, span: SourceSpan| {
 +            if span.start >= span.end {
@@ -13130,6 +13140,7 @@ index 242dc0f3..39072a46 100644
 +            let mut occurrence = json!({"kind":if resolved {"node"} else {"nonvisual"},"semanticId":id,"relation":relation,"origin":"body","span":span});
 +            if resolved {
 +                occurrence["domId"] = json!(dom_id);
++                occurrence["taskIndex"] = json!(task_index);
 +            } else {
 +                occurrence["classification"] = json!(if relation == "click-target" {
 +                    "unresolved-click-target"
@@ -13169,7 +13180,7 @@ index 242dc0f3..39072a46 100644
  }
  
  fn collect_gantt_section_symbol(
-@@ -638,6 +726,43 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
+@@ -638,6 +728,43 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
      )
  }
  
@@ -13213,7 +13224,7 @@ index 242dc0f3..39072a46 100644
  fn collect_gantt_task_field_symbols(
      fields: &[SpannedText<'_>],
      statement_span: SourceSpan,
-@@ -961,6 +1086,12 @@ fn parse_gantt_semantic_source_once(
+@@ -961,6 +1088,12 @@ fn parse_gantt_semantic_source_once(
      control.checkpoint()?;
      let mut db = GanttDb::default();
      db.clear();
@@ -13226,11 +13237,22 @@ index 242dc0f3..39072a46 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1211,8 +1342,75 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1344,89 @@ pub(super) fn gantt_db_to_render_model_controlled(
          }
      }
  
 +    if db.trace_source {
++        let mut id_counts = HashMap::new();
++        for task in &tasks {
++            *id_counts.entry(task.id.clone()).or_insert(0usize) += 1;
++        }
++        for (index, task) in tasks.iter_mut().enumerate() {
++            task.trace_key = Some(if id_counts[&task.id] > 1 {
++                format!("gantt:task-occurrence:{index}")
++            } else {
++                format!("gantt:task:{}", task.id)
++            });
++        }
 +        let last_title = db
 +            .source_occurrences
 +            .iter()
@@ -13253,6 +13275,9 @@ index 242dc0f3..39072a46 100644
 +            }
 +        }
 +        for (position, occurrence) in db.source_occurrences.iter_mut().enumerate() {
++            if let Some(index) = occurrence["taskIndex"].as_u64() {
++                occurrence["domId"] = json!(tasks[index as usize].trace_key);
++            }
 +            if occurrence["origin"] == "body" && occurrence["semanticId"] == "title" {
 +                occurrence["effective"] = json!(Some(position) == last_title);
 +                if !visible_title {
@@ -13302,7 +13327,15 @@ index 242dc0f3..39072a46 100644
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1359,16 +1557,19 @@ fn parse_gantt_statement(
+@@ -1268,6 +1482,7 @@ fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderT
+ 
+     Ok(GanttRenderTask {
+         id: t.id,
++        trace_key: None,
+         task: t.task,
+         section: t.section,
+         section_index: t.section_index,
+@@ -1359,16 +1574,19 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_date_format(v.text);
@@ -13322,7 +13355,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
-@@ -1382,6 +1583,7 @@ fn parse_gantt_statement(
+@@ -1382,6 +1600,7 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_axis_format(v.text);
@@ -13330,7 +13363,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
-@@ -1395,6 +1597,7 @@ fn parse_gantt_statement(
+@@ -1395,6 +1614,7 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_tick_interval(v.text.trim());
@@ -13338,7 +13371,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
-@@ -1408,6 +1611,7 @@ fn parse_gantt_statement(
+@@ -1408,6 +1628,7 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_includes(v.text);
@@ -13346,7 +13379,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
-@@ -1421,6 +1625,7 @@ fn parse_gantt_statement(
+@@ -1421,6 +1642,7 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_excludes(v.text);
@@ -13354,7 +13387,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
-@@ -1434,6 +1639,7 @@ fn parse_gantt_statement(
+@@ -1434,6 +1656,7 @@ fn parse_gantt_statement(
              facts,
          );
          db.set_today_marker(v.text.trim());
@@ -13362,7 +13395,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
-@@ -1464,6 +1670,7 @@ fn parse_gantt_statement(
+@@ -1464,6 +1687,7 @@ fn parse_gantt_statement(
              )));
          }
          db.set_weekday(&day);
@@ -13370,7 +13403,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
-@@ -1491,6 +1698,7 @@ fn parse_gantt_statement(
+@@ -1491,6 +1715,7 @@ fn parse_gantt_statement(
              )));
          }
          db.set_weekend(&day);
@@ -13378,7 +13411,7 @@ index 242dc0f3..39072a46 100644
          return Ok(Ok(()));
      }
      if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
-@@ -1503,12 +1711,20 @@ fn parse_gantt_statement(
+@@ -1503,12 +1728,20 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13399,7 +13432,7 @@ index 242dc0f3..39072a46 100644
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1522,6 +1738,12 @@ fn parse_gantt_statement(
+@@ -1522,6 +1755,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13412,7 +13445,7 @@ index 242dc0f3..39072a46 100644
          db.set_acc_title(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1535,6 +1757,12 @@ fn parse_gantt_statement(
+@@ -1535,6 +1774,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13425,7 +13458,7 @@ index 242dc0f3..39072a46 100644
          db.set_acc_descr(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1542,6 +1770,15 @@ fn parse_gantt_statement(
+@@ -1542,6 +1787,15 @@ fn parse_gantt_statement(
          facts.push_directive_prefix("accDescr");
          let block = block.consume_remaining(cursor, control)?;
          block.resume_after_closing_brace(cursor);
@@ -13441,7 +13474,7 @@ index 242dc0f3..39072a46 100644
          db.set_acc_descr(block.value());
          block.emit_symbol(facts);
          if !block.is_complete() {
-@@ -1556,7 +1793,14 @@ fn parse_gantt_statement(
+@@ -1556,7 +1810,14 @@ fn parse_gantt_statement(
      match parse_click_statement(stripped, line_start) {
          Ok(Some(click)) => {
              facts.push_directive_prefix("click");
@@ -13457,7 +13490,7 @@ index 242dc0f3..39072a46 100644
              if let Some(call) = click.call {
                  db.set_click_event(
                      click.ids.text,
-@@ -1604,17 +1848,83 @@ fn parse_gantt_statement(
+@@ -1604,17 +1865,84 @@ fn parse_gantt_statement(
          return Ok(Ok(()));
      }
      let leading = stripped.len().saturating_sub(task_stmt.len());
@@ -13479,11 +13512,12 @@ index 242dc0f3..39072a46 100644
      let task_info = db.parse_task_info(&field_text);
      db.add_task(task_txt, &format!(":{task_data}"), task_info);
 +    if db.trace_source {
++        let task_index = db.raw_tasks.len() - 1;
 +        let id = db.last_task_id.as_ref().expect("assigned task identity");
 +        let label = task_txt.trim();
 +        let start = statement_span.start + task_txt.len() - task_txt.trim_start().len();
 +        let dom_id = format!("gantt:task:{id}");
-+        db.source_occurrences.push(json!({"kind":"node","semanticId":id,"domId":dom_id,"span":statement_span,"labelSpan":SourceSpan::new(start, start+label.len())}));
++        db.source_occurrences.push(json!({"kind":"node","semanticId":id,"domId":dom_id,"taskIndex":task_index,"span":statement_span,"labelSpan":SourceSpan::new(start, start+label.len())}));
 +        let tag_count = fields
 +            .iter()
 +            .take_while(|field| {
@@ -13496,7 +13530,7 @@ index 242dc0f3..39072a46 100644
 +            let Some(field) = field.trim() else {
 +                return;
 +            };
-+            let mut occurrence = json!({"kind":"node","semanticId":id,"domId":dom_id,"span":field.span(),"relation":relation});
++            let mut occurrence = json!({"kind":"node","semanticId":id,"domId":dom_id,"taskIndex":task_index,"span":field.span(),"relation":relation});
 +            if let Some(tag) = tag {
 +                occurrence["tag"] = json!(tag);
 +            }
@@ -13536,7 +13570,7 @@ index 242dc0f3..39072a46 100644
 +                "until"
 +            };
 +            db.source_occurrences.push(json!({
-+                "kind":"node","semanticId":id,"domId":dom_id,"span":symbol.selection,
++                "kind":"node","semanticId":id,"domId":dom_id,"taskIndex":task_index,"span":symbol.selection,
 +                "relation":"dependency-reference","target":symbol.name,"constraint":constraint
 +            }));
 +        }
@@ -29136,6 +29170,18 @@ index bb421711..4b3af1e7 100644
  
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
+diff --git a/crates/merman-render/src/gantt.rs b/crates/merman-render/src/gantt.rs
+index 1031ff97..3050f36e 100644
+--- a/crates/merman-render/src/gantt.rs
++++ b/crates/merman-render/src/gantt.rs
+@@ -1323,6 +1323,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+ 
+         tasks.push(GanttTaskLayout {
+             id: t.id.clone(),
++            trace_key: t.trace_key.clone(),
+             task: t.task.clone(),
+             section: t.section.clone(),
+             task_type: t.task_type.clone(),
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
 index c8ebca79..9e778388 100644
 --- a/crates/merman-render/src/journey.rs
@@ -29670,7 +29716,7 @@ index 027dfe7d..adf538ae 100644
          };
          let measurer = DeterministicTextMeasurer {
 diff --git a/crates/merman-render/src/model.rs b/crates/merman-render/src/model.rs
-index b2f2c2e3..21ce812e 100644
+index b2f2c2e3..7287ee8f 100644
 --- a/crates/merman-render/src/model.rs
 +++ b/crates/merman-render/src/model.rs
 @@ -941,6 +941,9 @@ pub enum JourneyMouthKind {
@@ -29706,6 +29752,15 @@ index b2f2c2e3..21ce812e 100644
      pub section: String,
      pub num: i64,
      pub x: f64,
+@@ -1474,6 +1484,8 @@ pub struct GanttTaskBarLayout {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct GanttTaskLayout {
+     pub id: String,
++    #[serde(skip)]
++    pub trace_key: Option<String>,
+     pub task: String,
+     pub section: String,
+     pub task_type: String,
 diff --git a/crates/merman-render/src/sequence/message_metrics.rs b/crates/merman-render/src/sequence/message_metrics.rs
 index a80d80c0..a3608f6d 100644
 --- a/crates/merman-render/src/sequence/message_metrics.rs
@@ -30906,7 +30961,7 @@ index 8e2e7251..6f0e3da8 100644
          );
      }
 diff --git a/crates/merman-render/src/svg/parity/gantt/render.rs b/crates/merman-render/src/svg/parity/gantt/render.rs
-index 5e83e058..84402f73 100644
+index 5e83e058..f6f5b144 100644
 --- a/crates/merman-render/src/svg/parity/gantt/render.rs
 +++ b/crates/merman-render/src/svg/parity/gantt/render.rs
 @@ -168,6 +168,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
@@ -30917,7 +30972,18 @@ index 5e83e058..84402f73 100644
      let css = gantt_css(diagram_id, effective_config);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
      out.push_str(r#"<g/>"#);
-@@ -293,7 +294,15 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -283,6 +284,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         out.push_str("<g>");
+ 
+         for (_idx, t) in &tasks_in_draw_order {
++            let source_key = t
++                .trace_key
++                .clone()
++                .unwrap_or_else(|| format!("gantt:task:{}", t.id));
+             let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
+             let end_x = gantt_scale_time_round(t.end_ms, min_ms, max_ms, range);
+             let center_x = start_x + layout.left_padding + 0.5 * (end_x - start_x);
+@@ -293,7 +298,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  fmt_allow_nan(center_y)
              );
  
@@ -30925,28 +30991,35 @@ index 5e83e058..84402f73 100644
 +            let _ = write!(
 +                &mut out,
 +                r#"<rect{}"#,
-+                crate::svg::parity::source_attrs(
-+                    &model.source_occurrences,
-+                    &format!("gantt:task:{}", t.id),
-+                    false
-+                )
++                crate::svg::parity::source_attrs(&model.source_occurrences, &source_key, false)
 +            );
              let _ = write!(
                  &mut out,
                  r#" id="{}""#,
-@@ -373,6 +382,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -315,6 +324,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         }
+ 
+         for (_idx, t) in &tasks_in_draw_order {
++            let source_key = t
++                .trace_key
++                .clone()
++                .unwrap_or_else(|| format!("gantt:task:{}", t.id));
+             let base_class = &t.label.class;
+             let mut task_type_class = String::new();
+             if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
+@@ -373,6 +386,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  x = fmt(t.label.x),
                  y = fmt(t.label.y),
              );
 +            out.push_str(&crate::svg::parity::source_attrs(
 +                &model.source_occurrences,
-+                &format!("gantt:task:{}", t.id),
++                &source_key,
 +                true,
 +            ));
              options.checkpoint_emit()?;
              if preserve_task_text_height {
                  let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
-@@ -395,7 +409,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -395,7 +413,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
          for st in &layout.section_titles {
              let _ = write!(
                  &mut out,
@@ -30960,7 +31033,7 @@ index 5e83e058..84402f73 100644
                  dy = fmt(st.dy_em),
                  x = fmt(st.x),
                  y = fmt(st.y),
-@@ -459,7 +478,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -459,7 +482,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
      let title = layout.title.as_deref().unwrap_or_default();
      let _ = write!(
          &mut out,
