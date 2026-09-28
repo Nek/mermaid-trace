@@ -2582,3 +2582,13 @@ test('FLOW AC5/6: minimum-width nodes preserve saved/live selection across layou
     ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
   }
 });
+
+test('FLOW AC5/6: bumpX defaults and edge overrides preserve saved/live connector selection', { timeout: 180_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const override of [false, true]) {
+    const source = `---\nconfig:\n  htmlLabels: ${htmlLabels}\n  look: ${look}\n  handDrawnSeed: 42\n  flowchart:\n    curve: ${override ? 'basis' : 'bumpX'}\n---\n${header}\nA[Start] e@-->|next| B[Finish]\nA --> C[Branch]\nC --> B\n${override ? 'e@{ curve: bumpX }\n' : ''}`;
+    await verifyNative(source, 'node:A', 'A[Start]', 'Start', [
+      ['edge:e', 'e@-->|next|', 'edge'],
+      ['edge:e', 'next', 'edge-label'],
+    ], 'e@-->|next|', ['edge:e'], 'edge:e');
+  }
+});

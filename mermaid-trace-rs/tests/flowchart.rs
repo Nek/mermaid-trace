@@ -2888,3 +2888,60 @@ fn flow_ac5_min_node_width_leaves_explicit_assets_and_non_node_labels_unchanged(
         }
     }
 }
+
+#[test]
+fn flow_ac5_bump_x_curve_and_edge_override_keep_distinct_geometry_and_exact_ownership() {
+    let mut paths = Vec::new();
+    for (curve, override_curve) in [
+        ("basis", false),
+        ("bumpX", false),
+        ("bumpY", false),
+        ("basis", true),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  flowchart:\n    curve: {curve}\n---\nflowchart LR\nA[Start] e@-->|next| B[Finish]\nA --> C[Branch]\nC --> B\n{}",
+            if override_curve {
+                "e@{ curve: bumpX }\n"
+            } else {
+                ""
+            }
+        );
+        let result = mermaid_trace_rs::render("bump-curve", &source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let edge = svg
+            .descendants()
+            .find(|node| {
+                node.attribute("data-mt-key") == Some("edge:e")
+                    && node.attribute("data-mt-role") == Some("edge")
+            })
+            .unwrap();
+        paths.push(edge.attribute("d").unwrap().to_string());
+        let piece = result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["domId"] == "edge:e" && p["kind"] == "edge" && p.get("relation").is_none())
+            .unwrap();
+        let span = &piece["span"];
+        assert_eq!(
+            &source
+                [span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+            "e@-->|next|"
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "bump-curve", &source).unwrap();
+        assert_eq!(
+            strip_trace(result["svg"].as_str().unwrap()),
+            strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+    assert_ne!(paths[1], paths[0], "bumpX must not fall back to basis");
+    assert_ne!(
+        paths[1], paths[2],
+        "bumpX and bumpY have different tangents"
+    );
+    assert_eq!(
+        paths[1], paths[3],
+        "edge override takes precedence over the diagram default"
+    );
+}
