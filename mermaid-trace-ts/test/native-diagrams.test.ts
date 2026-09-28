@@ -265,6 +265,12 @@ async function verifyNative(source: string, key: string, expected: string, label
     let event = await page.evaluate(() => (window as any).events.at(-1));
     const nodeSpan = event.span;
     assert.equal(source.slice(event.span.start, event.span.end), expected);
+    if (key.startsWith('gantt:task:')) {
+      assert.equal(await shape.locator(':scope[tabindex="0"]').count(), 1, 'dependencies add no task keyboard stop');
+      await shape.first().focus(); await shape.first().press('Enter');
+      const keyboardSpan = await page.evaluate(() => (window as any).events.at(-1).span);
+      assert.equal(source.slice(keyboardSpan.start, keyboardSpan.end), expected);
+    }
     const defaultFace = shape.first().locator('circle.face:not([data-mt-key])');
     if (await defaultFace.count()) {
       await defaultFace.click({ position: { x: 15, y: 3 } });
@@ -392,6 +398,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       await page.evaluate(span => (window as any).handles[0].highlight([span]), reverseSpan);
       if (reversePrimaryKey === key) {
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 1, 'source occurrence maps to its semantic node');
+        if (key.startsWith('gantt:task:')) assert.equal(await first.locator('[data-mt-role=node][data-mt-selected=true]').count(), 1, 'dependency reference must not select its target task');
       } else {
         assert.equal(await first.locator(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`).count(), reversePrimaryKey.startsWith('journey:score:') ? 2 : 1, 'source occurrence selects every binding of its owning object');
         assert.equal(await shape.locator(':scope[data-mt-selected=true]').count(), 0, 'an owning object must not select a merely referenced node');
@@ -444,6 +451,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       }, { start: toMarkdown(reverseSpan.start), end: toMarkdownEnd(reverseSpan.end) });
       // A straight SVG connector can have a zero-width bounding box while its stroke is rendered.
       await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`, { state: 'attached' });
+      if (key.startsWith('gantt:task:')) assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), 1, 'live dependency reference must not select its target task');
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
       assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
@@ -533,6 +541,14 @@ async function verifyNative(source: string, key: string, expected: string, label
 
 test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard, source and saves', { timeout: 60_000 }, async () => {
   await verifyNative(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
+});
+
+test('OWN-GANTT-DEPENDENCY: saved and live source references select their task owner', { timeout: 60_000 }, async () => {
+  const source = 'gantt\n  dateFormat YYYY-MM-DD\n  Base 😀 :base, 2026-01-01, 1d\n  Peer :peer, 2026-01-02, 1d\n  Window :win, 2026-01-05, 1d\n  Base 😀 :done, b, after base base peer, until win\n';
+  const after = source.indexOf('after base base peer');
+  for (const [start, length] of [[after + 6, 4], [after + 11, 4], [after + 16, 4], [source.indexOf('until win') + 6, 3]] as const) {
+    await verifyNative(source, 'gantt:task:b', 'Base 😀 :done, b, after base base peer, until win', 'Base 😀', [], { start, end: start + length });
+  }
 });
 
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {

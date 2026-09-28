@@ -4,6 +4,58 @@ use serde_json::Value;
 const GANTT: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\ngantt\r\n  title Plan 😀\r\n  dateFormat YYYY-MM-DD\r\n  todayMarker off\r\n  section Build\r\n  Same 😀 :done, a, 2026-01-01, 2d\r\n  Same 😀 :crit, b, after a, 1d\r\n  Ship :milestone, c, after b, 0d\r\n";
 
 #[test]
+fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
+    let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
+    let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let utf16: Vec<_> = source.encode_utf16().collect();
+    let selected = |piece: &Value| {
+        String::from_utf16(
+            &utf16[piece["span"]["start"].as_u64().unwrap() as usize
+                ..piece["span"]["end"].as_u64().unwrap() as usize],
+        )
+        .unwrap()
+    };
+    let dependencies = pieces
+        .iter()
+        .filter(|piece| piece["relation"] == "dependency-reference")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        dependencies
+            .iter()
+            .map(|piece| (
+                selected(piece),
+                piece["target"].as_str().unwrap(),
+                piece["constraint"].as_str().unwrap()
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("base".into(), "base", "after"),
+            ("base".into(), "base", "after"),
+            ("peer".into(), "peer", "after"),
+            ("win".into(), "win", "until")
+        ]
+    );
+    assert!(
+        dependencies
+            .iter()
+            .all(|piece| piece["domId"] == "gantt:task:b" && piece["semanticId"] == "b")
+    );
+    let task = pieces
+        .iter()
+        .find(|piece| piece["domId"] == "gantt:task:b" && piece["relation"].is_null())
+        .unwrap();
+    assert_eq!(
+        selected(task),
+        "Base 😀 :done, b, after base base peer, until win"
+    );
+    assert_eq!(
+        dependencies[0]["span"]["end"].as_u64().unwrap(),
+        dependencies[1]["span"]["start"].as_u64().unwrap() - 1
+    );
+}
+
+#[test]
 fn gantt_plan_ac1_2_native_tasks_labels_sections_and_title() {
     let result = mermaid_trace_rs::render("planning-gantt", GANTT).unwrap();
     let pieces = result["mapping"]["pieces"].as_array().unwrap();
@@ -15,7 +67,10 @@ fn gantt_plan_ac1_2_native_tasks_labels_sections_and_title() {
         )
         .unwrap()
     };
-    let nodes: Vec<_> = pieces.iter().filter(|p| p["kind"] == "node").collect();
+    let nodes: Vec<_> = pieces
+        .iter()
+        .filter(|p| p["kind"] == "node" && p["relation"].is_null())
+        .collect();
     assert_eq!(
         nodes.iter().map(|p| slice(&p["span"])).collect::<Vec<_>>(),
         [
