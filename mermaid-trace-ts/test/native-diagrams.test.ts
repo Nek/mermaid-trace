@@ -754,6 +754,14 @@ test('GANTT-2-ACCESSIBILITY-BLOCK-OPEN: saved and live Markdown keep the block n
   await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, [{ start, end: start + block.length }]);
 });
 
+test('GANTT-2-SINGLE-PERCENT-COMMENTS: comments stay unselectable around a selectable task', { timeout: 60_000 }, async () => {
+  const task = 'Task 😀 :a, 2026-01-01, 1d';
+  const source = `gantt % header\ndateFormat YYYY-MM-DD\n%\n  % 😀 note\n%{invalid}\n${task}\n`;
+  const comments = ['% header', '%\n', '% 😀 note', '%{invalid}'];
+  const spans = comments.map(comment => ({ start: source.indexOf(comment), end: source.indexOf(comment) + comment.length }));
+  await verifyNative(source, 'gantt:task:a', task, 'Task 😀', [], undefined, [], 'gantt:task:a', undefined, false, spans);
+});
+
 test('GANTT-2-CLICK-LINEBREAKS: saved and live Markdown retain task and action selection', { timeout: 60_000 }, async () => {
   const task = 'Task :a, 2026-01-01, 1d';
   const source = `gantt\ndateFormat YYYY-MM-DD\n${task}\nclick\n%% note\na\nhref\n"https://example.test"\n`;

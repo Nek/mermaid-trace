@@ -1247,6 +1247,45 @@ fn gantt_2_cross_line_accessibility_block_openers_keep_one_original_construct() 
 }
 
 #[test]
+fn gantt_2_single_percent_comment_lines_leave_tasks_and_origins_intact() {
+    let source = "gantt % header\r\ndateFormat YYYY-MM-DD\r\n%\r\n  % 😀 note\r\n%{invalid}\r\nTask 😀 :a, 2026-01-01, 1d\r\n";
+    let result = mermaid_trace_rs::render("gantt-percent", source).unwrap();
+    let plain = merman::Renderer::new();
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-percent", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+    let task_start = source.find("Task 😀").unwrap();
+    let task_end = source[task_start..].find("\r\n").unwrap() + task_start;
+    let utf16_span = serde_json::json!({
+        "start":source[..task_start].encode_utf16().count(),
+        "end":source[..task_end].encode_utf16().count()
+    });
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    assert!(
+        pieces
+            .iter()
+            .any(|piece| piece["domId"] == "gantt:task:a" && piece["span"] == utf16_span)
+    );
+    assert!(
+        pieces.iter().all(|piece| {
+            let start = piece["span"]["start"].as_u64().unwrap_or(0) as usize;
+            start >= source[..task_start].encode_utf16().count()
+                || piece["domId"] == "gantt:diagram"
+        }),
+        "comment lines must not gain invented visual bindings"
+    );
+    assert!(
+        mermaid_trace_rs::render(
+            "gantt-percent-invalid",
+            "% note\ngantt\nTask :a, 2026-01-01, 1d\n"
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();
