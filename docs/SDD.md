@@ -1,40 +1,35 @@
-# Lightweight Spec-Driven Development
+# Lean Spec-Driven Development
 
-The spec is the source of truth for intended behavior. Code, tests, plans, and tasks must trace back to it. Explicit user instructions govern scope; record agreed changes in the spec rather than treating an old spec as immutable.
+The spec records intended behavior and open gaps. Explicit user instructions govern scope; record agreed changes rather than treating an old spec as immutable. Use the least documentation that makes the next change reviewable.
 
 ## Workflow
 
 ```text
-Intent -> Spec -> Clarify -> One Story -> Contracts -> Plan -> Tests -> Implement -> Verify -> Update Spec
+Intent -> Acceptance -> Resolve blockers -> Brief plan -> Failing test -> Change -> Verify
 ```
 
-Do not jump from vague intent directly to code. Repeat the cycle for the next story.
+Use an existing spec when it already states the behavior. Update it when implementation reveals a decision or changes the accepted outcome. Repeat the cycle for the next delivery slice.
 
 ## Core Rules
 
-- Describe what users need and why before deciding how to implement it.
-- Implement one user story at a time by default; keep changes small and tied to acceptance criteria or contracts.
-- Follow existing project conventions. Prefer the smallest design that works; new dependencies, frameworks, services, or broad rewrites need a concrete rationale.
-- Do not silently add behavior outside the selected story. If correctness requires a scope change, record it in the spec and plan.
-- Mark ambiguity as `[NEEDS CLARIFICATION: <question>]`. Ask when blocked; otherwise record the smallest safe assumption.
-- Update the spec with discoveries and agreed behavior changes. Do not weaken criteria merely to make failing code appear correct.
-- Keep artifacts short and proportional to the work. Reuse existing material and avoid duplicated information or empty scaffolding.
+- State the requested outcome and observable acceptance before designing. A small story or commit is a delivery slice, not a reduction of requested feature or diagram-family scope.
+- Follow existing code and conventions. Prefer deletion, reuse, standard libraries and native facilities before adding dependencies or abstractions. Keep the plan proportional to the actual design choice.
+- Do not silently change scope or weaken acceptance to make code pass. Record a necessary scope change and resolve it with the user before implementing the changed behavior.
+- Ask about blocking ambiguity; record a safe assumption for nonblocking details.
+- Keep the spec about current behavior, acceptance and open gaps. Git history and tests retain delivery history; do not append a diary of each commit or test run.
 
 ## Feature Artifacts
 
-Use existing locations when available. Otherwise prefer:
+Use existing locations. A new feature normally needs only:
 
 ```text
 docs/specs/<feature>/spec.md
-docs/specs/<feature>/contracts.md
-docs/specs/<feature>/plan.md
-docs/specs/<feature>/test-matrix.md
 ```
 
-For a small story, contracts, decisions, the plan, and the test matrix may be sections in `spec.md`; split them only when useful. Give stories, criteria, and contracts stable identifiers so plans and tests can reference them. Keep important clarification decisions with the affected spec.
+Put decisions, contracts, a short plan and test references in that file when needed. Split out `contracts.md`, `plan.md` or `test-matrix.md` only when their size makes the spec harder to use. Existing separate files remain valid. Give requirements stable identifiers where cross-references help; do not invent IDs for trivial prose.
 
 Use [SDD-PLANNING.md](SDD-PLANNING.md) for specification and planning, and [SDD-DELIVERY.md](SDD-DELIVERY.md) for testing, implementation, and verification. Load them according to the routing in [AGENTS.md](../AGENTS.md).
 
 ## Rule of Thumb
 
-If it matters, put it in the spec. If it can break, make it a contract. If it is a contract, test it. If implementation teaches something, update the spec.
+Specify observable behavior, test what can regress, and write down only decisions that future work needs.

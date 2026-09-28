@@ -1,27 +1,12 @@
 # SDD: Testing, Implementation, and Verification
 
-Read [SDD.md](SDD.md) and the selected story's spec, contracts, and plan first. If these are missing or need revision, use [SDD-PLANNING.md](SDD-PLANNING.md) before implementation.
+Read [SDD.md](SDD.md), the relevant acceptance and plan, and any separate contracts that apply. If acceptance or the plan is missing or needs revision, use [SDD-PLANNING.md](SDD-PLANNING.md) before implementation.
 
 ## Tests from Requirements
 
-Derive tests before implementation; add or update them in the same change when behavior changes.
+For a behavior change, write a project-behavior test first and confirm it fails for the expected reason. Use the smallest check that could catch the regression, including negative or boundary cases where they matter. Add integration or performance checks when the requirement calls for them; do not test a dependency instead of project behavior.
 
-| Requirement | Appropriate check |
-| --- | --- |
-| Acceptance criteria | Example tests |
-| Failure behavior and edge cases | Negative and boundary tests |
-| Contracts | Contract tests |
-| Invariants | Property/generative tests where practical |
-| Integrations | Integration tests |
-| Performance and other measurable non-functional requirements | Measurements or benchmarks |
-
-Choose relevant checks, not every test category for every story. Keep traceability explicit with one row per criterion or contract:
-
-| Requirement / contract ID | Test type | Test name or check | Status |
-| --- | --- | --- | --- |
-| AC-1 | Example | Specific test or verification command | Not run |
-
-A listed test is not evidence of a passing test. Distinguish automated results, manual verification, and checks not run.
+Make acceptance traceable through descriptive test names or a short spec reference. Use a matrix only when several criteria, variants or manual checks would otherwise be hard to audit. A listed test is not proof it passed: distinguish automated results, manual verification and unrun checks.
 
 ## Implementation
 
@@ -33,20 +18,7 @@ After editing, run the narrowest relevant checks and fix failures caused by the 
 
 ## Verification and Review
 
-Compare the final implementation with the spec. Look for missing criteria, contradictions, undocumented behavior, missing tests, and contract gaps.
-
-```text
-[ ] Behavior matches the selected story; no unrelated behavior was added.
-[ ] Acceptance criteria are satisfied, including negative and edge cases.
-[ ] Relevant contracts are implemented and their tests pass.
-[ ] Critical invariants are checked.
-[ ] Tests are added or updated and trace to criteria or contracts.
-[ ] Required operational signals exist.
-[ ] Relevant checks pass; failures and unavailable checks are documented.
-[ ] Spec artifacts and design decisions match final agreed behavior.
-```
-
-Documenting a failed or unavailable check does not establish that its criterion passed. State remaining verification limits plainly.
+Compare the change with the frozen scope and every applicable acceptance criterion. Check the regression test is green, relevant existing tests still pass, and public contracts and critical invariants survive. Report failures, unrun checks and remaining limits plainly; documentation cannot turn an unverified criterion into a pass. Update the spec only for a real behavior decision or current gap, not to repeat command output.
 
 ## Commit and release conventions
 

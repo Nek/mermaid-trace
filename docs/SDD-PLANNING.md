@@ -1,88 +1,23 @@
 # SDD: Specification and Planning
 
-Read [SDD.md](SDD.md) first. Use these templates as concise sections, not a requirement to create a file for every step.
+Read [SDD.md](SDD.md) first. Reuse the relevant spec; add only what the selected work needs.
 
 ## Feature Spec
 
-Include:
-
-```text
-Feature:
-Problem:
-Users / actors:
-Goals:
-Non-goals:
-User stories:
-Acceptance criteria:
-Constraints:
-Open questions:
-```
-
-Describe stories as: `As a <user>, I want <capability>, so that <benefit>.`
-
-Acceptance criteria must be observable and testable: `Given <state>, when <action>, then <result>.` Include negative and edge cases. Describe what and why; leave implementation choices to the plan.
+State the problem, requested outcome, observable acceptance, relevant constraints and open questions. Use a user story or Given/When/Then only when it clarifies behavior. Include meaningful negative and edge cases. Keep implementation choices in the plan.
 
 ## Clarification
 
-Before planning, check for ambiguity, missing edge cases, conflicting requirements, untestable criteria, and hidden security, privacy, performance, compatibility, or operational constraints.
-
-Record important decisions:
-
-```text
-Question:
-Options:
-Recommendation:
-Decision:
-Rationale:
-```
-
-A story is ready only when its acceptance criteria are testable and blocking questions are resolved. Keep nonblocking assumptions explicit.
+Check for conflicting requirements and constraints that could change the outcome. Ask only about blocking decisions. Record the decision and reason where future work will need them; keep nonblocking assumptions explicit. A story is ready when its acceptance is testable and blockers are resolved.
 
 ## Story Slice
 
-Before coding, select one story and freeze its scope:
-
-```text
-Story ID:
-In scope:
-Out of scope:
-Dependencies:
-Definition of done:
-```
-
-Split stories too large to implement and verify cleanly.
+Select the next reviewable slice and its acceptance checks. Freeze its scope for the change; if it must change, update the spec and resolve the new boundary before coding. Split large work into atomic commits without calling the requested feature complete until its full gate passes. Reuse an existing story ID; add one only when it helps track a distinct requirement.
 
 ## Contracts
 
-For critical behavior, define testable contracts before implementation:
-
-```text
-Contract ID / name:
-Applies to:
-Preconditions:
-Postconditions:
-Invariants:
-Failure behavior:
-Observability:
-Tests:
-```
-
-Cover relevant correctness rules, state transitions, idempotency, authorization, data integrity, error handling, and important edge cases. Omit inapplicable concerns rather than inventing requirements.
+Define a separate contract for a public boundary or cross-cutting invariant that acceptance criteria alone do not state clearly. Include relevant inputs, outputs, failure behavior and test evidence. Do not duplicate ordinary acceptance criteria as contracts or invent inapplicable concerns.
 
 ## Per-Story Plan
 
-Limit the plan to the selected story and link technical decisions to acceptance criteria or contracts:
-
-```text
-Story ID / scope:
-Design approach:
-Components changed:
-Data / state changes:
-Interfaces changed:
-Risks:
-Tests:
-Verification:
-Rollout / rollback (where relevant):
-```
-
-Inspect existing structure, conventions, tests, commands, and entry points before choosing the approach. Reuse existing solutions. Before testing or implementation, load [SDD-DELIVERY.md](SDD-DELIVERY.md).
+Inspect the affected code, tests and commands first. Then record the smallest approach, the check that will fail first, and any non-obvious risk or rollback. A few sentences in the spec are enough for a small change. Before testing or implementation, load [SDD-DELIVERY.md](SDD-DELIVERY.md).
