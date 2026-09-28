@@ -65,7 +65,7 @@ Use [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) for package
 - Release tags use `vX.Y.Z` (including a prerelease suffix when applicable); never move an existing release tag or replace released contents. Keep release notes under `docs/CHANGELOG.md`, introduced with the first release.
 - The SVG mapping format has its own explicit compatibility version; package versions do not substitute for it. Future separately published packages may have independent SemVer versions.
 
-Local commits are routine delivery. Pushing, tagging a release, and publishing require authorization for those actions; adopting this convention does not initiate a release. No commit hooks or release automation are required at this stage.
+Local commits and periodic pushes of completed, verified work to this project's `origin` are routine delivery under [AGENTS.md](../AGENTS.md#tdd-and-commits). Check the remote and branch before pushing; do not force-push. Tagging a release and publishing require separate authorization. No commit hooks or release automation are required at this stage.
 
 ## Final Response
 
