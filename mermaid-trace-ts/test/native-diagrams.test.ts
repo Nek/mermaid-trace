@@ -539,6 +539,16 @@ test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection',
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });
 
+test('JOURNEY-2-PERCENT-COMMENTS: saved and live selection ignores comments but keeps literal percent labels', { timeout: 60_000 }, async () => {
+  for (const comment of ['%', '%%']) {
+    const source = `journey ${comment} header; ignored\n${comment} whole line; ignored\ntitle Work % literal\nsection Phase % literal\nTask % literal: 5\n`;
+    await verifyNative(source, 'journey:task:0', 'Task % literal: 5', 'Task % literal', [
+      ['journey:title', 'title Work % literal', 'control'],
+      ['journey:section:0', 'Phase % literal', 'control-label'],
+    ]);
+  }
+});
+
 test('OWN-JOURNEY-ACTOR / JOURNEY-2-ACTOR-UNICODE: saved and live actor slots preserve local ownership and legend grouping', { timeout: 120_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-journey-owner-'));
   const filename = join(directory, 'journey.md');

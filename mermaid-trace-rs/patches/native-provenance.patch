@@ -13073,7 +13073,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..ecdca6ef 100644
+index 68bde024..19425f3d 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -1,6 +1,6 @@
@@ -13303,7 +13303,7 @@ index 68bde024..ecdca6ef 100644
  }
  
  struct JourneyBlockText {
-@@ -266,6 +381,17 @@ fn parse_acc_descr_block_spanned(
+@@ -266,15 +381,29 @@ fn parse_acc_descr_block_spanned(
      }))
  }
  
@@ -13321,8 +13321,10 @@ index 68bde024..ecdca6ef 100644
  fn strip_comment_prefix(line: &str) -> &str {
      let t = line.trim_start();
      if t.starts_with('#') {
-@@ -274,7 +400,10 @@ fn strip_comment_prefix(line: &str) -> &str {
-     if t.starts_with("%%") && !t.starts_with("%%{") {
+         return "";
+     }
+-    if t.starts_with("%%") && !t.starts_with("%%{") {
++    if t.starts_with('%') && !t.starts_with("%{") && !t.starts_with("%%{") {
          return "";
      }
 -    split_statement_suffix_hash_or_semi(line)
@@ -13348,10 +13350,26 @@ index 68bde024..ecdca6ef 100644
      let mut editor_facts = EditorSemanticFacts::new();
      let mut lines = LineCursor::new(code);
      let mut header_seen = false;
-@@ -406,6 +543,18 @@ fn parse_journey_semantic_source(
+@@ -406,14 +543,13 @@ fn parse_journey_semantic_source(
          if t.is_empty() {
              continue;
          }
+-
+         if !header_seen {
+             if starts_with_case_insensitive(t, "journey") {
+                 header_seen = true;
+                 let header_start = line_start + line.find(t).unwrap_or(0);
+                 let after_header = &t["journey".len()..];
+                 let rest = after_header.trim_start();
+-                if !rest.is_empty() {
++                if !rest.is_empty() && !(rest.starts_with('%') && !rest.starts_with("%{")) {
+                     let start = header_start
+                         + "journey".len()
+                         + after_header.len().saturating_sub(rest.len());
+@@ -439,9 +575,29 @@ fn parse_journey_semantic_source(
+             continue;
+         }
+ 
 +        if !is_inline_accessibility_payload(stripped) {
 +            if let Some(semi) = stripped.find(';') {
 +                first_error.get_or_insert_with(|| {
@@ -13364,10 +13382,7 @@ index 68bde024..ecdca6ef 100644
 +                continue;
 +            }
 +        }
- 
-         if !header_seen {
-             if starts_with_case_insensitive(t, "journey") {
-@@ -442,6 +591,13 @@ fn parse_journey_semantic_source(
++
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
              editor_facts.push_directive_prefix("title");
              let value = spanned_keyword_value(line, line_start, "title");

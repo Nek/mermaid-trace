@@ -1702,3 +1702,54 @@ fn journey_2_delimiters_follow_pinned_grammar_and_preserve_accessibility_payload
         .unwrap();
     assert_eq!(selected(source, &task["labelSpan"]), "Task");
 }
+
+#[test]
+fn journey_2_percent_comments_follow_pinned_grammar_without_stealing_labels() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    for comment in ["%", "%%"] {
+        let source = format!(
+            "journey {comment} header; ignored\r\n{comment} whole line; ignored\r\ntitle Work % literal\r\nsection Phase % literal\r\nTask % literal: 5\r\n"
+        );
+        let result = mermaid_trace_rs::render("journey-percent", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "journey-percent", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        for (key, label) in [
+            ("journey:title", "Work % literal"),
+            ("journey:section:0", "Phase % literal"),
+            ("journey:task:0", "Task % literal"),
+        ] {
+            let piece = pieces.iter().find(|piece| piece["domId"] == key).unwrap();
+            assert_eq!(selected(&source, &piece["labelSpan"]), label);
+        }
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|piece| piece["kind"] == "node")
+                .count(),
+            1
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            native.iter().all(|piece| selected(&source, &piece["span"])
+                != format!("{comment} whole line; ignored"))
+        );
+    }
+    for source in [
+        "journey %{invalid}\nTask: 5\n",
+        "journey\n%{invalid}\nTask: 5\n",
+    ] {
+        assert!(mermaid_trace_rs::render("journey-percent", source).is_err());
+    }
+}
