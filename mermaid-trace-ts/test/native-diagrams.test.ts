@@ -746,6 +746,14 @@ test('GANTT-2-CROSS-LINE-DIRECTIVES: saved and live Markdown keep settings nonvi
   await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, spans);
 });
 
+test('GANTT-2-ACCESSIBILITY-BLOCK-OPEN: saved and live Markdown keep the block nonvisual', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const block = 'accDescr\n%% note\n{Beta}';
+  const source = `gantt\ndateFormat YYYY-MM-DD\n${block}\n${task}\n`;
+  const start = source.indexOf(block);
+  await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, [{ start, end: start + block.length }]);
+});
+
 test('GANTT-2-CLICK-LINEBREAKS: saved and live Markdown retain task and action selection', { timeout: 60_000 }, async () => {
   const task = 'Task :a, 2026-01-01, 1d';
   const source = `gantt\ndateFormat YYYY-MM-DD\n${task}\nclick\n%% note\na\nhref\n"https://example.test"\n`;

@@ -1170,6 +1170,83 @@ fn gantt_2_accessibility_statements_keep_exact_nonvisual_origins() {
 }
 
 #[test]
+fn gantt_2_cross_line_accessibility_block_openers_keep_one_original_construct() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    for statement in [
+        "accDescr\n{Beta}",
+        "accDescr\n\n{\nBeta\n}",
+        "accDescr\r\n%% 😀 note\r\n{Beta}",
+    ] {
+        let source =
+            format!("gantt\ndateFormat YYYY-MM-DD\n{statement}\nTask :a, 2026-01-01, 1d\n");
+        let result = mermaid_trace_rs::render("gantt-block-open", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-block-open", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            svg.descendants()
+                .find(|node| node.has_tag_name("desc"))
+                .unwrap()
+                .text(),
+            Some("Beta")
+        );
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let start = source.find(statement).unwrap();
+        let payload = source[start..].find("Beta").unwrap() + start;
+        assert!(
+            native
+                .iter()
+                .any(|item| item["classification"] == "accessibility"
+                    && item["semanticId"] == "accDescr"
+                    && item["kind"] == "nonvisual"
+                    && item["span"]
+                        == serde_json::json!({"start":start,"end":start+statement.len()})
+                    && item["labelSpan"] == serde_json::json!({"start":payload,"end":payload+4})
+                    && item["domId"].is_null()),
+            "{statement:?}"
+        );
+        assert!(
+            result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["domId"] == "gantt:task:a")
+        );
+    }
+    let prefix = "gantt\ndateFormat YYYY-MM-DD\n";
+    let cross = mermaid_trace_rs::render(
+        "gantt-block-effect",
+        &format!("{prefix}accDescr\n{{Beta}}\nTask :a, 2026-01-01, 1d\n"),
+    )
+    .unwrap();
+    let inline = mermaid_trace_rs::render(
+        "gantt-block-effect",
+        &format!("{prefix}accDescr {{Beta}}\nTask :a, 2026-01-01, 1d\n"),
+    )
+    .unwrap();
+    assert_eq!(
+        support::strip_trace(cross["svg"].as_str().unwrap()),
+        support::strip_trace(inline["svg"].as_str().unwrap())
+    );
+    for statement in ["accDescr", "accDescr\nTask :a, 2026-01-01, 1d"] {
+        assert!(
+            mermaid_trace_rs::render("gantt-block-invalid", &format!("gantt\n{statement}\n"))
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();
