@@ -13073,7 +13073,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..19425f3d 100644
+index 68bde024..789f81b6 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -1,6 +1,6 @@
@@ -13441,17 +13441,29 @@ index 68bde024..19425f3d 100644
              editor_facts.push_directive_prefix("accDescr");
              push_journey_payload_fact_spanned(
                  &mut editor_facts,
-@@ -508,11 +688,20 @@ fn parse_journey_semantic_source(
+@@ -507,12 +687,30 @@ fn parse_journey_semantic_source(
+             continue;
          }
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
-             let v = v.split(':').next().unwrap_or("").to_string();
+-            let v = v.split(':').next().unwrap_or("").to_string();
++            if let Some(colon) = stripped.find(':') {
++                first_error.get_or_insert_with(|| {
++                    Error::diagram_parse_exact(
++                        meta.diagram_type.clone(),
++                        "unexpected ':' after journey section",
++                        SourceSpan::new(line_start + colon, line_start + colon + 1),
++                    )
++                });
++                continue;
++            }
 +            let section_index = db.sections.len();
 +            if trace_source {
 +                source_occurrences.push(json!({"kind":"control","semanticId":format!("section:{section_index}"),"domId":format!("journey:section:{section_index}"),"sectionIndex":section_index,"name":v,"span":SourceSpan::new(line_start+leading_whitespace_len(stripped),line_start+stripped.trim_end().len())}));
 +            }
              let value = spanned_keyword_value(line, line_start, "section");
              if let Some(value) = value {
-                 let section_text = value.text.split(':').next().unwrap_or("").trim();
+-                let section_text = value.text.split(':').next().unwrap_or("").trim();
++                let section_text = value.text.trim();
                  if !section_text.is_empty() {
                      let section_start = value.start + value.text.find(section_text).unwrap_or(0);
 +                    if trace_source {
@@ -13462,7 +13474,7 @@ index 68bde024..19425f3d 100644
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,8 +766,12 @@ fn parse_journey_semantic_source(
+@@ -577,8 +775,12 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13476,7 +13488,7 @@ index 68bde024..19425f3d 100644
          let rest_start =
              line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
          if rest.is_empty() {
-@@ -588,9 +781,12 @@ fn parse_journey_semantic_source(
+@@ -588,9 +790,12 @@ fn parse_journey_semantic_source(
              continue;
          }
          let score_end = rest.find(':').unwrap_or(rest.len());
@@ -13490,7 +13502,7 @@ index 68bde024..19425f3d 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +801,35 @@ fn parse_journey_semantic_source(
+@@ -605,13 +810,35 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
@@ -13532,7 +13544,7 @@ index 68bde024..19425f3d 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +857,86 @@ fn parse_journey_semantic_source(
+@@ -639,9 +866,86 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13619,7 +13631,7 @@ index 68bde024..19425f3d 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-@@ -674,7 +969,7 @@ fn spanned_keyword_value<'a>(
+@@ -674,7 +978,7 @@ fn spanned_keyword_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13628,7 +13640,7 @@ index 68bde024..19425f3d 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -693,11 +988,11 @@ fn spanned_colon_value<'a>(
+@@ -693,11 +997,11 @@ fn spanned_colon_value<'a>(
      }
      let rest = trimmed[key.len()..].trim_start();
      let rest = rest.strip_prefix(':')?;
@@ -13642,7 +13654,34 @@ index 68bde024..19425f3d 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -1189,6 +1484,53 @@ R task: 5:\n",
+@@ -979,6 +1283,26 @@ A task: 5: Alice, Bob\n";
+         }));
+     }
+ 
++    #[test]
++    fn journey_section_colon_reports_exact_parse_error() {
++        let engine = Engine::new();
++        for text in [
++            "journey\nsection Work: Zone\nTask: 5\n",
++            "journey\r\n  section Work : Zone\r\nTask: 5\r\n",
++        ] {
++            let colon = text.find(':').expect("section colon");
++            let error = engine
++                .parse_diagram_sync(text, ParseOptions::strict())
++                .expect_err("Journey section names cannot contain a colon");
++            let Error::DiagramParse { diagnostic, .. } = error else {
++                panic!("expected Journey parse error");
++            };
++            assert_eq!(diagnostic.message(), "unexpected ':' after journey section");
++            assert_eq!(diagnostic.span(), Some(SourceSpan::new(colon, colon + 1)));
++            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
++        }
++    }
++
+     #[test]
+     fn journey_task_without_data_reports_insertion_point() {
+         let engine = Engine::new();
+@@ -1189,6 +1513,53 @@ R task: 5:\n",
          assert!(compat["tasks"][0].get("sectionIndex").is_none());
      }
  
@@ -13696,7 +13735,7 @@ index 68bde024..19425f3d 100644
      #[test]
      fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
          let mut db = JourneyDb::default();
-@@ -1210,7 +1552,7 @@ R task: 5:\n",
+@@ -1210,7 +1581,7 @@ R task: 5:\n",
                  .iter()
                  .map(|t| {
                      json!({

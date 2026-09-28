@@ -1753,3 +1753,27 @@ fn journey_2_percent_comments_follow_pinned_grammar_without_stealing_labels() {
         assert!(mermaid_trace_rs::render("journey-percent", source).is_err());
     }
 }
+
+#[test]
+fn journey_2_section_colons_reject_instead_of_silently_truncating() {
+    for source in [
+        "journey\nsection Work: Zone\nTask: 5\n",
+        "journey\nsection Work:\nTask: 5\n",
+        "journey\n  section Work : Zone\nTask: 5\n",
+        "journey\r\nsection Work: Zone # comment\r\nTask: 5\r\n",
+    ] {
+        assert!(
+            mermaid_trace_rs::render("journey-section-syntax", source).is_err(),
+            "pinned Mermaid rejects a colon in a section statement: {source:?}"
+        );
+    }
+    let source = "journey\r\nsection Work # comment: ignored\r\nTask: 5\r\n";
+    let result = mermaid_trace_rs::render("journey-section-syntax", source).unwrap();
+    let section = result["mapping"]["pieces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|piece| piece["domId"] == "journey:section:0")
+        .unwrap();
+    assert_eq!(selected(source, &section["labelSpan"]), "Work");
+}
