@@ -56,6 +56,119 @@ fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
 }
 
 #[test]
+fn gantt_2_section_titles_keep_the_first_rendered_task_origin() {
+    let body = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Unsectioned :r, 2026-01-01, 1d\r\n  section Work 😀<br>Area\r\n  section Vertical\r\n  Marker :vert, v, 2026-01-01, 1d\r\n  section Other\r\n  Other task :o, 2026-01-02, 1d\r\n  section Work 😀<br>Area\r\n  Work task :w, 2026-01-03, 1d\r\n  section Other\r\n  Other again :o2, 2026-01-04, 1d\r\n  section Work 😀<br>Area\r\n  Work again :w2, 2026-01-05, 1d\r\n  section Empty\r\n";
+    for compact in [false, true] {
+        for html in [false, true] {
+            let mode = if compact {
+                "displayMode: compact\r\n"
+            } else {
+                ""
+            };
+            let source = format!("---\r\n{mode}config:\r\n  htmlLabels: {html}\r\n---\r\n{body}");
+            let result = mermaid_trace_rs::render("gantt-sections", &source).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let native: Vec<Value> = serde_json::from_str(
+                svg.descendants()
+                    .find_map(|node| node.attribute("data-mt-native"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let expected = [
+                ("Work 😀<br>Area", None),
+                ("Vertical", None),
+                ("Other", Some(2)),
+                ("Work 😀<br>Area", Some(3)),
+                ("Other", Some(2)),
+                ("Work 😀<br>Area", Some(3)),
+                ("Empty", None),
+            ];
+            let mut search = source.find("gantt").unwrap();
+            for (index, (name, owner)) in expected.iter().enumerate() {
+                let relative = source[search..].find("section ").unwrap();
+                let byte = search + relative;
+                let statement = format!("section {name}");
+                let span = serde_json::json!({"start":source[..byte].encode_utf16().count(),"end":source[..byte+statement.trim_end().len()].encode_utf16().count()});
+                let occurrence = native
+                    .iter()
+                    .find(|piece| piece["sectionIndex"] == index)
+                    .expect("every section declaration retains provenance");
+                assert_eq!(
+                    occurrence["span"],
+                    serde_json::json!({"start":byte,"end":byte+statement.trim_end().len()})
+                );
+                match owner {
+                    Some(owner) => {
+                        assert_eq!(occurrence["semanticId"], format!("section:{owner}"));
+                        assert_eq!(occurrence["effective"], *owner == index);
+                        assert_eq!(occurrence["domId"], format!("gantt:section:{name}"));
+                        let piece = pieces
+                            .iter()
+                            .find(|piece| piece["sectionIndex"] == index)
+                            .unwrap();
+                        assert_eq!(piece["span"], span);
+                        assert_eq!(
+                            piece["labelSpan"],
+                            serde_json::json!({"start":source[..byte+"section ".len()].encode_utf16().count(),"end":source[..byte+statement.len()].encode_utf16().count()})
+                        );
+                        let titles = svg
+                            .descendants()
+                            .filter(|node| {
+                                node.attribute("data-mt-key")
+                                    == Some(format!("gantt:section:{name}").as_str())
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(
+                            titles.len(),
+                            1,
+                            "repeated section names render one category title"
+                        );
+                        let title = titles[0];
+                        assert_eq!(
+                            title
+                                .attribute("data-mt-start")
+                                .unwrap()
+                                .parse::<usize>()
+                                .unwrap(),
+                            source[..source
+                                .find(if *owner == 2 {
+                                    "section Other"
+                                } else {
+                                    "section Work 😀<br>Area\r\n  Work task"
+                                })
+                                .unwrap()]
+                                .encode_utf16()
+                                .count()
+                        );
+                    }
+                    None => {
+                        assert_eq!(occurrence["semanticId"], format!("section:{index}"));
+                        assert_eq!(occurrence["kind"], "nonvisual");
+                        assert_eq!(occurrence["classification"], "unrendered-section");
+                        assert!(!pieces.iter().any(|piece| piece["sectionIndex"] == index));
+                    }
+                }
+                search = byte + statement.len();
+            }
+            assert!(
+                !pieces
+                    .iter()
+                    .any(|piece| piece["domId"] == "gantt:section:"),
+                "an unsectioned task has no authored section title"
+            );
+            let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let baseline =
+                mermaid_trace_rs::render_with(&plain, "gantt-sections", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(result["svg"].as_str().unwrap()),
+                support::strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
 fn gantt_plan_ac1_2_native_tasks_labels_sections_and_title() {
     let result = mermaid_trace_rs::render("planning-gantt", GANTT).unwrap();
     let pieces = result["mapping"]["pieces"].as_array().unwrap();

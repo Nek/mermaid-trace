@@ -13014,7 +13014,7 @@ index 4ca3acbd..d3c86d82 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..7b86a94f 100644
+index 242dc0f3..7827df1b 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13039,15 +13039,47 @@ index 242dc0f3..7b86a94f 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1213,6 +1219,7 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1217,39 @@ pub(super) fn gantt_db_to_render_model_controlled(
+         }
+     }
  
++    if db.trace_source {
++        let mut used = vec![false; db.sections.len()];
++        let mut effective_by_name: HashMap<&str, usize> = HashMap::new();
++        for task in &tasks {
++            if !task.vert {
++                if let Some(index) = task.section_index {
++                    used[index] = true;
++                    effective_by_name.entry(&task.section).or_insert(index);
++                }
++            }
++        }
++        for occurrence in &mut db.source_occurrences {
++            let Some(index) = occurrence["sectionIndex"]
++                .as_u64()
++                .map(|index| index as usize)
++            else {
++                continue;
++            };
++            if !used[index] {
++                occurrence["kind"] = json!("nonvisual");
++                occurrence["classification"] = json!("unrendered-section");
++            } else {
++                let owner = *effective_by_name
++                    .get(db.sections[index].as_str())
++                    .expect("rendered section has a contributing task");
++                occurrence["semanticId"] = json!(format!("section:{owner}"));
++                occurrence["effective"] = json!(owner == index);
++            }
++        }
++    }
      control.checkpoint()?;
      Ok(Ok(GanttDiagramRenderModel {
 +        source_occurrences: db.source_occurrences,
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1503,12 +1510,21 @@ fn parse_gantt_statement(
+@@ -1503,12 +1540,22 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13063,13 +13095,14 @@ index 242dc0f3..7b86a94f 100644
          facts.push_directive_prefix("section");
          collect_gantt_section_symbol(stripped, line_start, v, facts);
 +        if db.trace_source {
++            let index = db.sections.len();
 +            let key = format!("gantt:section:{}", v.text.trim());
-+            db.source_occurrences.push(json!({"kind":"control","semanticId":v.text.trim(),"domId":key,"span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
++            db.source_occurrences.push(json!({"kind":"control","semanticId":format!("section:{index}"),"sectionIndex":index,"domId":key,"span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
 +        }
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1612,9 +1628,37 @@ fn parse_gantt_statement(
+@@ -1612,9 +1659,37 @@ fn parse_gantt_statement(
          .copied()
          .filter_map(SpannedText::trim)
          .collect::<Vec<_>>();

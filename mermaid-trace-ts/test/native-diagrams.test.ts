@@ -182,7 +182,7 @@ test('OWN-STATE-ENDPOINT: saved and live references select their transition owne
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?])[] = [], reverseNodeSource?: string | { start: number; end: number }, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string, reverseWholeOwner = false) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?, number?])[] = [], reverseNodeSource?: string | { start: number; end: number }, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string, reverseWholeOwner = false, unmappedSpans: readonly { start: number; end: number }[] = []) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -313,7 +313,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), 'true', 'the authored label remains selected');
     assert.equal(await page.locator('svg[data-mt-map]').nth(1).locator('[data-mt-selected=true]').count(), 0);
     const controlSpans: { start: number; end: number }[] = [];
-    for (const [controlKey, text, role = 'control'] of controls) {
+    for (const [controlKey, text, role = 'control', expectedStart] of controls) {
       const target = controlKey === "state:note:first" ? first.locator("path.note-edge").first() : controlKey === "state:note:last" ? first.locator("path.note-edge").last() : controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
@@ -330,6 +330,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       }
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
+      if (expectedStart !== undefined) assert.equal(control.span.start, expectedStart, 'a merged title selects its effective declaration');
       controlSpans.push(control.span);
       if (controlKey.startsWith('journey:score:')) {
         const bindings = first.locator(`[data-mt-key="${controlKey}"][data-mt-role=control]`);
@@ -406,6 +407,10 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(await first.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'node references highlight an equal-span visual group, while distinct labels retain their own binding');
       for (const targetKey of reverseKeys) assert.ok(await first.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `related visual ${targetKey}`);
     }
+    for (const span of unmappedSpans) {
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), span);
+      assert.equal(await first.locator('[data-mt-selected=true]').count(), 0, 'unrendered section source has no visual target');
+    }
     await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
     assert.deepEqual(await page.locator('[data-mt-generated="bounds"]').evaluateAll(elements => elements.map(element => element.getAttribute('pointer-events'))), boundsBefore, 'dispose must restore generated bounds hit behavior');
     await writeFile(filename, markdown);
@@ -451,12 +456,21 @@ async function verifyNative(source: string, key: string, expected: string, label
       }, { start: toMarkdown(reverseSpan.start), end: toMarkdownEnd(reverseSpan.end) });
       // A straight SVG connector can have a zero-width bounding box while its stroke is rendered.
       await page.waitForSelector(`[data-mt-key="${reversePrimaryKey}"][data-mt-role=${reverseRole}][data-mt-selected=true]`, { state: 'attached' });
-      if (key.startsWith('gantt:task:')) assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), 1, 'live dependency reference must not select its target task');
+      if (key.startsWith('gantt:task:') && reversePrimaryKey === key) assert.equal(await page.locator('[data-mt-role=node][data-mt-selected=true]').count(), 1, 'live dependency reference must not select its target task');
       if (reversePrimaryKey !== key) assert.equal(await page.locator(`[data-mt-key="${key}"][data-mt-role=node][data-mt-selected=true]`).count(), 0);
       assert.equal(await page.locator(labelSelector).first().getAttribute('data-mt-selected'), (sharedLabelSpan || reverseWholeOwner) && reversePrimaryKey === key ? 'true' : null, 'live node references preserve equal-span visual grouping');
       for (const targetKey of reverseKeys) assert.ok(await page.locator(`[data-mt-key="${targetKey}"][data-mt-selected=true]`).count(), `live related visual ${targetKey}`);
     }
-    for (const [index, [controlKey, text, role = 'control']] of controls.entries()) {
+    for (const span of unmappedSpans) {
+      await original.evaluate((element, range) => {
+        const doc = element.ownerDocument, selection = doc.getSelection()!, sourceRange = doc.createRange();
+        sourceRange.setStart(element.firstChild!, range.start); sourceRange.setEnd(element.firstChild!, range.end);
+        selection.removeAllRanges(); selection.addRange(sourceRange);
+      }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) });
+      await page.waitForFunction(() => !document.querySelector('svg[data-mt-map] [data-mt-selected=true]'));
+      assert.equal(await page.locator('svg[data-mt-map]').getAttribute('data-mt-selected'), null, 'live unrendered section must not select the diagram');
+    }
+    for (const [index, [controlKey, text, role = 'control', expectedStart]] of controls.entries()) {
       const target = controlKey === "state:note:first" ? page.locator("path.note-edge").first() : controlKey === "state:note:last" ? page.locator("path.note-edge").last() : controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
         await target.click();
@@ -507,6 +521,7 @@ async function verifyNative(source: string, key: string, expected: string, label
         assert.equal(await target.evaluate(element => getComputedStyle(element).outlineStyle), 'none');
       }
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
+      if (expectedStart !== undefined) assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).startOffset), toMarkdown(expectedStart));
       const span = controlSpans[index]!;
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(span.start), end: toMarkdownEnd(span.end) }));
       if (controlKey === 'journey:title') {
@@ -549,6 +564,20 @@ test('OWN-GANTT-DEPENDENCY: saved and live source references select their task o
   for (const [start, length] of [[after + 6, 4], [after + 11, 4], [after + 16, 4], [source.indexOf('until win') + 6, 3]] as const) {
     await verifyNative(source, 'gantt:task:b', 'Base 😀 :done, b, after base base peer, until win', 'Base 😀', [], { start, end: start + length });
   }
+});
+
+test('GANTT-2-SECTION-OWNERSHIP: merged titles select their first contributing declaration', { timeout: 60_000 }, async () => {
+  const section = 'section Work 😀<br>Area';
+  const source = `gantt\n  dateFormat YYYY-MM-DD\n  ${section}\n  section Vertical\n  Marker :vert, v, 2026-01-01, 1d\n  section Other\n  Other task :o, 2026-01-02, 1d\n  ${section}\n  Work task :w, 2026-01-03, 1d\n  section Other\n  Other again :o2, 2026-01-04, 1d\n  ${section}\n  Work again :w2, 2026-01-05, 1d\n  section Empty\n`;
+  const effective = source.indexOf(section, source.indexOf(section) + 1);
+  const alias = source.indexOf(section, effective + 1);
+  await verifyNative(source, 'gantt:task:w', 'Work task :w, 2026-01-03, 1d', 'Work task', [
+    ['gantt:section:Work 😀<br>Area', section, 'control', effective],
+  ], { start: alias, end: alias + section.length }, [], 'gantt:section:Work 😀<br>Area', undefined, false, [
+    { start: source.indexOf(section), end: source.indexOf(section) + section.length },
+    { start: source.indexOf('section Vertical'), end: source.indexOf('section Vertical') + 'section Vertical'.length },
+    { start: source.indexOf('section Empty'), end: source.indexOf('section Empty') + 'section Empty'.length },
+  ]);
 });
 
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
