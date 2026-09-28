@@ -13014,7 +13014,7 @@ index 4ca3acbd..d3c86d82 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..f6213f21 100644
+index 242dc0f3..7f5c775a 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13026,7 +13026,7 @@ index 242dc0f3..f6213f21 100644
      family::CombinedSemanticFailure,
  };
  use serde_json::Map;
-@@ -638,6 +638,22 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
+@@ -638,6 +638,43 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
      )
  }
  
@@ -13046,10 +13046,31 @@ index 242dc0f3..f6213f21 100644
 +    db.source_occurrences.push(occurrence);
 +}
 +
++fn record_gantt_directive(
++    db: &mut GanttDb,
++    semantic_id: &str,
++    line: &str,
++    line_start: usize,
++    payload: Option<SpannedText<'_>>,
++) {
++    if !db.trace_source {
++        return;
++    }
++    let mut statement = gantt_statement_span(line, line_start);
++    if let Some(payload) = payload {
++        statement.end = payload.end;
++    }
++    let mut occurrence = json!({"kind":"nonvisual","classification":"gantt-directive","semanticId":semantic_id,"origin":"body","span":statement});
++    if let Some(value) = payload.and_then(SpannedText::trim) {
++        occurrence["labelSpan"] = json!(value.span());
++    }
++    db.source_occurrences.push(occurrence);
++}
++
  fn collect_gantt_task_field_symbols(
      fields: &[SpannedText<'_>],
      statement_span: SourceSpan,
-@@ -961,6 +977,12 @@ fn parse_gantt_semantic_source_once(
+@@ -961,6 +998,12 @@ fn parse_gantt_semantic_source_once(
      control.checkpoint()?;
      let mut db = GanttDb::default();
      db.clear();
@@ -13062,7 +13083,7 @@ index 242dc0f3..f6213f21 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1211,8 +1233,75 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1254,75 @@ pub(super) fn gantt_db_to_render_model_controlled(
          }
      }
  
@@ -13138,7 +13159,83 @@ index 242dc0f3..f6213f21 100644
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1503,12 +1592,20 @@ fn parse_gantt_statement(
+@@ -1359,16 +1469,19 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_date_format(v.text);
++        record_gantt_directive(db, "dateFormat", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if starts_with_case_insensitive(t, "inclusiveEndDates") {
+         facts.push_directive_prefix("inclusiveEndDates");
+         db.enable_inclusive_end_dates();
++        record_gantt_directive(db, "inclusiveEndDates", stripped, line_start, None);
+         return Ok(Ok(()));
+     }
+     if starts_with_case_insensitive(t, "topAxis") {
+         facts.push_directive_prefix("topAxis");
+         db.enable_top_axis();
++        record_gantt_directive(db, "topAxis", stripped, line_start, None);
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
+@@ -1382,6 +1495,7 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_axis_format(v.text);
++        record_gantt_directive(db, "axisFormat", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
+@@ -1395,6 +1509,7 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_tick_interval(v.text.trim());
++        record_gantt_directive(db, "tickInterval", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
+@@ -1408,6 +1523,7 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_includes(v.text);
++        record_gantt_directive(db, "includes", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
+@@ -1421,6 +1537,7 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_excludes(v.text);
++        record_gantt_directive(db, "excludes", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
+@@ -1434,6 +1551,7 @@ fn parse_gantt_statement(
+             facts,
+         );
+         db.set_today_marker(v.text.trim());
++        record_gantt_directive(db, "todayMarker", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
+@@ -1464,6 +1582,7 @@ fn parse_gantt_statement(
+             )));
+         }
+         db.set_weekday(&day);
++        record_gantt_directive(db, "weekday", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
+@@ -1491,6 +1610,7 @@ fn parse_gantt_statement(
+             )));
+         }
+         db.set_weekend(&day);
++        record_gantt_directive(db, "weekend", stripped, line_start, Some(v));
+         return Ok(Ok(()));
+     }
+     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
+@@ -1503,12 +1623,20 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13159,7 +13256,7 @@ index 242dc0f3..f6213f21 100644
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1522,6 +1619,12 @@ fn parse_gantt_statement(
+@@ -1522,6 +1650,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13172,7 +13269,7 @@ index 242dc0f3..f6213f21 100644
          db.set_acc_title(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1535,6 +1638,12 @@ fn parse_gantt_statement(
+@@ -1535,6 +1669,12 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
@@ -13185,7 +13282,7 @@ index 242dc0f3..f6213f21 100644
          db.set_acc_descr(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1542,6 +1651,15 @@ fn parse_gantt_statement(
+@@ -1542,6 +1682,15 @@ fn parse_gantt_statement(
          facts.push_directive_prefix("accDescr");
          let block = block.consume_remaining(cursor, control)?;
          block.resume_after_closing_brace(cursor);
@@ -13201,7 +13298,7 @@ index 242dc0f3..f6213f21 100644
          db.set_acc_descr(block.value());
          block.emit_symbol(facts);
          if !block.is_complete() {
-@@ -1612,9 +1730,37 @@ fn parse_gantt_statement(
+@@ -1612,9 +1761,37 @@ fn parse_gantt_statement(
          .copied()
          .filter_map(SpannedText::trim)
          .collect::<Vec<_>>();

@@ -26,7 +26,7 @@ Source: the locally inspected fork's `packages/mermaid/src/diagram-api/diagram-o
 | `er` | Missing |
 | `c4` | Missing |
 | `gitGraph` | Missing |
-| `gantt` | Native task bars/milestones/labels and title mapped; `after`/`until` references retain task ownership; repeated section names retain distinct declarations and one effective rendered title, with unrendered sections nonvisual; repeated body titles retain their source and visible frontmatter fallback owns its title; accessibility statements retain exact nonvisual origins; complete syntax/configuration conformance pending |
+| `gantt` | Native task bars/milestones/labels and title mapped; `after`/`until` references retain task ownership; repeated section names retain distinct declarations and one effective rendered title, with unrendered sections nonvisual; repeated body titles retain their source and visible frontmatter fallback owns its title; accessibility statements and ten diagram directives retain exact nonvisual origins; complete syntax/configuration conformance pending |
 | `journey` | Native tasks/labels, scores, actor references/legend, sections and title implemented; complete conformance pending |
 | `pie` | Missing |
 | `quadrantChart` | Missing |

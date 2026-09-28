@@ -626,6 +626,44 @@ test('GANTT-2-ACCESSIBILITY: source-only title and description evidence survives
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-DIRECTIVE-ORIGINS: source-only settings survive saved and live SVG', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const statements = [
+    'dateFormat YYYY-MM-DD', 'inclusiveEndDates', 'topAxis', 'axisFormat %Y-%m-%d ',
+    'tickInterval 1day', 'includes weekends', 'excludes weekends', 'todayMarker off',
+    'weekday monday', 'weekend friday', 'dateFormat YYYY-MM-DD', 'topAxis',
+  ];
+  const source = `gantt\n%% 😀 comment\n${statements.map((statement, i) => i === 3 ? `${statement}; note` : statement).join('\n')}\n${task}\n`;
+  const spans: { start: number; end: number }[] = [];
+  let searchFrom = 0;
+  for (const statement of statements) {
+    const start = source.indexOf(statement, searchFrom);
+    assert.ok(start >= 0);
+    spans.push({ start, end: start + statement.length });
+    searchFrom = start + statement.length;
+  }
+  await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, spans);
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-directives-'));
+  const filename = join(directory, 'gantt.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg } = await producer.render('gantt-directives', source);
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    const saved = JSON.parse((await page.locator('[data-mt-native]').getAttribute('data-mt-native'))!);
+    const directive = saved.filter((item: any) => item.classification === 'gantt-directive');
+    assert.equal(directive.length, statements.length);
+    assert.ok(directive.every((item: any) => item.kind === 'nonvisual' && !item.domId));
+    await writeFile(filename, '```mermaid\n' + source + '```\n');
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const live = JSON.parse((await page.locator('[data-mt-native]').getAttribute('data-mt-native'))!);
+    assert.deepEqual(live, saved, 'Markdown embedding retains every directive origin');
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });

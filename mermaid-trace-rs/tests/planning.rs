@@ -4,6 +4,83 @@ use serde_json::Value;
 const GANTT: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\ngantt\r\n  title Plan 😀\r\n  dateFormat YYYY-MM-DD\r\n  todayMarker off\r\n  section Build\r\n  Same 😀 :done, a, 2026-01-01, 2d\r\n  Same 😀 :crit, b, after a, 1d\r\n  Ship :milestone, c, after b, 0d\r\n";
 
 #[test]
+fn gantt_2_directives_retain_each_nonvisual_source_origin() {
+    let source = "---\r\nconfig:\r\n  htmlLabels: false\r\n---\r\ngantt\r\n%% 😀 comment\r\n  dateFormat YYYY-MM-DD\r\n  inclusiveEndDates\r\n  topAxis\r\n  axisFormat %Y-%m-%d ; note\r\n  tickInterval 1day\r\n  includes weekends\r\n  excludes weekends\r\n  todayMarker off\r\n  weekday monday\r\n  weekend friday\r\n  dateFormat YYYY-MM-DD\r\n  topAxis\r\n  Task :a, 2026-01-01, 1d\r\n";
+    let result = mermaid_trace_rs::render("gantt-directives", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let directives: Vec<_> = native
+        .iter()
+        .filter(|item| item["classification"] == "gantt-directive")
+        .collect();
+    let expected = [
+        ("dateFormat", "dateFormat YYYY-MM-DD", Some("YYYY-MM-DD")),
+        ("inclusiveEndDates", "inclusiveEndDates", None),
+        ("topAxis", "topAxis", None),
+        ("axisFormat", "axisFormat %Y-%m-%d ", Some("%Y-%m-%d")),
+        ("tickInterval", "tickInterval 1day", Some("1day")),
+        ("includes", "includes weekends", Some("weekends")),
+        ("excludes", "excludes weekends", Some("weekends")),
+        ("todayMarker", "todayMarker off", Some("off")),
+        ("weekday", "weekday monday", Some("monday")),
+        ("weekend", "weekend friday", Some("friday")),
+        ("dateFormat", "dateFormat YYYY-MM-DD", Some("YYYY-MM-DD")),
+        ("topAxis", "topAxis", None),
+    ];
+    assert_eq!(directives.len(), expected.len());
+    let mut search_from = 0;
+    for (item, (kind, statement, payload)) in directives.iter().zip(expected) {
+        let start = search_from + source[search_from..].find(statement).unwrap();
+        let end = start + statement.len();
+        search_from = end;
+        assert_eq!(item["kind"], "nonvisual");
+        assert_eq!(item["semanticId"], kind);
+        assert_eq!(item["origin"], "body");
+        assert_eq!(item["span"], serde_json::json!({"start":start,"end":end}));
+        assert!(item["domId"].is_null());
+        match payload {
+            Some(payload) => {
+                let offset = statement.find(payload).unwrap();
+                assert_eq!(
+                    item["labelSpan"],
+                    serde_json::json!({"start":start+offset,"end":start+offset+payload.len()})
+                );
+            }
+            None => assert!(item["labelSpan"].is_null()),
+        }
+    }
+    assert!(
+        result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|piece| {
+                !directives
+                    .iter()
+                    .any(|directive| piece["semanticId"] == directive["semanticId"])
+            })
+    );
+    assert!(
+        result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|piece| piece["domId"] == "gantt:task:a")
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-directives", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
+#[test]
 fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
     for (body, visible, mapped_body, nonvisual_body) in [
