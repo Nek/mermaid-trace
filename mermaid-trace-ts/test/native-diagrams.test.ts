@@ -182,7 +182,7 @@ test('OWN-STATE-ENDPOINT: saved and live references select their transition owne
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?, number?])[] = [], reverseNodeSource?: string | { start: number; end: number }, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string, reverseWholeOwner = false, unmappedSpans: readonly { start: number; end: number }[] = []) {
+async function verifyNative(source: string, key: string, expected: string, label: string, controls: readonly (readonly [string, string, string?, number?])[] = [], reverseNodeSource?: string | { start: number; end: number }, reverseKeys: readonly string[] = [], reversePrimaryKey = key, expectedTextColour?: string, reverseWholeOwner = false, unmappedSpans: readonly { start: number; end: number }[] = [], labelViaKeyboard = false) {
   const directory = await mkdtemp(join(tmpdir(), 'trace-native-'));
   const filename = join(directory, 'plan.md');
   const markdown = '# Plan\n\n> ```mermaid\n' + source.split('\n').filter(Boolean).map(line => '> ' + line + '\n').join('') + '> ```\n';
@@ -291,7 +291,10 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(glyphEvent.role, 'node', 'generated glyph clicks select their enclosing node');
       assert.equal(source.slice(glyphEvent.span.start, glyphEvent.span.end), expected);
     }
-    await clickExposedTarget(first.locator(labelSelector).first());
+    if (labelViaKeyboard) {
+      await first.locator(labelSelector).first().focus();
+      await first.locator(labelSelector).first().press('Enter');
+    } else await clickExposedTarget(first.locator(labelSelector).first());
     event = await page.evaluate(() => (window as any).events.at(-1));
     assert.equal(source.slice(event.span.start, event.span.end), label);
     const labelSpan = event.span;
@@ -425,7 +428,10 @@ async function verifyNative(source: string, key: string, expected: string, label
       assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(expected));
       await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(nodeSpan.start), end: toMarkdownEnd(nodeSpan.end) }));
     }
-    await clickExposedTarget(page.locator(labelSelector).first());
+    if (labelViaKeyboard) {
+      await page.locator(labelSelector).first().focus();
+      await page.locator(labelSelector).first().press('Enter');
+    } else await clickExposedTarget(page.locator(labelSelector).first());
     assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(label));
     if (expectedTextColour !== undefined) {
       const labelGroup = page.locator(labelSelector).first();
@@ -573,6 +579,39 @@ test('GANTT-2-ROOT-SIZING: fixed and responsive SVGs retain saved and live selec
     const source = '---\nconfig:\n  gantt:\n    useWidth: 420\n    useMaxWidth: ' + useMaxWidth + '\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n';
     await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 1d', 'Task', [['gantt:section:Work', 'section Work', 'control']]);
   }
+});
+
+test('GANTT-2-SUBPIXEL-TEXT: narrow labels retain saved and live source selection', { timeout: 60_000 }, async () => {
+  const source = '---\nconfig:\n  gantt:\n    useWidth: 153\n    fontSize: 0.5\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask label :a, 2026-01-01, 1d\n';
+  await verifyNative(source, 'gantt:task:a', 'Task label :a, 2026-01-01, 1d', 'Task label',
+    [], undefined, [], 'gantt:task:a', undefined, false, [], true);
+});
+
+test('GANTT-2-SUBPIXEL-TEXT: zero-size label has no invisible keyboard target', { timeout: 30_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  try {
+    const source = '---\nconfig: { gantt: { useWidth: 153, fontSize: 0 } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask label :a, 2026-01-01, 1d\n';
+    const { svg } = await producer.render('gantt-zero-font', source);
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      Object.assign(window, { handle: activateSvg(document.querySelector('svg')!, { onSelect: () => {} }) });
+    }, activation);
+    const task = page.locator('[data-mt-key="gantt:task:a"][data-mt-role=node]');
+    const label = page.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+    assert.equal(await label.evaluate(element => getComputedStyle(element).fontSize), '0px');
+    assert.equal(await label.getAttribute('tabindex'), null);
+    assert.equal(await task.getAttribute('tabindex'), '0');
+    const start = source.indexOf('Task label');
+    await page.evaluate(span => (window as any).handle.highlight([span]), { start, end: start + 'Task label'.length });
+    assert.equal(await task.getAttribute('data-mt-selected'), 'true');
+    assert.equal(await label.getAttribute('data-mt-selected'), null);
+    await page.evaluate(() => (window as any).handle.dispose());
+  } finally { await browser.close(); await producer.close(); }
 });
 
 test('OWN-GANTT-DEPENDENCY: saved and live source references select their task owner', { timeout: 60_000 }, async () => {

@@ -1202,6 +1202,57 @@ fn gantt_2_root_sizing_preserves_static_output_and_task_binding() {
     }
 }
 
+#[test]
+fn gantt_2_subpixel_font_retains_label_placement_and_source_binding() {
+    for (font_size, width_class) in [(0.0, "width-0"), (0.5, "width-")] {
+        let source = format!(
+            "---\r\nconfig:\r\n  gantt:\r\n    useWidth: 153\r\n    fontSize: {font_size}\r\n---\r\ngantt\r\ndateFormat YYYY-MM-DD\r\nsection Work\r\nTask label :a, 2026-01-01, 1d\r\n"
+        );
+        let mapped = mermaid_trace_rs::render("gantt-subpixel", &source).unwrap();
+        let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+        let label = svg
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("taskText"))
+            })
+            .unwrap();
+        assert_eq!(label.attribute("x"), Some("76.5"));
+        assert!(label.attribute("class").unwrap().contains(width_class));
+        let task = mapped["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|piece| {
+                piece["kind"] == "node"
+                    && piece["semanticId"] == "a"
+                    && piece["labelSpan"].is_object()
+            })
+            .unwrap();
+        let start = task["labelSpan"]["start"].as_u64().unwrap() as usize;
+        let end = task["labelSpan"]["end"].as_u64().unwrap() as usize;
+        let utf16: Vec<_> = source.encode_utf16().collect();
+        assert_eq!(
+            String::from_utf16(&utf16[start..end]).unwrap(),
+            "Task label"
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+            merman::MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": false,
+                "deterministicIds": true,
+                "deterministicIDSeed": "mermaid-trace"
+            })),
+        ));
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-subpixel", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
 const JOURNEY: &str = "journey\r\n%% 😀\r\n  title Trip 😀\r\n  section Morning\r\n  Same 😀 : 5 : Alice, Bob\r\n  Same 😀 : 2 : Alice\r\n  section Evening\r\n  Rest : 3 : Bob\r\n";
 
 #[test]

@@ -29048,6 +29048,47 @@ index 17ec4d62..e8b1115a 100644
                                  rewrite_safe: *rewrite_safe,
                              });
                              *path = Some(key_path);
+diff --git a/crates/merman-render/src/environment.rs b/crates/merman-render/src/environment.rs
+index 91ade802..fd655464 100644
+--- a/crates/merman-render/src/environment.rs
++++ b/crates/merman-render/src/environment.rs
+@@ -307,7 +307,11 @@ impl BuiltinSvgComputedLength {
+ impl BuiltinInlineRawLineWidth {
+     fn new(style: &TextStyle) -> Self {
+         Self {
+-            font_size: style.font_size.max(1.0),
++            font_size: if style.font_size >= 0.0 {
++                style.font_size
++            } else {
++                1.0
++            },
+             committed_em: 0.0,
+             pending_grapheme: String::new(),
+         }
+@@ -2683,6 +2687,23 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn builtin_svg_text_width_respects_zero_and_subpixel_font_sizes() {
++        let width = |font_size| {
++            let style = TextStyle {
++                font_size,
++                ..TextStyle::default()
++            };
++            let mut measured = BuiltinSvgComputedLength::deterministic(&style);
++            measured.push_text("Task label");
++            measured.width_px()
++        };
++        assert_eq!(width(0.0), 0.0);
++        assert!((width(0.5) * 2.0 - width(1.0)).abs() < 1e-9);
++        assert_eq!(width(-1.0), width(1.0));
++        assert_eq!(width(f64::NAN), width(1.0));
++    }
++
+     #[test]
+     fn named_complete_profile_preserves_every_specialized_method_and_identity() {
+         let profile_identity = identity(
 diff --git a/crates/merman-render/src/flowchart/elk.rs b/crates/merman-render/src/flowchart/elk.rs
 index cdc83769..1fd66aba 100644
 --- a/crates/merman-render/src/flowchart/elk.rs
@@ -32823,8 +32864,54 @@ index 349c673f..34331760 100644
          assert!(!out.contains("@keyframes"));
          assert!(!out.contains(":root"));
          assert!(!out.contains("animation"));
+diff --git a/crates/merman-render/src/text/deterministic.rs b/crates/merman-render/src/text/deterministic.rs
+index d64f979d..a09d2e83 100644
+--- a/crates/merman-render/src/text/deterministic.rs
++++ b/crates/merman-render/src/text/deterministic.rs
+@@ -516,7 +516,11 @@ impl DeterministicTextMeasurer {
+             configured_line_height_factor
+         };
+ 
+-        let font_size = style.font_size.max(1.0);
++        let font_size = if style.font_size >= 0.0 {
++            style.font_size
++        } else {
++            1.0
++        };
+         let width_model = LineWidthModel {
+             font_size,
+             source: width_source,
+diff --git a/crates/merman-render/src/text/tests.rs b/crates/merman-render/src/text/tests.rs
+index 3b52053a..59c5680f 100644
+--- a/crates/merman-render/src/text/tests.rs
++++ b/crates/merman-render/src/text/tests.rs
+@@ -25,6 +25,24 @@ fn assert_same_metrics_after_dom_rounding(actual: TextMetrics, expected: TextMet
+     assert_eq!(actual.line_count, expected.line_count);
+ }
+ 
++#[test]
++fn raw_svg_text_width_scales_through_zero_and_subpixel_font_sizes() {
++    let measurer = DeterministicTextMeasurer::default();
++    let width = |font_size| {
++        measurer.measure_svg_raw_text_bbox_width_px(
++            "Task label",
++            &TextStyle {
++                font_size,
++                ..TextStyle::default()
++            },
++        )
++    };
++    assert_eq!(width(0.0), 0.0);
++    assert!((width(0.5) * 2.0 - width(1.0)).abs() < 1e-9);
++    assert_eq!(width(-1.0), width(1.0));
++    assert_eq!(width(f64::NAN), width(1.0));
++}
++
+ #[test]
+ fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
+     let plain =
 diff --git a/crates/merman-render/tests/gantt_svg_test.rs b/crates/merman-render/tests/gantt_svg_test.rs
-index 892097c9..a5205604 100644
+index 892097c9..a3de993a 100644
 --- a/crates/merman-render/tests/gantt_svg_test.rs
 +++ b/crates/merman-render/tests/gantt_svg_test.rs
 @@ -171,6 +171,31 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String
@@ -32859,7 +32946,7 @@ index 892097c9..a5205604 100644
  #[test]
  fn gantt_task_text_height_follows_final_svg_security_sanitization() {
      let source = r#"gantt
-@@ -307,6 +332,103 @@ gantt
+@@ -307,6 +332,128 @@ gantt
      );
  }
  
@@ -32958,6 +33045,31 @@ index 892097c9..a5205604 100644
 +            use_max_width
 +        );
 +    }
++}
++
++#[test]
++fn gantt_svg_subpixel_font_keeps_a_narrow_task_label_inside_its_bar() {
++    let source = "---\nconfig:\n  gantt:\n    useWidth: 153\n    fontSize: 0.5\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask label :a, 2026-01-01, 1d\n";
++    let svg = render_gantt_svg_from_text(source);
++    let document = roxmltree::Document::parse(&svg).unwrap();
++    let label = document
++        .descendants()
++        .find(|node| {
++            node.has_tag_name("text")
++                && node
++                    .attribute("class")
++                    .is_some_and(|class| class.starts_with("taskText"))
++        })
++        .unwrap();
++    assert_eq!(label.attribute("font-size"), Some("0.5"));
++    assert_eq!(label.attribute("x"), Some("76.5"));
++    assert!(
++        label
++            .attribute("class")
++            .unwrap()
++            .starts_with("taskText taskText0"),
++        "{svg}"
++    );
 +}
 +
  #[test]
