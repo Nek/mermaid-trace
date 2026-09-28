@@ -1127,6 +1127,47 @@ fn gantt_2_section_font_size_keeps_css_value_and_source_binding() {
     );
 }
 
+#[test]
+fn gantt_2_configured_tick_interval_keeps_task_binding_and_static_parity() {
+    let source = "---\r\nconfig:\r\n  gantt:\r\n    tickInterval: 2day\r\n    topAxis: true\r\n---\r\ngantt\r\ndateFormat YYYY-MM-DD\r\naxisFormat %Y-%m-%d\r\ntodayMarker off\r\nsection Work 😀\r\nTask 😀 :a, 2026-01-01, 14d\r\n";
+    let mapped = mermaid_trace_rs::render("gantt-ticks", source).unwrap();
+    let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+    let ticks: Vec<_> = svg
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("tick"))
+        .collect();
+    assert_eq!(ticks.len(), 16, "two configured two-day axes");
+    assert!(
+        ticks
+            .iter()
+            .all(|tick| tick.attribute("data-mt-role").is_none()),
+        "generated ticks have no source target"
+    );
+    let pieces = mapped["mapping"]["pieces"].as_array().unwrap();
+    let task = pieces
+        .iter()
+        .find(|piece| {
+            piece["kind"] == "node" && piece["semanticId"] == "a" && piece["labelSpan"].is_object()
+        })
+        .unwrap();
+    let utf16: Vec<_> = source.encode_utf16().collect();
+    let label = &task["labelSpan"];
+    assert_eq!(
+        String::from_utf16(
+            &utf16[label["start"].as_u64().unwrap() as usize
+                ..label["end"].as_u64().unwrap() as usize]
+        )
+        .unwrap(),
+        "Task 😀"
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-ticks", source).unwrap();
+    assert_eq!(
+        support::strip_trace(mapped["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
 const JOURNEY: &str = "journey\r\n%% 😀\r\n  title Trip 😀\r\n  section Morning\r\n  Same 😀 : 5 : Alice, Bob\r\n  Same 😀 : 2 : Alice\r\n  section Evening\r\n  Rest : 3 : Bob\r\n";
 
 #[test]

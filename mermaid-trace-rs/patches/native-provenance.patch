@@ -29171,7 +29171,7 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/gantt.rs b/crates/merman-render/src/gantt.rs
-index 1031ff97..06818b7a 100644
+index 1031ff97..ffb67d9f 100644
 --- a/crates/merman-render/src/gantt.rs
 +++ b/crates/merman-render/src/gantt.rs
 @@ -1,8 +1,9 @@
@@ -29218,6 +29218,32 @@ index 1031ff97..06818b7a 100644
              order: t.order,
              start_ms: t.start_ms,
              end_ms: t.end_ms,
+@@ -1365,7 +1379,15 @@ pub(crate) fn layout_gantt_diagram_typed(
+     }
+ 
+     let axis_format = axis_format_to_strftime(&m.axis_format, &m.date_format, cfg_axis_format);
+-    let tick_interval = m.tick_interval.as_deref();
++    let tick_interval = m
++        .tick_interval
++        .as_deref()
++        .filter(|value| !value.is_empty())
++        .or_else(|| {
++            gantt_cfg
++                .get("tickInterval")
++                .and_then(|value| value.as_str())
++        });
+     let week_start = if m.weekday.trim().is_empty() {
+         gantt_cfg.get("weekday").and_then(|v| v.as_str())
+     } else {
+@@ -1429,7 +1451,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+         },
+         date_format: m.date_format.clone(),
+         axis_format: m.axis_format.clone(),
+-        tick_interval: m.tick_interval.clone(),
++        tick_interval: tick_interval.map(str::to_owned),
+         top_axis: top_axis_enabled,
+         today_marker: m.today_marker.clone(),
+         categories,
 diff --git a/crates/merman-render/src/journey.rs b/crates/merman-render/src/journey.rs
 index c8ebca79..9e778388 100644
 --- a/crates/merman-render/src/journey.rs
@@ -32787,7 +32813,7 @@ index 349c673f..34331760 100644
          assert!(!out.contains(":root"));
          assert!(!out.contains("animation"));
 diff --git a/crates/merman-render/tests/gantt_svg_test.rs b/crates/merman-render/tests/gantt_svg_test.rs
-index 892097c9..61fb412d 100644
+index 892097c9..9b89b0be 100644
 --- a/crates/merman-render/tests/gantt_svg_test.rs
 +++ b/crates/merman-render/tests/gantt_svg_test.rs
 @@ -171,6 +171,31 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String
@@ -32822,7 +32848,7 @@ index 892097c9..61fb412d 100644
  #[test]
  fn gantt_task_text_height_follows_final_svg_security_sanitization() {
      let source = r#"gantt
-@@ -307,6 +332,27 @@ gantt
+@@ -307,6 +332,83 @@ gantt
      );
  }
  
@@ -32845,6 +32871,62 @@ index 892097c9..61fb412d 100644
 +            .expect("section title");
 +        assert_eq!(title.attribute("font-size"), Some(expected), "{source}");
 +    }
++}
++
++#[test]
++fn gantt_configured_tick_interval_uses_diagram_override_and_both_axes() {
++    let body = "gantt\ndateFormat YYYY-MM-DD\naxisFormat %Y-%m-%d\ntodayMarker off\nsection Work\nTask :a, 2026-01-01, 14d\n";
++    let config = "---\nconfig:\n  gantt:\n    tickInterval: 2day\n    topAxis: true\n---\n";
++    let layout = layout_gantt_from_text(&format!("{config}{body}"));
++    let expected = [
++        "2026-01-01",
++        "2026-01-03",
++        "2026-01-05",
++        "2026-01-07",
++        "2026-01-09",
++        "2026-01-11",
++        "2026-01-13",
++        "2026-01-15",
++    ];
++    assert_eq!(layout.tick_interval.as_deref(), Some("2day"));
++    assert_eq!(
++        layout
++            .bottom_ticks
++            .iter()
++            .map(|tick| tick.label.as_str())
++            .collect::<Vec<_>>(),
++        expected
++    );
++    assert_eq!(
++        layout
++            .top_ticks
++            .iter()
++            .map(|tick| tick.label.as_str())
++            .collect::<Vec<_>>(),
++        expected
++    );
++    let svg = render_gantt_svg_from_text(&format!("{config}{body}"));
++    assert_eq!(svg.matches("class=\"tick\"").count(), 2 * expected.len());
++
++    let overridden = layout_gantt_from_text(&format!(
++        "{config}gantt\ntickInterval 1day\n{}",
++        body.strip_prefix("gantt\n").unwrap()
++    ));
++    assert_eq!(overridden.tick_interval.as_deref(), Some("1day"));
++    assert_eq!(overridden.bottom_ticks.len(), 15);
++
++    let weekly = layout_gantt_from_text(&format!(
++        "---\nconfig:\n  gantt:\n    tickInterval: 1week\n    weekday: monday\n---\n{body}"
++    ));
++    assert_eq!(
++        weekly
++            .bottom_ticks
++            .iter()
++            .map(|tick| tick.label.as_str())
++            .collect::<Vec<_>>(),
++        ["2026-01-04", "2026-01-11"],
++        "Mermaid's default Sunday database value takes precedence over config-only weekday"
++    );
 +}
 +
  #[test]
