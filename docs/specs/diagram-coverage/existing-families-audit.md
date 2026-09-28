@@ -1,6 +1,6 @@
 # Existing-family goal: evidence audit
 
-2026-09-28. The baseline below records the read-only audit at the named Trace revision; subsequent authorized fixes are recorded under [implementation checkpoints](#implementation-checkpoints). The broader goal remains blocked pending its completion contract. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
+2026-09-28. The baseline below records the read-only audit at the named Trace revision; subsequent authorized fixes are recorded under [implementation checkpoints](#implementation-checkpoints). The broader goal is still marked blocked until resumed; its browser/fidelity boundaries were agreed on 2026-09-29. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
 
 ## Reference and audit boundary
 
@@ -88,15 +88,15 @@ The native parser constructs keys from `node.id` in `kanban.rs`; Trace's shared 
 
 Two negative findings prevent false bug counts: `sequence/stress_end_keyword_016.mmd` is rejected by both renderers at the `(end)` message target; the Kanban YAML-title probe displays no `Board` title in either renderer, so absence of a visible title binding is not itself a defect.
 
-## Proposed finite completion contract
+## Finite completion contract
 
-Subject to user agreement before implementation resumes:
+Browser and visual-fidelity boundaries agreed 2026-09-29; the six-family feature scope is unchanged:
 
 1. Keep the **same six families**, all their pinned Mermaid 12 syntax and applicable configuration/renderer variants, including flowchart ELK. Merman 11.17.2 remains a differential aid, not a reduced compatibility target. Later upstream releases do not expand this goal automatically.
 2. Close the four confirmed defects and resolve each unverified row into executable acceptance or source-backed proof of a nonvisual/generated/no-op case. Enumerate grammar alternatives and schema options; exercise boundary classes and interactions that share renderer paths. A fixture count or smoke pass cannot substitute for this crosswalk.
 3. Preserve all existing acceptance. Each distinct source-backed visual has exact original UTF-16 ownership; references do not hijack declarations; multiple occurrences survive; equal-span visuals form one logical selection/focus group. Verify source→visual and visual→source, labels, unlabeled connectors, background selection and copied Markdown locations.
 4. Verify mapped/plain rendering parity, inert saved SVG activation without the producer, nested/repeated Markdown instances, optional native source selection, CLI reload/error recovery and the outstanding migration checks. Retain the existing safe-export/resource constraints. Newly discovered bugs inside this behavior stay in scope.
-5. Keep other families, WASM, packaging/VS Code and the all-family release outside this goal; they remain separate requirements. Resolve the browser acceptance boundary and the required level of visual fidelity to Mermaid 12 explicitly before calling the goal complete. Current evidence is Chromium-only, and native mapped/plain equality does not prove upstream pixel equality.
+5. Keep other families, WASM, packaging/VS Code and the all-family release outside this goal; they remain separate requirements. Require interaction acceptance in Chromium, Safari and Firefox. Accept Merman's visual interpretation: correct content, relationships, readability, required features and exact source mapping are mandatory; matching official Mermaid pixels, spacing or routing is not. Native mapped/plain parity remains required. Current Chromium-only evidence does not establish acceptance in the other two browsers.
 
 ## Measurements and next decision
 

@@ -78,6 +78,12 @@ The production preview uses the Trace-owned Rust renderer for every family. Flow
 
 Local file rendering uses Merman's bounded `CLI_DEFAULT_RESOURCE_PROFILE` for SVG layout and export. Trace retains its 50,000-UTF-16-unit source cap and Merman's default input admission and hard backend caps. A future browser/WASM host must choose a policy suited to its own trust boundary.
 
+## Rendering and browser acceptance
+
+User decision, 2026-09-29: accept Merman's visual interpretation of Mermaid diagrams. Correct content, relationships, readability, complete required features and exact source ownership remain mandatory; pixel equality with the official Mermaid renderer is not required. Native layout, spacing and routing differences alone are not defects. Mapped/plain Merman rendering parity and independent Mermaid reference tests remain required for their existing purposes.
+
+Chromium, Safari and Firefox are supported targets using the same standard SVG/DOM activation implementation. Verify pointer/keyboard selection, reverse-source highlighting, scrolling and clipboard behavior in all three; current Chromium evidence does not establish Safari or Firefox acceptance. This decision does not reduce diagram-family or syntax/configuration coverage.
+
 ## Required diagram coverage
 
 User decision, 2026-09-26: every built-in Mermaid diagram family is required for the first usable release. The [coverage spec](specs/diagram-coverage/spec.md) is the release checklist. Earlier flowchart-first work is a feasibility slice; it does not limit the product to flowcharts. Partial flowchart/sequence coverage and diagram-only viewer paths are incomplete implementations of the release requirement.
