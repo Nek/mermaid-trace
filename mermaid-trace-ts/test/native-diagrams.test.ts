@@ -735,6 +735,65 @@ test('JOURNEY-2-LEGEND-EMPTY: generated empty actor circles retain saved/live ta
   }
 });
 
+test('JOURNEY-2-PALETTE: theme colors preserve one source selection per visual group', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  const themes = {
+    default: ['rgb(236, 236, 255)', 'rgb(51, 51, 51)'],
+    dark: ['rgb(31, 32, 32)', 'rgb(204, 204, 204)'],
+    forest: ['rgb(205, 228, 152)', 'rgb(0, 0, 0)'],
+    neutral: ['rgb(238, 238, 238)', 'rgb(0, 0, 0)'],
+    base: ['rgb(255, 244, 221)', 'rgb(51, 51, 51)'],
+  } as const;
+  try {
+    const page = await browser.newPage(); page.setDefaultTimeout(10_000);
+    for (const [theme, [defaultFill, defaultText]] of Object.entries(themes)) for (const override of [false, true]) {
+      for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+        const config = { theme, look, htmlLabels, ...(override ? { themeVariables: {
+          fillType0: '#123456', actor0: '#654321', textColor: '#fedcba', faceColor: '#ffeedd', lineColor: '#abcdef',
+        } } : {}), journey: { textPlacement: 'tspan' } };
+        const source = '---\nconfig: ' + JSON.stringify(config) + '\n---\njourney\nsection Day\nFirst : 5 : Alice, Bob\nsection Night\nSecond : 3 : Bob\n';
+        const { svg, mapping } = await producer.render('journey-palette', source);
+        const actor = mapping.pieces.find(piece => piece.domId === 'journey:actor:Alice')!.span;
+        await page.setContent(svg + svg.replaceAll('journey-palette', 'journey-copy'));
+        const first = page.locator('svg').first();
+        const colors = await first.evaluate(element => Object.fromEntries(([
+          ['actor', 'circle.actor-0', 'fill'], ['task', 'rect.task', 'fill'],
+          ['section', 'rect.journey-section', 'fill'], ['taskText', 'text.task', 'fill'],
+          ['legend', 'text.legend', 'fill'], ['face', 'circle.face', 'fill'],
+          ['line', 'line.task-line', 'stroke'],
+        ] as const).map(([key, selector, property]) => [key, getComputedStyle(element.querySelector(selector)!).getPropertyValue(property)])));
+        const fill = override ? 'rgb(18, 52, 86)' : defaultFill;
+        const text = override ? 'rgb(254, 220, 186)' : defaultText;
+        assert.deepEqual(colors, {
+          actor: override ? 'rgb(101, 67, 33)' : 'rgb(143, 188, 143)',
+          task: fill, section: fill, taskText: 'rgb(255, 255, 255)', legend: text,
+          face: override ? 'rgb(255, 238, 221)' : 'rgb(255, 248, 220)', line: text,
+        }, `${theme}/${override}/${look}/${htmlLabels}: pinned Mermaid 11.17.2 computed colors`);
+        await page.evaluate(async activation => {
+          const { activateSvg } = await import(activation);
+          Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
+        }, activation);
+        const group = first.locator(`[data-mt-start="${actor.start}"][data-mt-end="${actor.end}"]`);
+        assert.equal(await group.count(), 3, 'actor circle and both legend visuals share one source owner');
+        assert.equal(await group.locator(':scope[tabindex="0"]').count(), 1);
+        for (const member of await group.all()) {
+          await clickExposedTarget(member);
+          assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), actor);
+          assert.equal(await first.locator('[data-mt-selected=true]').count(), 3);
+          assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+        }
+        await page.evaluate(span => (window as any).handles[0].highlight([span]), actor);
+        assert.equal(await first.locator('[data-mt-selected=true]').count(), 3);
+        await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+        assert.equal(await page.locator('[data-mt-selected], [data-mt-active]').count(), 0);
+      }
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
 });

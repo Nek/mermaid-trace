@@ -11,6 +11,133 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_palette_cycles_follow_effective_actor_and_section_identities() {
+    use merman::{
+        Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    };
+    let actor_colors = [
+        "#112233", "#223344", "#334455", "#445566", "#556677", "#667788",
+    ];
+    let fills = [
+        "#101112", "#202122", "#303132", "#404142", "#505152", "#606162", "#707172",
+    ];
+    let text_colors = [
+        "#111111", "#222222", "#333333", "#444444", "#555555", "#666666", "#777777",
+    ];
+    let merged_actors = [
+        "#8FBC8F", "#7CFC00", "#00FFFF", "#20B2AA", "#B0E0E6", "#FFFFE0",
+    ]
+    .into_iter()
+    .chain(actor_colors)
+    .collect::<Vec<_>>();
+    let merged_fills = [
+        "#191970", "#8B008B", "#4B0082", "#2F4F4F", "#800000", "#8B4513", "#00008B",
+    ]
+    .into_iter()
+    .chain(fills)
+    .collect::<Vec<_>>();
+    let merged_text = ["#fff"].into_iter().chain(text_colors).collect::<Vec<_>>();
+    let source = format!(
+        "journey\r\n{}",
+        (0..15)
+            .map(|i| format!(
+                "section S{i} 😀\r\nTask{i} : 5 : A, B, C, D, E, F, G, H, I, J, K, L, M\r\n"
+            ))
+            .collect::<String>()
+    );
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            let config = |trace| {
+                MermaidConfig::from_value(json!({
+                    "traceSource":trace,"look":look,"htmlLabels":html,
+                    "journey":{
+                        "actorColours":actor_colors,"sectionFills":fills,
+                        "sectionColours":text_colors,"textPlacement":"tspan"
+                    }
+                }))
+            };
+            let mapped = Renderer::new().with_engine(Engine::new().with_site_config(config(true)));
+            let plain = Renderer::new().with_engine(Engine::new().with_site_config(config(false)));
+            let RenderOutput::LayoutJson(Some(output)) = mapped
+                .render(RenderRequest::layout_json(
+                    &source,
+                    OperationControl::new(),
+                    SvgRequest::default(),
+                ))
+                .unwrap()
+            else {
+                panic!("Journey layout")
+            };
+            let layout = &output.layout()["layout"]["JourneyDiagram"];
+            for (index, actor) in layout["actor_legend"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .enumerate()
+            {
+                assert_eq!(actor["color"], merged_actors[index % merged_actors.len()]);
+            }
+            for (index, section) in layout["sections"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(section["fill"], merged_fills[index % merged_fills.len()]);
+                assert_eq!(section["num"], json!(index % merged_fills.len()));
+            }
+            let result =
+                mermaid_trace_rs::render_with(&mapped, "journey-palette", &source).unwrap();
+            let baseline =
+                mermaid_trace_rs::render_with(&plain, "journey-palette", &source).unwrap();
+            assert_eq!(
+                support::strip_trace(result["svg"].as_str().unwrap()),
+                support::strip_trace(baseline["svg"].as_str().unwrap())
+            );
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            for (index, section) in svg
+                .descendants()
+                .filter(|n| {
+                    n.has_tag_name("rect")
+                        && n.attribute("class")
+                            .is_some_and(|class| class.contains("journey-section"))
+                })
+                .enumerate()
+            {
+                assert_eq!(
+                    section.attribute("fill"),
+                    Some(merged_fills[index % merged_fills.len()])
+                );
+            }
+            for (index, task) in svg
+                .descendants()
+                .filter(|n| n.has_tag_name("text") && n.attribute("class") == Some("task"))
+                .enumerate()
+            {
+                assert_eq!(
+                    task.attribute("fill"),
+                    Some(merged_text[index % merged_text.len()])
+                );
+            }
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            for index in 0..15 {
+                let section = pieces
+                    .iter()
+                    .find(|piece| piece["domId"] == format!("journey:section:{index}"))
+                    .unwrap();
+                assert_eq!(
+                    selected(&source, &section["labelSpan"]),
+                    format!("S{index} 😀")
+                );
+                let task = pieces
+                    .iter()
+                    .find(|piece| piece["domId"] == format!("journey:task:{index}"))
+                    .unwrap();
+                assert_eq!(
+                    selected(&source, &task["labelSpan"]),
+                    format!("Task{index}")
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_fonts_keep_native_values_visible_text_and_exact_ownership() {
     let renderer = mermaid_trace_rs::renderer();
     for look in ["classic", "neo", "handDrawn"] {

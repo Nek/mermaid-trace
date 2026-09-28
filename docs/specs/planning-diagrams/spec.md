@@ -50,10 +50,18 @@ Configuration audit, 2026-09-27: the selected Mermaid 11.17.2 [schema](https://r
 | --- | --- |
 | `leftMargin`, `maxLabelWidth`, `boxTextMargin` | LEGEND below covers zero/negative/narrow/wide wrapping, configured text margins and effective font sizing; the wider font/theme inventory remains required. |
 | `diagramMarginX`, `diagramMarginY`, `taskMargin`, `width`, `height` | Section/task geometry, activity line and root bounds; GEO below verifies boundaries and combined values, with upstream clipping kept explicit. |
-| `taskFontSize`, `taskFontFamily`, `titleFontSize`, `titleFontFamily`, `titleColor`, root/theme fonts | Text mode/style behavior; complete numeric/string font and precedence coverage remains required. |
-| `actorColours`, `sectionFills`, `sectionColours`, theme variables/themes | Effective palette cycles and CSS precedence; text story covers section palettes, remaining theme/actor matrix required. |
+| `taskFontSize`, `taskFontFamily`, `titleFontSize`, `titleFontFamily`, `titleColor`, root/theme fonts | Text mode/style behavior is covered by JOURNEY-2-FONTS; combined palette/theme presentation remains under PALETTE. |
+| `actorColours`, `sectionFills`, `sectionColours`, theme variables/themes | Effective palette cycles and CSS precedence; text story covers section text palettes, PALETTE below covers the combined theme/actor matrix. |
 | `textPlacement`, `useMaxWidth`, look, HTML labels | Text story covers modes and look/HTML variants; responsive/fixed root and combined configuration interaction remain required. |
 | `boxMargin`, `noteMargin`, `messageMargin`, `messageAlign`, `bottomMarginAdj`, `rightAngles`, `activationWidth` | Present in the journey schema but unused by its drawing code; verify no visual effect while retaining authored nonvisual configuration provenance. |
+
+### JOURNEY-2-PALETTE (ready)
+
+As an author, I want Journey colors to follow the selected theme and accepted palette configuration while visual/source ownership remains stable. **PALETTE-AC1:** computed actor, task/section, legend, face and line colors match the pinned renderer across all five supported themes, with and without explicit theme-variable overrides. Compare computed CSS, not only SVG `fill` attributes. **PALETTE-AC2:** effective `actorColours`, `sectionFills` and `sectionColours` append unique configured values to Mermaid's default arrays and cycle by native actor and section-run identity; theme `actorN` and `fillTypeN` CSS overrides retain their documented precedence over paint attributes. Source-only configuration remains nonvisual. **PALETTE-AC3:** mapped/plain SVG parity and exact actor/section/task ownership survive saved and live Markdown selection, pointer, keyboard, clipboard, isolation and disposal across looks, HTML labels and text modes.
+
+Plan: use a fresh pinned Mermaid 11.17.2 Chromium render per configuration to avoid its module-load palette capture, record independent expected computed colors, and add project artifact/browser tests. Reuse the current native layout, theme projection and shared activation; change only a confirmed mismatch. Keep effective per-diagram configuration in Trace rather than recreating the pinned renderer's process-global palette cache. Responsive roots and ignored-option evidence remain separate JOURNEY-2 work.
+
+PALETTE evidence: fresh pinned Mermaid 11.17.2 Chromium renders matched Trace's computed actor, task/section, legend, face and line colors in all 60 theme/override/look/HTML combinations. The browser oracle checks those colors and shared saved-SVG actor selection in the same matrix. The native artifact test covers 13 actors and 15 section runs, wrapping after the merged default-plus-configured arrays, exact section/task labels and mapped/plain SVG parity across six look/HTML variants. Mermaid's array merge appends unique configured colors to defaults; it does not replace the defaults. Existing saved/live actor, section, text-mode, keyboard, clipboard, isolation and disposal gates remain mandatory. Responsive roots and ignored journey options remain open, so JOURNEY-2 is incomplete.
 
 ### JOURNEY-2-ACTOR-UNICODE (ready)
 
