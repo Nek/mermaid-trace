@@ -558,6 +558,11 @@ test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard,
   await verifyNative(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
 });
 
+test('GANTT-2-SECTION-FONT-SIZE: CSS units retain saved and live section selection', { timeout: 60_000 }, async () => {
+  const source = "---\nconfig:\n  gantt:\n    sectionFontSize: '1.5em'\n    leftPadding: 180\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work 😀\nTask :a, 2026-01-01, 1d\n";
+  await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 1d', 'Task', [['gantt:section:Work 😀', 'section Work 😀', 'control']]);
+});
+
 test('OWN-GANTT-DEPENDENCY: saved and live source references select their task owner', { timeout: 60_000 }, async () => {
   const source = 'gantt\n  dateFormat YYYY-MM-DD\n  Base 😀 :base, 2026-01-01, 1d\n  Peer :peer, 2026-01-02, 1d\n  Window :win, 2026-01-05, 1d\n  Base 😀 :done, b, after base base peer, until win\n';
   const after = source.indexOf('after base base peer');

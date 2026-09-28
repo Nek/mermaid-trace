@@ -1088,6 +1088,45 @@ fn gantt_plan_ac2_provenance_keeps_plain_native_svg_unchanged() {
     );
 }
 
+#[test]
+fn gantt_2_section_font_size_keeps_css_value_and_source_binding() {
+    let source = "---\r\nconfig:\r\n  gantt:\r\n    sectionFontSize: '1.5em'\r\n---\r\ngantt\r\ndateFormat YYYY-MM-DD\r\nsection Work 😀\r\nTask :a, 2026-01-01, 1d\r\n";
+    let mapped = mermaid_trace_rs::render("gantt-font", source).unwrap();
+    let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+    let section = svg
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.contains("sectionTitle"))
+        })
+        .unwrap();
+    assert_eq!(section.attribute("font-size"), Some("1.5em"));
+    assert_eq!(section.attribute("data-mt-role"), Some("control"));
+    let pieces = mapped["mapping"]["pieces"].as_array().unwrap();
+    let section_piece = pieces
+        .iter()
+        .find(|piece| piece["domId"] == "gantt:section:Work 😀")
+        .unwrap();
+    let label = &section_piece["labelSpan"];
+    let utf16: Vec<_> = source.encode_utf16().collect();
+    assert_eq!(
+        String::from_utf16(
+            &utf16[label["start"].as_u64().unwrap() as usize
+                ..label["end"].as_u64().unwrap() as usize]
+        )
+        .unwrap(),
+        "Work 😀"
+    );
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-font", source).unwrap();
+    assert_eq!(
+        support::strip_trace(mapped["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
 const JOURNEY: &str = "journey\r\n%% 😀\r\n  title Trip 😀\r\n  section Morning\r\n  Same 😀 : 5 : Alice, Bob\r\n  Same 😀 : 2 : Alice\r\n  section Evening\r\n  Rest : 3 : Bob\r\n";
 
 #[test]
