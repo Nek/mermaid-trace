@@ -587,6 +587,60 @@ test('GANTT-2-SUBPIXEL-TEXT: narrow labels retain saved and live source selectio
     [], undefined, [], 'gantt:task:a', undefined, false, [], true);
 });
 
+test('GANTT-2-NARROW-PLOT-WIDTH: visible label selects its task without a phantom bar', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const source = `---\nconfig: { gantt: { useWidth: 149 } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\n${task}\n`;
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-narrow-'));
+  const filename = join(directory, 'gantt.md');
+  const markdown = `# Narrow\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg } = await producer.render('gantt-narrow-saved', source);
+    const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+    const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    await page.setContent(svg);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const events: unknown[] = [];
+      Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+    }, activation);
+    const label = page.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+    assert.equal(await page.locator('rect.task, [data-mt-key="gantt:task:a"][data-mt-role=node]').count(), 0);
+    assert.equal(await label.getAttribute('tabindex'), '0');
+    await clickExposedTarget(label);
+    const savedSpan = await page.evaluate(() => (window as any).events.at(-1).span);
+    assert.equal(source.slice(savedSpan.start, savedSpan.end), 'Task');
+    await label.focus(); await label.press('Enter');
+    assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+    const keyboardSpan = await page.evaluate(() => (window as any).events.at(-1).span);
+    assert.equal(source.slice(keyboardSpan.start, keyboardSpan.end), 'Task');
+    await page.evaluate(() => (window as any).handle.dispose());
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const liveLabel = page.locator('[data-mt-key="gantt:task:a"][data-mt-role=node-label]');
+    assert.equal(await page.locator('rect.task, [data-mt-key="gantt:task:a"][data-mt-role=node]').count(), 0);
+    await clickExposedTarget(liveLabel);
+    const original = page.frameLocator('#source-frame').locator('#source');
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'Task');
+    const start = markdown.indexOf(task);
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + 4 }));
+    await page.locator('h1').click();
+    assert.equal(await liveLabel.getAttribute('data-mt-selected'), null);
+    await original.evaluate((element, span) => {
+      const range = element.ownerDocument.createRange();
+      range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+      const selection = element.ownerDocument.getSelection()!;
+      selection.removeAllRanges(); selection.addRange(range);
+    }, { start, end: start + 4 });
+    await page.waitForFunction(() => document.querySelector('[data-mt-key="gantt:task:a"][data-mt-role=node-label][data-mt-selected=true]'));
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('GANTT-2-SUBPIXEL-TEXT: zero-size label has no invisible keyboard target', { timeout: 30_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await chromium.launch();

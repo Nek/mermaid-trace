@@ -29966,7 +29966,7 @@ index bb421711..4b3af1e7 100644
  pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
      base: &'a TextStyle,
 diff --git a/crates/merman-render/src/gantt.rs b/crates/merman-render/src/gantt.rs
-index 1031ff97..ffb67d9f 100644
+index 1031ff97..b7e2b188 100644
 --- a/crates/merman-render/src/gantt.rs
 +++ b/crates/merman-render/src/gantt.rs
 @@ -1,8 +1,9 @@
@@ -29999,6 +29999,42 @@ index 1031ff97..ffb67d9f 100644
      let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
  
      let cfg_display_mode = gantt_cfg
+@@ -1051,7 +1061,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+     } else {
+         (0, 0)
+     };
+-    let range = (width - left_padding - right_padding).max(1.0);
++    let range = width - left_padding - right_padding;
+     let span_ms = absolute_millis_between(max_ms, min_ms);
+     let max_exclude_span_ms = i128::from(MS_PER_DAY) * 365 * 5;
+     let has_excludes_layer = has_tasks
+@@ -1197,7 +1207,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+         } else if t.vert {
+             0.08 * bar_height
+         } else {
+-            (render_end_x - start_x).max(0.0)
++            render_end_x - start_x
+         };
+         let bar_height_actual = if t.vert {
+             row_task_count as f64 * gap + bar_height * 2.0
+@@ -1272,7 +1282,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+ 
+         let label_x = if t.vert {
+             start_x + left_padding
+-        } else if text_width > (end_x_for_label - start_x_for_label).abs() {
++        } else if text_width > end_x_for_label - start_x_for_label {
+             if end_x_for_label + text_width + 1.5 * left_padding > width {
+                 start_x_for_label + left_padding - 5.0
+             } else {
+@@ -1296,7 +1306,7 @@ pub(crate) fn layout_gantt_diagram_typed(
+ 
+         // Mermaid checks overflow for both horizontal and vertical labels:
+         // `if (textWidth > endX - startX) { ... }` (Mermaid@11.12.2 ganttRenderer.js).
+-        let class_overflows = text_width > (end_x_for_class - start_x_for_class).abs();
++        let class_overflows = text_width > end_x_for_class - start_x_for_class;
+         let outside_left =
+             class_overflows && (end_x_for_class + text_width + 1.5 * left_padding > width);
+         let outside_right = class_overflows && !outside_left;
 @@ -1323,9 +1333,13 @@ pub(crate) fn layout_gantt_diagram_typed(
  
          tasks.push(GanttTaskLayout {
@@ -31850,7 +31886,7 @@ index 8e2e7251..6f0e3da8 100644
          );
      }
 diff --git a/crates/merman-render/src/svg/parity/gantt/render.rs b/crates/merman-render/src/svg/parity/gantt/render.rs
-index 5e83e058..0125d7ed 100644
+index 5e83e058..45ed4cc0 100644
 --- a/crates/merman-render/src/svg/parity/gantt/render.rs
 +++ b/crates/merman-render/src/svg/parity/gantt/render.rs
 @@ -1,5 +1,6 @@
@@ -31861,6 +31897,15 @@ index 5e83e058..0125d7ed 100644
  
  // Gantt diagram SVG renderer implementation (split from parity.rs).
  
+@@ -49,7 +50,7 @@ fn render_gantt_axis_group(
+     y: f64,
+     with_dy: bool,
+ ) {
+-    let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
++    let range = layout.width - layout.left_padding - layout.right_padding;
+     // Mermaid renders two possible axis grids:
+     // - bottom axis (ticks extend upward, label baseline uses `dy="1em"` at `y="3"`)
+     // - optional top axis (ticks extend downward, labels use `dy="0em"` at `y="-3"`)
 @@ -139,7 +140,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
          .as_ref()
          .map(|_| format!("chart-desc-{diagram_id}"));
@@ -31880,6 +31925,15 @@ index 5e83e058..0125d7ed 100644
      let css = gantt_css(diagram_id, effective_config);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
      out.push_str(r#"<g/>"#);
+@@ -180,7 +184,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         (Some(a), Some(b)) => (a, b),
+         _ => (0, 0),
+     };
+-    let range = (w - layout.left_padding - layout.right_padding).max(1.0);
++    let range = w - layout.left_padding - layout.right_padding;
+     let gap = layout.bar_height + layout.bar_gap;
+     // Mermaid's Gantt renderer assigns this custom attribute before the final SVG cleanup.
+     // Loose security skips DOMPurify, while every sanitized mode removes the attribute.
 @@ -271,18 +275,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
          layout.tasks.iter().enumerate().collect();
      tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
@@ -33665,7 +33719,7 @@ index 3b52053a..59c5680f 100644
  fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
      let plain =
 diff --git a/crates/merman-render/tests/gantt_svg_test.rs b/crates/merman-render/tests/gantt_svg_test.rs
-index 892097c9..a3de993a 100644
+index 892097c9..dc06228f 100644
 --- a/crates/merman-render/tests/gantt_svg_test.rs
 +++ b/crates/merman-render/tests/gantt_svg_test.rs
 @@ -171,6 +171,31 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String
@@ -33700,7 +33754,7 @@ index 892097c9..a3de993a 100644
  #[test]
  fn gantt_task_text_height_follows_final_svg_security_sanitization() {
      let source = r#"gantt
-@@ -307,6 +332,128 @@ gantt
+@@ -307,6 +332,147 @@ gantt
      );
  }
  
@@ -33797,6 +33851,25 @@ index 892097c9..a3de993a 100644
 +        assert_eq!(
 +            root.attribute("style").unwrap().contains("max-width"),
 +            use_max_width
++        );
++    }
++}
++
++#[test]
++fn gantt_narrow_plot_retains_signed_bar_width_and_label_placement() {
++    for (width, bar_width, label_x) in [(149, -1.0, 79.0), (150, 0.0, 80.0), (151, 1.0, 81.0)] {
++        let source = format!(
++            "---\nconfig:\n  gantt:\n    useWidth: {width}\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n"
++        );
++        let layout = layout_gantt_from_text(&source);
++        assert_eq!(layout.tasks[0].bar.width, bar_width, "{width}");
++        assert_eq!(layout.tasks[0].label.x, label_x, "{width}");
++        assert!(
++            layout.tasks[0]
++                .label
++                .class
++                .starts_with("taskTextOutsideRight"),
++            "{width}"
 +        );
 +    }
 +}

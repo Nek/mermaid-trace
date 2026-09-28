@@ -1286,6 +1286,70 @@ fn gantt_2_single_percent_comment_lines_leave_tasks_and_origins_intact() {
 }
 
 #[test]
+fn gantt_2_narrow_plot_drops_nonpositive_bars_without_losing_visible_labels() {
+    let plain = merman::Renderer::new();
+    for (width, label_x, bar_count) in [(149, "79", 0), (150, "80", 0), (151, "81", 1)] {
+        let task = "Task :a, 2026-01-01, 1d";
+        let source = format!(
+            "---\nconfig:\n  gantt:\n    useWidth: {width}\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\n{task}\n"
+        );
+        let mapped = mermaid_trace_rs::render("gantt-narrow", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-narrow", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+        let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+        let refs: std::collections::HashSet<_> = svg
+            .descendants()
+            .filter_map(|node| node.attribute("data-mt-refs"))
+            .flat_map(|value| value.split_whitespace())
+            .collect();
+        assert!(
+            mapped["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|piece| refs.contains(piece["id"].as_str().unwrap())),
+            "{width}: every visual mapping piece must have a surviving target"
+        );
+        assert_eq!(
+            svg.root_element().attribute("viewBox"),
+            Some(format!("0 0 {width} 124").as_str())
+        );
+        let bars: Vec<_> = svg
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.split_whitespace().any(|part| part == "task"))
+            })
+            .collect();
+        assert_eq!(bars.len(), bar_count, "{width}");
+        let label = svg
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("taskTextOutsideRight"))
+            })
+            .unwrap();
+        assert_eq!(label.attribute("x"), Some(label_x), "{width}");
+        assert_eq!(label.attribute("data-mt-key"), Some("gantt:task:a"));
+        assert!(
+            mapped["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["domId"] == "gantt:task:a"
+                    && piece["span"]["start"] == source.find(task).unwrap())
+        );
+    }
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();

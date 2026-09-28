@@ -122,10 +122,14 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
             .collect::<Vec<_>>()
             .join(" ");
         let label_ref = primary["id"].as_str().expect("assigned piece ID");
-        for node in root
+        let nodes = root
             .descendants()
             .filter(|n| n.attribute("data-mt-key") == Some(key.as_str()) && visible(*n))
-        {
+            .collect::<Vec<_>>();
+        let has_body = nodes
+            .iter()
+            .any(|node| node.attribute("data-mt-label") != Some("true"));
+        for node in nodes {
             let label = node.attribute("data-mt-label") == Some("true");
             if label && primary.get("labelSpan").is_none() {
                 continue;
@@ -134,7 +138,8 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
                 svg,
                 node,
                 primary,
-                if label { label_ref } else { &refs },
+                // A surviving label realizes the owner's properties when invalid body geometry was dropped.
+                if label && has_body { label_ref } else { &refs },
                 kind,
                 label,
                 &mut attributes,
