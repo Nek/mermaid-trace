@@ -4,6 +4,114 @@ use serde_json::Value;
 const GANTT: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\ngantt\r\n  title Plan 😀\r\n  dateFormat YYYY-MM-DD\r\n  todayMarker off\r\n  section Build\r\n  Same 😀 :done, a, 2026-01-01, 2d\r\n  Same 😀 :crit, b, after a, 1d\r\n  Ship :milestone, c, after b, 0d\r\n";
 
 #[test]
+fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    for (body, visible, mapped_body, nonvisual_body) in [
+        ("  title First 😀\r\n  title Last 😀\r\n", "Last 😀", 2, 0),
+        ("  title First 😀\r\n  title  \r\n", " ", 0, 2),
+        ("  title Body 😀\r\n", "Body 😀", 1, 0),
+        ("", "Configured 😀", 1, 0),
+    ] {
+        let source = format!(
+            "---\r\ntitle: Configured 😀\r\n---\r\ngantt\r\n{body}  dateFormat YYYY-MM-DD\r\n  Task :a, 2026-01-01, 1d\r\n"
+        );
+        let result = mermaid_trace_rs::render("gantt-titles", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-titles", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let title = svg
+            .descendants()
+            .find(|node| node.attribute("class") == Some("titleText"))
+            .unwrap();
+        assert_eq!(title.text().unwrap_or_default(), visible);
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let body_records: Vec<_> = native
+            .iter()
+            .filter(|item| item["origin"] == "body" && item["semanticId"] == "title")
+            .collect();
+        assert_eq!(
+            body_records.len(),
+            body.matches("title ").count(),
+            "every body title retains its own occurrence"
+        );
+        let mapped: Vec<_> = result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["semanticId"] == "title")
+            .collect();
+        assert_eq!(mapped.len(), mapped_body);
+        assert_eq!(
+            body_records
+                .iter()
+                .filter(|item| item["kind"] == "nonvisual")
+                .count(),
+            nonvisual_body
+        );
+        for (index, occurrence) in body_records.iter().enumerate() {
+            let byte = source.match_indices("title ").nth(index).unwrap().0;
+            let line = source[byte..].split("\r\n").next().unwrap();
+            assert_eq!(
+                occurrence["span"],
+                serde_json::json!({"start":byte,"end":byte+line.len()})
+            );
+            let label_start = occurrence["labelSpan"]["start"].as_u64().unwrap() as usize;
+            let label_end = occurrence["labelSpan"]["end"].as_u64().unwrap() as usize;
+            assert_eq!(
+                &source[label_start..label_end],
+                if line == "title  " {
+                    " "
+                } else {
+                    line.strip_prefix("title ").unwrap()
+                }
+            );
+            if occurrence["kind"] != "nonvisual" {
+                let mapped_piece = mapped
+                    .iter()
+                    .find(|piece| piece["span"]["start"] == source[..byte].encode_utf16().count())
+                    .unwrap();
+                assert_eq!(
+                    mapped_piece["span"]["end"],
+                    source[..byte + line.len()].encode_utf16().count()
+                );
+                assert_eq!(
+                    mapped_piece["labelSpan"],
+                    serde_json::json!({"start":source[..label_start].encode_utf16().count(),"end":source[..label_end].encode_utf16().count()})
+                );
+                assert_eq!(mapped_piece["effective"], index + 1 == body_records.len());
+            }
+        }
+        if body.is_empty() {
+            let yaml = mapped[0];
+            let value = source.find("Configured 😀").unwrap();
+            assert_eq!(
+                yaml["span"]["start"],
+                source[..source.find("title:").unwrap()]
+                    .encode_utf16()
+                    .count()
+            );
+            assert_eq!(
+                yaml["labelSpan"],
+                serde_json::json!({"start":source[..value].encode_utf16().count(),"end":source[..value+"Configured 😀".len()].encode_utf16().count()})
+            );
+        }
+        if nonvisual_body > 0 {
+            assert_eq!(body_records[0]["classification"], "superseded-title");
+            assert_eq!(body_records[1]["classification"], "empty-title");
+            assert!(native.iter().all(|item| item["domId"] != "gantt:title"));
+        }
+    }
+}
+
+#[test]
 fn own_gantt_dependency_tokens_keep_task_owner_and_constraint_relationship() {
     let source = "gantt\r\n  dateFormat YYYY-MM-DD\r\n  Base 😀 :base, 2026-01-01, 1d\r\n  Peer :peer, 2026-01-02, 1d\r\n  Window :win, 2026-01-05, 1d\r\n  Base 😀 :done, b, after base base peer, until win\r\n";
     let result = mermaid_trace_rs::render("gantt-dependencies", source).unwrap();

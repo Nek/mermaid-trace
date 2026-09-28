@@ -580,6 +580,26 @@ test('GANTT-2-SECTION-OWNERSHIP: merged titles select their first contributing d
   ]);
 });
 
+test('GANTT-2-TITLE-ORIGINS: body replacements and frontmatter fallback keep exact saved/live selection', { timeout: 90_000 }, async () => {
+  const head = '---\ntitle: Configured 😀\n---\ngantt\n';
+  const task = 'Task :a, 2026-01-01, 1d';
+  const tail = `  dateFormat YYYY-MM-DD\n  ${task}\n`;
+  const repeated = head + '  title First 😀\n  title Last 😀\n' + tail;
+  await verifyNative(repeated, 'gantt:task:a', task, 'Task', [
+    ['gantt:title', 'title Last 😀', 'control', repeated.indexOf('title Last')],
+  ], 'title First 😀', [], 'gantt:title');
+  const fallback = head + tail;
+  await verifyNative(fallback, 'gantt:task:a', task, 'Task', [
+    ['gantt:title', 'title: Configured 😀', 'control', fallback.indexOf('title:')],
+  ], 'Configured 😀', [], 'gantt:title');
+  const cleared = head + '  title First 😀\n  title  \n' + tail;
+  await verifyNative(cleared, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, [
+    { start: cleared.indexOf('title:'), end: cleared.indexOf('title:') + 'title: Configured 😀'.length },
+    { start: cleared.indexOf('title First'), end: cleared.indexOf('title First') + 'title First 😀'.length },
+    { start: cleared.indexOf('title  '), end: cleared.indexOf('title  ') + 'title  '.length },
+  ]);
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });

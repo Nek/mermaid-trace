@@ -13014,7 +13014,7 @@ index 4ca3acbd..d3c86d82 100644
      pub(super) acc_descr: String,
      pub(super) diagram_title: String,
 diff --git a/crates/merman-core/src/diagrams/gantt/parse.rs b/crates/merman-core/src/diagrams/gantt/parse.rs
-index 242dc0f3..7827df1b 100644
+index 242dc0f3..f9f184f1 100644
 --- a/crates/merman-core/src/diagrams/gantt/parse.rs
 +++ b/crates/merman-core/src/diagrams/gantt/parse.rs
 @@ -2,7 +2,7 @@ use super::*;
@@ -13039,11 +13039,16 @@ index 242dc0f3..7827df1b 100644
      db.set_security_level(meta.effective_config.get_str("securityLevel"));
      if let Some(dm) = meta.effective_config.get_str("gantt.displayMode") {
          db.set_display_mode(dm);
-@@ -1211,8 +1217,39 @@ pub(super) fn gantt_db_to_render_model_controlled(
+@@ -1211,8 +1217,59 @@ pub(super) fn gantt_db_to_render_model_controlled(
          }
      }
  
 +    if db.trace_source {
++        let last_title = db
++            .source_occurrences
++            .iter()
++            .rposition(|piece| piece["origin"] == "body" && piece["semanticId"] == "title");
++        let visible_title = !db.diagram_title.trim().is_empty();
 +        let mut used = vec![false; db.sections.len()];
 +        let mut effective_by_name: HashMap<&str, usize> = HashMap::new();
 +        for task in &tasks {
@@ -13054,7 +13059,22 @@ index 242dc0f3..7827df1b 100644
 +                }
 +            }
 +        }
-+        for occurrence in &mut db.source_occurrences {
++        for (position, occurrence) in db.source_occurrences.iter_mut().enumerate() {
++            if occurrence["origin"] == "body" && occurrence["semanticId"] == "title" {
++                occurrence["effective"] = json!(Some(position) == last_title);
++                if !visible_title {
++                    occurrence["kind"] = json!("nonvisual");
++                    occurrence["classification"] = json!(if Some(position) == last_title {
++                        "empty-title"
++                    } else {
++                        "superseded-title"
++                    });
++                    occurrence
++                        .as_object_mut()
++                        .expect("source occurrence")
++                        .remove("domId");
++                }
++            }
 +            let Some(index) = occurrence["sectionIndex"]
 +                .as_u64()
 +                .map(|index| index as usize)
@@ -13079,14 +13099,12 @@ index 242dc0f3..7827df1b 100644
          title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
          acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
          acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
-@@ -1503,12 +1540,22 @@ fn parse_gantt_statement(
+@@ -1503,12 +1560,20 @@ fn parse_gantt_statement(
              EditorSemanticKind::String,
              facts,
          );
 +        if db.trace_source {
-+            db.source_occurrences
-+                .retain(|p| p["domId"] != "gantt:title");
-+            db.source_occurrences.push(json!({"kind":"control","semanticId":"title","domId":"gantt:title","span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
++            db.source_occurrences.push(json!({"kind":"control","semanticId":"title","domId":"gantt:title","origin":"body","span":gantt_statement_span(stripped, line_start),"labelSpan":v.trim().unwrap_or(v).span()}));
 +        }
          db.set_diagram_title(v.text);
          return Ok(Ok(()));
@@ -13102,7 +13120,7 @@ index 242dc0f3..7827df1b 100644
          db.add_section(v.text.trim());
          return Ok(Ok(()));
      }
-@@ -1612,9 +1659,37 @@ fn parse_gantt_statement(
+@@ -1612,9 +1677,37 @@ fn parse_gantt_statement(
          .copied()
          .filter_map(SpannedText::trim)
          .collect::<Vec<_>>();
@@ -27857,7 +27875,7 @@ index fe8d8293..be3798b6 100644
      match v {
          Value::String(s) => Some(s.clone()),
 diff --git a/crates/merman-core/src/parse_pipeline.rs b/crates/merman-core/src/parse_pipeline.rs
-index f4d33957..d60d2e18 100644
+index f4d33957..879e509f 100644
 --- a/crates/merman-core/src/parse_pipeline.rs
 +++ b/crates/merman-core/src/parse_pipeline.rs
 @@ -581,11 +581,42 @@ impl<'a> ParsePipeline<'a> {
@@ -27908,7 +27926,7 @@ index f4d33957..d60d2e18 100644
              let Some((code, meta)) = (match preprocessed {
                  Ok(preprocessed) => preprocessed,
                  Err(error) => return Ok(Err(error)),
-@@ -616,6 +647,77 @@ impl<'a> ParsePipeline<'a> {
+@@ -616,6 +647,78 @@ impl<'a> ParsePipeline<'a> {
                      ))));
                  }
              };
@@ -27970,6 +27988,7 @@ index f4d33957..d60d2e18 100644
 +                RenderSemanticModel::Journey(model) if model.title.is_none() => {
 +                    Some("journey:title")
 +                }
++                RenderSemanticModel::Gantt(model) if model.title.is_none() => Some("gantt:title"),
 +                _ => None,
 +            };
 +            if let (Some(title_key), Some(evidence)) = (title_key, source_config.as_ref()) {
