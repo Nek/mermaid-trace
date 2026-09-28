@@ -11,7 +11,7 @@ Status: implemented (experimental CommonMark view; pinned Chromium). As a docume
 
 ## Plan
 
-Use the already-planned unified ecosystem for inline positions: `mdast-util-from-markdown`, `mdast-util-to-hast`, `hast-util-sanitize`, `hast-util-to-html`. Keep browser selection independent. Annotate rendered text with origin runs and block targets with AST positions; derive entity/escape offsets within those bounded spans using the existing Markdown decoder. No document-wide string searches. The old markdown-it adapter remains supported; its fence origins are reused by the demo producer.
+Use the unified ecosystem for inline positions: `mdast-util-from-markdown`, `mdast-util-to-hast`, `hast-util-sanitize`, `hast-util-to-html`. Keep browser selection independent. Annotate rendered text with origin runs and block targets with AST positions; derive entity/escape offsets within those bounded spans using the existing Markdown decoder. No document-wide string searches. The markdown-it adapter remains supported; its fence origins are reused by the live preview.
 
 Tests first: document rendering/provenance/security, background selection, focus and real browser text drags with clipboard read-back. Implement one shared demo selection path, verify the existing suite and updated browser page, update README/roadmap, then commit. No Rust or VS Code changes.
 
@@ -19,12 +19,11 @@ Tests first: document rendering/provenance/security, background selection, focus
 
 | Contract | Check | Result |
 | --- | --- | --- |
-| DOC-AC1 | Real browser block/heading focus, diagram background click/Enter, nested target isolation, reverse source selection | Pass: `test/demo.test.ts` |
-| DOC-AC2 | Real word drag; native ranges across formatting, entities and multiple blocks; original CRLF/Unicode/escape/container coordinates | Pass: `test/demo.test.ts`, `test/markdown-view.test.ts` |
-| DOC-AC3 | Unsafe HTML/links removed; missing SVG rejects; no producer/parser browser requests; scripts-disabled diagrams | Pass: Markdown-view and demo tests |
-| DOC-AC4 | Clipboard read-back, no copying on focus/source selection, drag highlight retained, focus clears old native selection, denied clipboard fallback | Pass: demo test |
+| DOC-AC1/2/3 | Static Markdown AST provenance and sanitization | Pass: `mermaid-trace-ts/test/markdown-view.test.ts` |
+| DOC-AC1/4/5 | Native live preview selection, clipboard, source pane and saves | Pass: `mermaid-trace-ts/test/watch-cli.test.ts` |
+| DOC-AC1–4 | Former demo-only browser drag, scripts-disabled and denied-clipboard matrix | Historical; its generator/test were retired, so these cases need a current-route acceptance check |
 
-Tests first failed for absent rendering, background selection, duplicate container highlighting, paragraph highlighting during a word drag, and stale native selection after focus navigation. All 15 project tests and the TypeScript build now pass; raw upstream SVG snapshots are unchanged. The initial section-selection behavior is superseded by the heading correction below.
+The former demo established the detailed drag and focus behavior; its test was retired with that route. The criteria above remain requirements for the native preview. The initial section-selection behavior is superseded by the heading correction below.
 
 The view currently handles CommonMark through mdast/hast and reuses markdown-it fence extraction. It is not a general remark plugin or GFM implementation. Character origins are UTF-16 spans; a rendered entity may map to several source characters. Unsupported text transformations explicitly use the enclosing AST span. Native rendered-text drags keep their own highlight; reverse source selection identifies the enclosing Markdown block and mapped diagram elements. Links retain native navigation. Wider browser verification remains pending.
 
