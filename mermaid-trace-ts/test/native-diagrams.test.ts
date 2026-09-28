@@ -834,6 +834,51 @@ test('JOURNEY-2-ROOT: saved fixed and responsive SVGs retain independent selecti
   } finally { await browser.close(); await producer.close(); }
 });
 
+test('JOURNEY-2-IGNORED: source-only Journey options create no visual selection', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-journey-ignored-'));
+  const filename = join(directory, 'ignored.md');
+  const sources = ['classic', 'neo', 'handDrawn'].flatMap(look => [false, true].map(htmlLabels =>
+    '---\nconfig:\n  look: ' + look + '\n  htmlLabels: ' + htmlLabels + '\n  journey:\n    boxMargin: 0\n    noteMargin: 99\n    messageMargin: 99\n    messageAlign: left\n    bottomMarginAdj: 5\n    rightAngles: true\n    activationWidth: 25\n---\n' +
+    '%%{init: { journey: { boxMargin: 0, activationWidth: 25 } }}%%\njourney\nsection Day\nTask 😀 : 5 : Alice\n'));
+  const markdown = sources.map(source => '```mermaid\n' + source + '```\n').join('\n');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const diagrams = page.locator('svg[data-mt-map]');
+    assert.equal(await diagrams.count(), sources.length);
+    const original = page.frameLocator('#source-frame').locator('#source');
+    let after = 0;
+    for (const [index, source] of sources.entries()) {
+      const start = markdown.indexOf(source, after); after = start + source.length;
+      const task = source.indexOf('Task 😀 : 5 : Alice');
+      const target = diagrams.nth(index).locator('[data-mt-key="journey:task:0"][data-mt-role=node] rect.task');
+      await clickExposedTarget(target);
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+        formatLocation({ id: filename, source: markdown }, { start: start + task, end: start + task + 'Task 😀 : 5 : Alice'.length }));
+      await page.waitForFunction(index => document.querySelectorAll('svg')[index]!.querySelectorAll('[data-mt-role=node][data-mt-selected=true]').length === 1, index);
+      for (const token of ['boxMargin: 0', 'activationWidth: 25']) {
+        const property = (token.startsWith('activation') ? source.lastIndexOf(token) : source.indexOf(token)) + token.indexOf(': ') + 2;
+        await original.evaluate((element, span) => {
+          const range = element.ownerDocument.createRange();
+          range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+          element.ownerDocument.getSelection()!.removeAllRanges(); element.ownerDocument.getSelection()!.addRange(range);
+        }, { start: start + property, end: start + property + token.length - token.indexOf(': ') - 2 });
+        await page.waitForFunction(() => document.querySelectorAll('svg [data-mt-selected=true], svg[data-mt-selected=true]').length === 0);
+      }
+      await diagrams.nth(index).locator('[data-mt-key="journey:task:0"][data-mt-role=node]').focus();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+        formatLocation({ id: filename, source: markdown }, { start: start + task, end: start + task + 'Task 😀 : 5 : Alice'.length }));
+      assert.equal(await diagrams.filter({ has: page.locator('[data-mt-selected=true]') }).count(), 1, 'keyboard selection stays in its diagram');
+    }
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
 });

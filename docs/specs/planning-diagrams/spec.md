@@ -53,7 +53,7 @@ Configuration audit, 2026-09-27: the selected Mermaid 11.17.2 [schema](https://r
 | `taskFontSize`, `taskFontFamily`, `titleFontSize`, `titleFontFamily`, `titleColor`, root/theme fonts | Text mode/style behavior is covered by JOURNEY-2-FONTS; combined palette/theme presentation remains under PALETTE. |
 | `actorColours`, `sectionFills`, `sectionColours`, theme variables/themes | Effective palette cycles and CSS precedence; text story covers section text palettes, PALETTE below covers the combined theme/actor matrix. |
 | `textPlacement`, `useMaxWidth`, look, HTML labels | Text story covers modes and look/HTML variants; ROOT below covers responsive/fixed root behavior in saved SVG and Markdown. |
-| `boxMargin`, `noteMargin`, `messageMargin`, `messageAlign`, `bottomMarginAdj`, `rightAngles`, `activationWidth` | Present in the journey schema but unused by its drawing code; verify no visual effect while retaining authored nonvisual configuration provenance. |
+| `boxMargin`, `noteMargin`, `messageMargin`, `messageAlign`, `bottomMarginAdj`, `rightAngles`, `activationWidth` | Present in the journey schema but without visual effect in the pinned renderer; IGNORED below verifies output and authored nonvisual configuration provenance. `boxMargin` is read only by a bounds loop whose item list stays empty for Journey. |
 
 ### JOURNEY-2-PALETTE (ready)
 
@@ -70,6 +70,14 @@ As a Markdown reader, I want Journey's `useMaxWidth` setting to survive embeddin
 Plan: first add native artifact and real-preview failing checks. Compare root attributes with fresh pinned Mermaid 11.17.2 renders, then remove only host CSS that overrides SVG sizing; keep the Markdown block scrollable when the fixed SVG exceeds the column. Reuse existing activation and source mapping. Keep ignored-option evidence and full Journey conformance open.
 
 ROOT verification: the preview regression first failed because global SVG CSS replaced the emitted height and limited fixed width. The preview now leaves root sizing to the SVG and scrolls its Markdown block horizontally. Fresh Chromium renders of the pinned Mermaid 11.17.2 and Trace agree on width, height, viewBox, aspect ratio and maximum width in 48 look/HTML/title/dimension/mode combinations; the Trace-only safe background style is excluded from that comparison. Forty-eight native artifact variants pass exact section/task ranges and mapped/plain parity. The live preview checks both width modes across 12 look/HTML variants in a narrow column, expands the responsive mode in a wide column, and verifies pointer, keyboard, clipboard, reverse-source and instance isolation. Saved fixed/responsive SVGs retain independent actor groups, keyboard and reverse selection, and exact disposal. Ignored-option evidence and full Journey conformance remain open.
+
+### JOURNEY-2-IGNORED (ready)
+
+As an author, I want accepted Journey configuration to retain its exact source even when it does not affect the diagram. **IGNORED-AC1:** each of the seven options above, individually and combined, leaves pinned Mermaid 11.17.2 SVG unchanged across looks and HTML settings; Trace preserves the same visible result and mapped/plain parity. **IGNORED-AC2:** original frontmatter and directive key/value occurrences retain exact spans, origin and source order as nonvisual metadata, with no invented SVG target. **IGNORED-AC3:** saved/live diagrams retain task, section and actor pointer/keyboard/reverse-source/clipboard behavior, and selecting one of these configuration values does not select a diagram object.
+
+Plan: use the pinned renderer's unchanged-output matrix as an independent oracle, then add native artifact and browser checks for effective configuration and original-range provenance. Reuse the shared configuration evidence and activation paths; change production code only for a confirmed mismatch. Keep the whole Journey family incomplete until all syntax/configuration and interaction gates pass.
+
+IGNORED evidence: 48 fresh pinned Mermaid 11.17.2 Chromium comparisons found identical SVGs when these options were set individually or together across looks and HTML settings. Forty-eight Trace artifact variants also retain identical visible SVG bytes, exact original frontmatter/directive occurrences, nonvisual classification, task labels and mapped/plain parity. Six live Markdown variants verify that selecting a frontmatter value or directive value leaves no diagram selected, while task pointer/keyboard selection still copies its original location and remains instance-local. The browser check clicks an exposed task area and awaits the selection attribute. No production code changed. Full Journey and existing-family conformance remain open.
 
 ### JOURNEY-2-ACTOR-UNICODE (ready)
 

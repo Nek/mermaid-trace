@@ -78,6 +78,98 @@ fn journey_2_root_preserves_fixed_and_responsive_artifact_sizing() {
 }
 
 #[test]
+fn journey_2_ignored_options_keep_exact_nonvisual_evidence_without_changing_svg() {
+    let options = [
+        ("boxMargin", json!(0)),
+        ("noteMargin", json!(99)),
+        ("messageMargin", json!(99)),
+        ("messageAlign", json!("left")),
+        ("bottomMarginAdj", json!(5)),
+        ("rightAngles", json!(true)),
+        ("activationWidth", json!(25)),
+    ];
+    let body = "journey\r\ntitle Root 😀\r\nsection Day\r\nTask 😀 : 5 : Alice\r\n";
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            let prefix = format!(
+                "---\r\nconfig:\r\n  look: {look}\r\n  htmlLabels: {html}\r\n  journey:\r\n"
+            );
+            let baseline = format!("{prefix}---\r\n{body}");
+            let plain = mermaid_trace_rs::render("ignored-journey", &baseline).unwrap();
+            for variant in 0..=options.len() {
+                let chosen = if variant == options.len() {
+                    options.as_slice()
+                } else {
+                    &options[variant..variant + 1]
+                };
+                let yaml = chosen
+                    .iter()
+                    .map(|(key, value)| format!("    {key}: {value}\r\n"))
+                    .collect::<String>();
+                let directive = if variant == options.len() {
+                    format!(
+                        "%%{{init: {}}}%%\r\n",
+                        json!({"journey": serde_json::Map::from_iter(chosen.iter().map(|(key, value)| ((*key).to_string(), value.clone())))})
+                    )
+                } else {
+                    String::new()
+                };
+                let source = format!("{prefix}{yaml}---\r\n{directive}{body}");
+                let result = mermaid_trace_rs::render("ignored-journey", &source).unwrap();
+                assert_eq!(
+                    support::strip_trace(result["svg"].as_str().unwrap()),
+                    support::strip_trace(plain["svg"].as_str().unwrap()),
+                    "{look}/{html}/{variant}"
+                );
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let native: Vec<Value> = serde_json::from_str(
+                    svg.descendants()
+                        .find_map(|node| node.attribute("data-mt-native"))
+                        .unwrap(),
+                )
+                .unwrap();
+                let slice = |span: &Value| {
+                    &source[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize]
+                };
+                for (key, value) in chosen {
+                    let front = native
+                        .iter()
+                        .find(|piece| piece["path"] == json!(["config", "journey", key]))
+                        .unwrap();
+                    assert_eq!(slice(&front["span"]), format!("{key}: {value}"));
+                    assert_eq!(front["origin"], json!({"kind":"frontmatter"}));
+                    assert_eq!(front["kind"], "nonvisual");
+                    assert!(front.get("domId").is_none());
+                    if !directive.is_empty() {
+                        let init = native
+                            .iter()
+                            .find(|piece| {
+                                piece["path"] == json!(["journey", key])
+                                    && piece["origin"] == json!({"kind":"directive","index":0})
+                            })
+                            .unwrap();
+                        assert_eq!(
+                            slice(&init["labelSpan"]),
+                            value.to_string().trim_matches('"')
+                        );
+                        assert_eq!(init["kind"], "nonvisual");
+                        assert!(init.get("domId").is_none());
+                    }
+                }
+                let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                assert!(pieces.iter().all(|piece| piece["kind"] != "nonvisual"));
+                let task = pieces
+                    .iter()
+                    .find(|piece| piece["domId"] == "journey:task:0")
+                    .unwrap();
+                assert_eq!(selected(&source, &task["labelSpan"]), "Task 😀");
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_palette_cycles_follow_effective_actor_and_section_identities() {
     use merman::{
         Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
