@@ -731,6 +731,150 @@ fn gantt_2_cross_line_directives_keep_effects_and_exact_nonvisual_origins() {
 }
 
 #[test]
+fn gantt_2_click_linebreaks_preserve_one_interaction_and_original_parts() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    for (statement, relation, value) in [
+        (
+            "click\r\n%% 😀 note\r\na href \"https://example.test\"",
+            "click-href",
+            "https://example.test",
+        ),
+        (
+            "click\n\na href \"https://example.test\"",
+            "click-href",
+            "https://example.test",
+        ),
+        (
+            "click a\nhref \"https://example.test\"",
+            "click-href",
+            "https://example.test",
+        ),
+        (
+            "click a href\n\"https://example.test\"",
+            "click-href",
+            "https://example.test",
+        ),
+        ("click a call\ncb()", "click-callback", "cb"),
+        ("click a call cb\n(1)", "click-args", "1"),
+        ("click a call cb\n\n(1)", "click-args", "1"),
+        ("click a call cb(\n1)", "click-args", "\n1"),
+        (
+            "click a href \"https://example.test/\nfoo\"",
+            "click-href",
+            "https://example.test/\nfoo",
+        ),
+        (
+            "click\na\nhref\n\"https://example.test\"",
+            "click-href",
+            "https://example.test",
+        ),
+    ] {
+        let source =
+            format!("gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 1d\n{statement}\n");
+        let result = mermaid_trace_rs::render("gantt-click-lines", &source).unwrap();
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-click-lines", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let start = source.find(statement).unwrap();
+        assert!(
+            native
+                .iter()
+                .any(|item| item["classification"] == "gantt-click"
+                    && item["span"]
+                        == serde_json::json!({"start":start,"end":start+statement.len()})),
+            "whole statement: {statement:?}"
+        );
+        let value_start = source[start..].find(value).unwrap() + start;
+        assert!(
+            native.iter().any(|item| item["relation"] == relation
+                && item["semanticId"] == "a"
+                && item["span"]
+                    == serde_json::json!({"start":value_start,"end":value_start+value.len()})),
+            "{relation}: {statement:?}"
+        );
+        let utf16 = serde_json::json!({"start":source[..value_start].encode_utf16().count(),"end":source[..value_start+value.len()].encode_utf16().count()});
+        assert!(
+            result["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| piece["relation"] == relation
+                    && piece["domId"] == "gantt:task:a"
+                    && piece["span"] == utf16),
+            "mapped {relation}: {statement:?}"
+        );
+    }
+    let prefix = "gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 1d\n";
+    let cross = mermaid_trace_rs::render(
+        "gantt-click-effect",
+        &format!("{prefix}click\na\nhref\n\"https://example.test\"\n"),
+    )
+    .unwrap();
+    let inline = mermaid_trace_rs::render(
+        "gantt-click-effect",
+        &format!("{prefix}click a href \"https://example.test\"\n"),
+    )
+    .unwrap();
+    assert_eq!(
+        support::strip_trace(cross["svg"].as_str().unwrap()),
+        support::strip_trace(inline["svg"].as_str().unwrap()),
+        "line separators preserve the interaction's rendered effect"
+    );
+    for statement in [
+        "click a \nhref \"https://example.test\"",
+        "click a\n\nhref \"https://example.test\"",
+        "click a\nTask :b, 2026-01-02, 1d",
+        "click",
+        "click a",
+        "click a href",
+        "click a call cb(",
+    ] {
+        assert!(
+            mermaid_trace_rs::render(
+                "gantt-click-lines",
+                &format!("gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 1d\n{statement}\n")
+            )
+            .is_err(),
+            "invalid {statement:?}"
+        );
+    }
+    let source = "gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 1d\nclick\nmissing href \"https://missing.test\"\n";
+    let result = mermaid_trace_rs::render("gantt-click-lines", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let start = source.find("missing href").unwrap();
+    assert!(
+        native
+            .iter()
+            .any(|item| item["classification"] == "unresolved-click-target"
+                && item["span"] == serde_json::json!({"start":start,"end":start+"missing".len()}))
+    );
+    assert!(
+        !result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|piece| piece["domId"] == "gantt:task:missing")
+    );
+}
+
+#[test]
 fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
     for (body, visible, mapped_body, nonvisual_body) in [

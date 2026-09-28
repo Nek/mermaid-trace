@@ -746,6 +746,12 @@ test('GANTT-2-CROSS-LINE-DIRECTIVES: saved and live Markdown keep settings nonvi
   await verifyNative(source, 'gantt:task:a', task, 'Task', [], undefined, [], 'gantt:task:a', undefined, false, spans);
 });
 
+test('GANTT-2-CLICK-LINEBREAKS: saved and live Markdown retain task and action selection', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  const source = `gantt\ndateFormat YYYY-MM-DD\n${task}\nclick\n%% note\na\nhref\n"https://example.test"\n`;
+  await verifyNative(source, 'gantt:task:a', task, 'Task', [], 'https://example.test');
+});
+
 test('GANTT-2-CLICK-ORIGINS: task interaction syntax selects its own existing targets', { timeout: 60_000 }, async () => {
   const source = 'gantt\n%% 😀\ndateFormat YYYY-MM-DD\nclick a href "https://early.test"\nFirst :a, 2026-01-01, 1d\nSecond :b, 2026-01-02, 1d\nclick a,b href "https://example.test/😀" call cb("x", 2) "Open 😀"\nclick a href "https://later.test"\nclick ghost href "https://missing.test"\nclick a href "" ""\n';
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-click-'));
