@@ -1168,6 +1168,40 @@ fn gantt_2_configured_tick_interval_keeps_task_binding_and_static_parity() {
     );
 }
 
+#[test]
+fn gantt_2_root_sizing_preserves_static_output_and_task_binding() {
+    for (use_max_width, width, height) in [(true, "100%", None), (false, "420", Some("124"))] {
+        let source = format!(
+            "---\nconfig:\n  gantt:\n    useWidth: 420\n    useMaxWidth: {use_max_width}\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n"
+        );
+        let mapped = mermaid_trace_rs::render("gantt-sizing", &source).unwrap();
+        let svg = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+        let root = svg.root_element();
+        assert_eq!(root.attribute("width"), Some(width));
+        assert_eq!(root.attribute("height"), height);
+        assert_eq!(root.attribute("viewBox"), Some("0 0 420 124"));
+        assert!(
+            mapped["mapping"]["pieces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|piece| { piece["semanticId"] == "a" && piece["labelSpan"].is_object() })
+        );
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+            merman::MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": false,
+                "deterministicIds": true,
+                "deterministicIDSeed": "mermaid-trace"
+            })),
+        ));
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-sizing", &source).unwrap();
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
 const JOURNEY: &str = "journey\r\n%% 😀\r\n  title Trip 😀\r\n  section Morning\r\n  Same 😀 : 5 : Alice, Bob\r\n  Same 😀 : 2 : Alice\r\n  section Evening\r\n  Rest : 3 : Bob\r\n";
 
 #[test]

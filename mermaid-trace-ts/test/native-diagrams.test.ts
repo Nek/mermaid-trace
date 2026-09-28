@@ -568,6 +568,13 @@ test('GANTT-2-TICK-INTERVAL-CONFIG: configured ticks retain saved and live task 
   await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 14d', 'Task', [['gantt:section:Work', 'section Work', 'control']]);
 });
 
+test('GANTT-2-ROOT-SIZING: fixed and responsive SVGs retain saved and live selection', { timeout: 120_000 }, async () => {
+  for (const useMaxWidth of [false, true]) {
+    const source = '---\nconfig:\n  gantt:\n    useWidth: 420\n    useMaxWidth: ' + useMaxWidth + '\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n';
+    await verifyNative(source, 'gantt:task:a', 'Task :a, 2026-01-01, 1d', 'Task', [['gantt:section:Work', 'section Work', 'control']]);
+  }
+});
+
 test('OWN-GANTT-DEPENDENCY: saved and live source references select their task owner', { timeout: 60_000 }, async () => {
   const source = 'gantt\n  dateFormat YYYY-MM-DD\n  Base 😀 :base, 2026-01-01, 1d\n  Peer :peer, 2026-01-02, 1d\n  Window :win, 2026-01-05, 1d\n  Base 😀 :done, b, after base base peer, until win\n';
   const after = source.indexOf('after base base peer');

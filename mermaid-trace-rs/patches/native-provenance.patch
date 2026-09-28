@@ -31055,7 +31055,7 @@ index 8e2e7251..6f0e3da8 100644
          );
      }
 diff --git a/crates/merman-render/src/svg/parity/gantt/render.rs b/crates/merman-render/src/svg/parity/gantt/render.rs
-index 5e83e058..c1818037 100644
+index 5e83e058..0125d7ed 100644
 --- a/crates/merman-render/src/svg/parity/gantt/render.rs
 +++ b/crates/merman-render/src/svg/parity/gantt/render.rs
 @@ -1,5 +1,6 @@
@@ -31066,7 +31066,18 @@ index 5e83e058..c1818037 100644
  
  // Gantt diagram SVG renderer implementation (split from parity.rs).
  
-@@ -168,6 +169,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -139,7 +140,9 @@ pub(crate) fn render_gantt_diagram_svg_model(
+         .as_ref()
+         .map(|_| format!("chart-desc-{diagram_id}"));
+     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h);
+-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
++    let use_max_width =
++        crate::config::config_bool(effective_config, &["gantt", "useMaxWidth"]).unwrap_or(true);
++    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
+         .with_max_width(root_svg::RootMaxWidth::SvgNumber(w));
+     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
+     root_chrome.aria_labelledby = aria_labelledby.as_deref();
+@@ -168,6 +171,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
          );
      }
  
@@ -31074,7 +31085,7 @@ index 5e83e058..c1818037 100644
      let css = gantt_css(diagram_id, effective_config);
      let _ = write!(&mut out, r#"<style>{}</style>"#, css);
      out.push_str(r#"<g/>"#);
-@@ -271,18 +273,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -271,18 +275,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
          layout.tasks.iter().enumerate().collect();
      tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
  
@@ -31097,7 +31108,7 @@ index 5e83e058..c1818037 100644
              let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
              let end_x = gantt_scale_time_round(t.end_ms, min_ms, max_ms, range);
              let center_x = start_x + layout.left_padding + 0.5 * (end_x - start_x);
-@@ -293,7 +293,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -293,7 +295,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  fmt_allow_nan(center_y)
              );
  
@@ -31110,7 +31121,7 @@ index 5e83e058..c1818037 100644
              let _ = write!(
                  &mut out,
                  r#" id="{}""#,
-@@ -315,53 +319,55 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -315,53 +321,55 @@ pub(crate) fn render_gantt_diagram_svg_model(
          }
  
          for (_idx, t) in &tasks_in_draw_order {
@@ -31201,7 +31212,7 @@ index 5e83e058..c1818037 100644
              }
  
              let class = gantt_insert_before_width(base_class, &task_type_class);
-@@ -373,6 +379,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -373,6 +381,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                  x = fmt(t.label.x),
                  y = fmt(t.label.y),
              );
@@ -31213,7 +31224,7 @@ index 5e83e058..c1818037 100644
              options.checkpoint_emit()?;
              if preserve_task_text_height {
                  let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
-@@ -395,11 +406,19 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -395,11 +408,19 @@ pub(crate) fn render_gantt_diagram_svg_model(
          for st in &layout.section_titles {
              let _ = write!(
                  &mut out,
@@ -31235,7 +31246,7 @@ index 5e83e058..c1818037 100644
                  cls = escape_attr(&st.class),
              );
              for (j, line) in st.lines.iter().enumerate() {
-@@ -459,7 +478,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
+@@ -459,7 +480,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
      let title = layout.title.as_deref().unwrap_or_default();
      let _ = write!(
          &mut out,
@@ -32813,7 +32824,7 @@ index 349c673f..34331760 100644
          assert!(!out.contains(":root"));
          assert!(!out.contains("animation"));
 diff --git a/crates/merman-render/tests/gantt_svg_test.rs b/crates/merman-render/tests/gantt_svg_test.rs
-index 892097c9..9b89b0be 100644
+index 892097c9..a5205604 100644
 --- a/crates/merman-render/tests/gantt_svg_test.rs
 +++ b/crates/merman-render/tests/gantt_svg_test.rs
 @@ -171,6 +171,31 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String
@@ -32848,7 +32859,7 @@ index 892097c9..9b89b0be 100644
  #[test]
  fn gantt_task_text_height_follows_final_svg_security_sanitization() {
      let source = r#"gantt
-@@ -307,6 +332,83 @@ gantt
+@@ -307,6 +332,103 @@ gantt
      );
  }
  
@@ -32927,6 +32938,26 @@ index 892097c9..9b89b0be 100644
 +        ["2026-01-04", "2026-01-11"],
 +        "Mermaid's default Sunday database value takes precedence over config-only weekday"
 +    );
++}
++
++#[test]
++fn gantt_svg_use_max_width_controls_root_sizing() {
++    let body = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n";
++    for (use_max_width, width, height) in [(true, "100%", None), (false, "420", Some("124"))] {
++        let source = format!(
++            "---\nconfig:\n  gantt:\n    useWidth: 420\n    useMaxWidth: {use_max_width}\n---\n{body}"
++        );
++        let svg = render_gantt_svg_from_text(&source);
++        let document = roxmltree::Document::parse(&svg).unwrap();
++        let root = document.root_element();
++        assert_eq!(root.attribute("width"), Some(width), "{source}");
++        assert_eq!(root.attribute("height"), height, "{source}");
++        assert_eq!(root.attribute("viewBox"), Some("0 0 420 124"));
++        assert_eq!(
++            root.attribute("style").unwrap().contains("max-width"),
++            use_max_width
++        );
++    }
 +}
 +
  #[test]

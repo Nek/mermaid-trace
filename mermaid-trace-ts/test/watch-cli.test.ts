@@ -15,6 +15,58 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
 const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
+test('GANTT-2-ROOT-SIZING: live Markdown keeps fixed width and responsive selection', { timeout: 90_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-root-'));
+  const filename = join(directory, 'root.md');
+  const source = [false, true].map((useMaxWidth, index) =>
+    '```mermaid\n---\nconfig: ' + JSON.stringify({ gantt: { useWidth: 420, useMaxWidth } }) +
+    '\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask' + index + ' :task' + index + ', 2026-01-01, 1d\n```\n').join('\n');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  const browser = await chromium.launch();
+  try {
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 420, height: 900 } });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const blocks = page.locator('[data-mt-block]');
+    assert.equal(await blocks.count(), 2);
+    for (const [index, useMaxWidth] of [false, true].entries()) {
+      const size = await blocks.nth(index).evaluate(block => {
+        const svg = block.querySelector('svg')!;
+        return { width: svg.getAttribute('width'), height: svg.getAttribute('height'),
+          displayed: svg.getBoundingClientRect().width, available: block.clientWidth,
+          scrollWidth: block.scrollWidth, overflow: getComputedStyle(block).overflowX };
+      });
+      assert.equal(size.width, useMaxWidth ? '100%' : '420');
+      assert.equal(size.height, useMaxWidth ? null : '124');
+      if (useMaxWidth) assert.ok(Math.abs(size.displayed - size.available) < 1);
+      else {
+        assert.ok(Math.abs(size.displayed - 420) < 1);
+        assert.ok(size.scrollWidth > size.available && size.overflow === 'auto');
+      }
+      const task = 'Task' + index + ' :task' + index + ', 2026-01-01, 1d';
+      const node = blocks.nth(index).locator('[data-mt-key="gantt:task:task' + index + '"][data-mt-role=node]');
+      await node.focus(); await node.press('Enter');
+      const start = source.indexOf(task);
+      await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+        formatLocation({ id: filename, source }, { start, end: start + task.length }));
+      assert.equal(await blocks.nth(index).locator('[data-mt-selected=true]').count() > 0, true);
+      assert.equal(await blocks.nth(1 - index).locator('[data-mt-selected=true]').count(), 0);
+    }
+    const original = page.frameLocator('#source-frame').locator('#source');
+    const task = 'Task0 :task0, 2026-01-01, 1d';
+    const start = source.indexOf(task);
+    await original.evaluate((element, span) => {
+      const range = element.ownerDocument.createRange();
+      range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+      element.ownerDocument.getSelection()!.removeAllRanges(); element.ownerDocument.getSelection()!.addRange(range);
+    }, { start, end: start + task.length });
+    await page.waitForFunction(() => document.querySelectorAll('[data-mt-block]')[0]!.querySelector('[data-mt-role=node][data-mt-selected=true]'));
+    assert.equal(await blocks.nth(1).locator('[data-mt-selected=true]').count(), 0);
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY-2-ROOT: live Markdown respects fixed and responsive SVG sizing', { timeout: 90_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-journey-root-'));
   const filename = join(directory, 'root.md');
