@@ -15095,7 +15095,7 @@ index e42b2af3..f84a2bb7 100644
      SetAccTitle(String),
      SetAccDescr(String),
 diff --git a/crates/merman-core/src/diagrams/sequence/db.rs b/crates/merman-core/src/diagrams/sequence/db.rs
-index 1763d899..5b75fc45 100644
+index 1763d899..b14576cf 100644
 --- a/crates/merman-core/src/diagrams/sequence/db.rs
 +++ b/crates/merman-core/src/diagrams/sequence/db.rs
 @@ -1,4 +1,4 @@
@@ -15143,6 +15143,15 @@ index 1763d899..5b75fc45 100644
      current_box: Option<usize>,
      wrap_enabled: Option<bool>,
  
+@@ -86,7 +87,7 @@ pub(super) struct SequenceDb {
+     last_created: Option<String>,
+     last_destroyed: Option<String>,
+ 
+-    title: Option<String>,
++    pub(super) title: Option<String>,
+     acc_title: Option<String>,
+     acc_descr: Option<String>,
+ }
 @@ -354,9 +355,9 @@ impl SequenceDb {
          &mut self,
          action: Action,
@@ -15222,7 +15231,7 @@ index 1763d899..5b75fc45 100644
  
  #[derive(Debug, Clone)]
 diff --git a/crates/merman-core/src/diagrams/sequence/parse.rs b/crates/merman-core/src/diagrams/sequence/parse.rs
-index f84737e3..4d562942 100644
+index f84737e3..6247a244 100644
 --- a/crates/merman-core/src/diagrams/sequence/parse.rs
 +++ b/crates/merman-core/src/diagrams/sequence/parse.rs
 @@ -68,19 +68,20 @@ impl SequenceSyntax {
@@ -15287,7 +15296,7 @@ index f84737e3..4d562942 100644
          Ok(db) => db,
          Err(message) => {
              return Ok(Err(Box::new(SequenceSemanticFailure::Db {
-@@ -235,15 +248,223 @@ fn construct_sequence_semantic_source(
+@@ -235,15 +248,219 @@ fn construct_sequence_semantic_source(
  fn build_sequence_db(
      actions: Vec<super::Action>,
      wrap_enabled: Option<bool>,
@@ -15296,7 +15305,6 @@ index f84737e3..4d562942 100644
      control: &OperationControl,
  ) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
      let mut db = SequenceDb::new(wrap_enabled);
-+    let mut visible_title = false;
 +    let tokens: Vec<_> = events
 +        .iter()
 +        .filter_map(|event| event.as_ref().ok())
@@ -15343,9 +15351,6 @@ index f84737e3..4d562942 100644
 +            sequence_payload_selection(text, *start, *end, code)
 +        });
 +        let title = matches!(action.as_ref(), super::Action::SetTitle(_));
-+        if let super::Action::SetTitle(text) = action.as_ref() {
-+            visible_title = !text.trim().is_empty();
-+        }
 +        let uses_config_alias = matches!(
 +            action.as_ref(),
 +            super::Action::AddParticipant {
@@ -15485,7 +15490,7 @@ index f84737e3..4d562942 100644
 +            }
 +        }
 +    }
-+    if !visible_title {
++    if db.title.as_deref().is_none_or(str::is_empty) {
 +        for piece in db
 +            .source_occurrences
 +            .iter_mut()
@@ -15513,7 +15518,7 @@ index f84737e3..4d562942 100644
          }
      }
      Ok(Ok(db))
-@@ -825,4 +1046,43 @@ mod tests {
+@@ -825,4 +1042,43 @@ mod tests {
                  .all(|symbol| symbol.role == EditorSemanticRole::Reference)
          );
      }

@@ -27,7 +27,7 @@ Inspect and pin a separate Merman source checkout. Reuse its native grammar and 
 
 Audit S1: displayed sequence titles retain exact statement/payload origins, including both body syntaxes, repeated titles, Unicode/CRLF and frontmatter fallback. The effective title supplies the clickable range; earlier declarations remain queryable without inventing another visual. Empty body titles follow the native renderer's frontmatter fallback. Saved/live source selection, keyboard and clipboard must work with unchanged static SVG.
 
-Plan: capture the existing title action and token spans, reuse shared frontmatter evidence, and bind the native title text. Start with native and browser regressions, then check plain/mapped parity and existing sequence acceptance.
+Plan: capture the existing title action and token spans, reuse shared frontmatter evidence, and bind the native title text. Determine empty-title classification from the parsed database title. Start with native and browser regressions, then check plain/mapped parity and existing sequence acceptance.
 
 Verification: native and browser regressions first failed for missing title bindings. Six original-source title cases, mapped/plain parity, all existing sequence native tests, saved/live title pointer/keyboard/reverse-source/clipboard/isolation, and shared six-family configuration provenance pass. Empty effective body titles retain nonvisual evidence while a visible frontmatter fallback owns its title.
 
