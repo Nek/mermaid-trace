@@ -313,6 +313,88 @@ fn flow_ac4_5_edge_occurrences_keep_exact_operators_across_renderers() {
 }
 
 #[test]
+fn flow_ac4_5_nonbreaking_html_labels_survive_safe_svg_with_exact_origins() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "deterministicIds": true,
+            "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let source = format!(
+                "---\r\nconfig:\r\n  htmlLabels: true\r\n  look: {look}\r\n  handDrawnSeed: 42\r\n---\r\n{header}\r\n%% 😀\r\nA[\"&nbsp;\"] -->|&nbsp;| B[\"X&nbsp;\"]\r\nsubgraph G[\"Group\u{00A0}name\"]\r\nC --> D\r\nend\r\n"
+            );
+            let result = mermaid_trace_rs::render("nbsp-labels", &source).unwrap();
+            let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let pieces = result["mapping"]["pieces"].as_array().unwrap();
+            let utf16: Vec<_> = source.encode_utf16().collect();
+            for (key, role, expected_source, expected_text) in [
+                ("node:A", "node-label", "&nbsp;", "\u{00A0}"),
+                ("node:B", "node-label", "X&nbsp;", "X\u{00A0}"),
+                ("edge:L_A_B_0", "edge-label", "&nbsp;", "\u{00A0}"),
+                (
+                    "flowchart:subgraph:G",
+                    "control-label",
+                    "Group\u{00A0}name",
+                    "Group\u{00A0}name",
+                ),
+            ] {
+                let piece = pieces
+                    .iter()
+                    .find(|piece| piece["domId"] == key && piece.get("labelSpan").is_some())
+                    .unwrap();
+                let span = &piece["labelSpan"];
+                let label_source = String::from_utf16(
+                    &utf16[span["start"].as_u64().unwrap() as usize
+                        ..span["end"].as_u64().unwrap() as usize],
+                )
+                .unwrap();
+                assert_eq!(label_source, expected_source, "{header} {look} {key}");
+                let label = svg
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-mt-key") == Some(key)
+                            && node.attribute("data-mt-role") == Some(role)
+                    })
+                    .unwrap_or_else(|| panic!("missing {role} {key}: {header} {look}"));
+                assert_eq!(
+                    label
+                        .descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>(),
+                    expected_text,
+                    "{header} {look} {key}"
+                );
+            }
+            let baseline = mermaid_trace_rs::render_with(&plain, "nbsp-labels", &source).unwrap();
+            assert_eq!(
+                strip_trace(result["svg"].as_str().unwrap()),
+                strip_trace(baseline["svg"].as_str().unwrap())
+            );
+        }
+    }
+    let source = "flowchart LR\nsubgraph G[\"\u{00A0}\"]\nA --> B\nend\n";
+    let result = mermaid_trace_rs::render("trimmed-title", source).unwrap();
+    assert!(
+        result["mapping"]["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|piece| piece["domId"] == "flowchart:subgraph:G")
+            .all(|piece| piece.get("labelSpan").is_none()),
+        "Mermaid trims a direct all-NBSP subgraph title before rendering"
+    );
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    assert!(!svg.descendants().any(|node| {
+        node.attribute("data-mt-key") == Some("flowchart:subgraph:G")
+            && node.attribute("data-mt-role") == Some("control-label")
+    }));
+}
+
+#[test]
 fn map_native_ac1_2_existing_fixtures_keep_native_mappings_and_static_output() {
     let renderer = mermaid_trace_rs::renderer();
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
@@ -1010,7 +1092,14 @@ fn flow_ac5_full_pinned_inventory_maps_semantic_wrappers_and_preserves_svg() {
             .filter(|node| node.attribute("data-mt-label") == Some("true"))
         {
             let visible = label.descendants().any(|node| {
-                node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
+                node.is_text()
+                    && node.text().is_some_and(|text| {
+                        !text
+                            .trim_matches(|ch: char| {
+                                matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000C}')
+                            })
+                            .is_empty()
+                    })
                     || [
                         "path",
                         "line",

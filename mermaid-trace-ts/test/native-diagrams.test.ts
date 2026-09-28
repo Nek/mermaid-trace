@@ -255,6 +255,72 @@ test('FLOW-2-EDGE-OCCURRENCES: grouped and repeated connectors retain one source
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FLOW-2-NONBREAKING-LABELS: saved and live HTML labels retain exact source selection', { timeout: 120_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-nbsp-labels-'));
+  const filename = join(directory, 'labels.md');
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    const cases = [
+      ['node:A', 'node-label', '&nbsp;', '\u00A0'],
+      ['node:B', 'node-label', 'X&nbsp;', 'X\u00A0'],
+      ['edge:L_A_B_0', 'edge-label', '&nbsp;', '\u00A0'],
+      ['flowchart:subgraph:G', 'control-label', 'Group\u00A0name', 'Group\u00A0name'],
+    ] as const;
+    for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) {
+      const source = `---\r\nconfig:\r\n  htmlLabels: true\r\n  look: ${look}\r\n  handDrawnSeed: 42\r\n---\r\n${header}\r\n%% 😀\r\nA["&nbsp;"] -->|&nbsp;| B["X&nbsp;"]\r\nsubgraph G["Group\u00A0name"]\r\nC --> D\r\nend\r\n`;
+      const { svg } = await producer.render('nbsp-labels', source);
+      await page.setContent(svg);
+      const original = await page.locator('svg').evaluate(element => element.outerHTML);
+      await page.evaluate(async activation => {
+        const { activateSvg } = await import(activation);
+        const events: any[] = [];
+        Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+      }, activation);
+      for (const [key, role, text, visual] of cases) {
+        const label = page.locator(`[data-mt-key="${key}"][data-mt-role="${role}"]`);
+        assert.equal(await label.count(), 1, `${header} ${look} ${key}`);
+        assert.equal(await label.textContent(), visual);
+        await clickExposedTarget(label);
+        const span = await page.evaluate(() => (window as any).events.at(-1).span);
+        assert.equal(source.slice(span.start, span.end), text);
+        await label.focus(); await label.press('Enter');
+        assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+        await page.evaluate(span => (window as any).handle.highlight([{ start: span.start, end: span.end }]), span);
+        assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+      }
+      await page.evaluate(() => (window as any).handle.dispose());
+      assert.equal(await page.locator('svg').evaluate(element => element.outerHTML), original);
+
+      if (look === 'classic') {
+        const markdown = `# Labels\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
+        await writeFile(filename, markdown);
+        preview = await watchPreview(filename, { port: 0, sourceView: true });
+        await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+        const originalSource = page.frameLocator('#source-frame').locator('#source');
+        for (const [key, role, text] of cases) {
+          const label = page.locator(`[data-mt-key="${key}"][data-mt-role="${role}"]`);
+          await clickExposedTarget(label);
+          assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.toString()), text);
+          const start = key === 'node:A' ? markdown.indexOf('A["&nbsp;"]') + 3
+            : key === 'node:B' ? markdown.indexOf('B["X&nbsp;"]') + 3
+              : key.startsWith('edge:') ? markdown.indexOf('-->|&nbsp;|') + 4
+                : markdown.indexOf('subgraph G["Group\u00A0name"]') + 'subgraph G["'.length;
+          await page.waitForFunction(expected => navigator.clipboard.readText().then(value => value === expected),
+            formatLocation({ id: filename, source: markdown }, { start, end: start + text.length }));
+        }
+        await preview.close(); preview = undefined;
+      }
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('OWN-STATE-ENDPOINT: saved and live references select their transition owner', { timeout: 240_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-state-owner-'));
   const filename = join(directory, 'states.md');

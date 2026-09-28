@@ -40,7 +40,14 @@ fn annotate(svg: &str, source: &str) -> Result<Value, String> {
     // Bind the visible replacement, keeping empty containers out of keyboard navigation.
     let visible = |node: roxmltree::Node<'_, '_>| {
         node.descendants().any(|child| {
-            child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+            child.is_text()
+                && child.text().is_some_and(|text| {
+                    !text
+                        .trim_matches(|ch: char| {
+                            matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000C}')
+                        })
+                        .is_empty()
+                })
                 || [
                     "path",
                     "line",

@@ -30896,6 +30896,57 @@ index edf41cf9..18279164 100644
                  let next_depth = base_path
                      .len()
                      .checked_add(html_stack.len())
+diff --git a/crates/merman-render/src/svg/fallback/html.rs b/crates/merman-render/src/svg/fallback/html.rs
+index dc21644e..7bcfa64b 100644
+--- a/crates/merman-render/src/svg/fallback/html.rs
++++ b/crates/merman-render/src/svg/fallback/html.rs
+@@ -7,6 +7,8 @@ use crate::svg::pipeline::{
+     checkpoint_loop, extract_exact_double_quoted_attr_with_checkpoints, find_with_checkpoints,
+ };
+ 
++const COLLAPSIBLE_SPACE: &[char] = &[' ', '\t', '\n', '\r', '\u{000C}'];
++
+ fn strip_html_tags<E>(
+     s: &str,
+     checkpoint: &mut impl FnMut() -> Result<(), E>,
+@@ -124,7 +126,7 @@ pub(super) fn htmlish_to_text_lines<E>(
+     let mut lines = Vec::new();
+     for (index, line) in text.lines().enumerate() {
+         checkpoint_loop(index, checkpoint)?;
+-        let line = line.trim();
++        let line = line.trim_matches(COLLAPSIBLE_SPACE);
+         if !line.is_empty() {
+             lines.push(line.to_string());
+         }
+@@ -202,14 +204,14 @@ fn wrap_html_line_to_width<E>(
+         }
+ 
+         let candidate = format!("{cur}{tok}");
+-        let candidate_trimmed = candidate.trim_end();
++        let candidate_trimmed = candidate.trim_end_matches(COLLAPSIBLE_SPACE);
+         if line_width_html_px(measurer, style, candidate_trimmed, checkpoint)? <= max_width_px {
+             cur = candidate;
+             continue;
+         }
+ 
+-        if !cur.trim().is_empty() {
+-            out.push(cur.trim_end().to_string());
++        if !cur.trim_matches(COLLAPSIBLE_SPACE).is_empty() {
++            out.push(cur.trim_end_matches(COLLAPSIBLE_SPACE).to_string());
+             cur.clear();
+             tokens.push_front(tok);
+             continue;
+@@ -223,8 +225,8 @@ fn wrap_html_line_to_width<E>(
+         out.push(tok);
+     }
+ 
+-    if !cur.trim().is_empty() {
+-        out.push(cur.trim_end().to_string());
++    if !cur.trim_matches(COLLAPSIBLE_SPACE).is_empty() {
++        out.push(cur.trim_end_matches(COLLAPSIBLE_SPACE).to_string());
+     }
+ 
+     if out.is_empty() {
 diff --git a/crates/merman-render/src/svg/fallback/inline_svg.rs b/crates/merman-render/src/svg/fallback/inline_svg.rs
 new file mode 100644
 index 00000000..5ff708ae
@@ -33685,7 +33736,7 @@ index a9051ce1..af5fb151 100644
          assert!(
              out.contains(r#"xmlns:s="http://www.w3.org/2000/svg""#),
 diff --git a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs b/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
-index d42bad8f..3c9bd090 100644
+index d42bad8f..8c9a1cba 100644
 --- a/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
 +++ b/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs
 @@ -174,9 +174,16 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
@@ -33730,6 +33781,38 @@ index d42bad8f..3c9bd090 100644
  
          assert!(
              !out.contains("<foreignObject"),
+@@ -731,6 +742,31 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn resvg_safe_preserves_noncollapsible_space_labels_without_inventing_blank_labels() {
++        let svg = format!(
++            r#"<svg xmlns="http://www.w3.org/2000/svg">
++<foreignObject x="0" y="0" width="40" height="20" data-mt-key="nbsp" data-mt-label="true"><div xmlns="http://www.w3.org/1999/xhtml">{nbsp}</div></foreignObject>
++<foreignObject x="0" y="25" width="40" height="20" data-mt-key="nnbsp" data-mt-label="true"><div xmlns="http://www.w3.org/1999/xhtml">{nnbsp}</div></foreignObject>
++<foreignObject x="0" y="50" width="40" height="20" data-mt-key="blank" data-mt-label="true"><div xmlns="http://www.w3.org/1999/xhtml">{blank}</div></foreignObject>
++</svg>"#,
++            nbsp = '\u{00A0}',
++            nnbsp = '\u{202F}',
++            blank = "  \t  "
++        );
++        let out = SvgPipeline::resvg_safe()
++            .process_to_string(&svg, &render_session())
++            .unwrap();
++        let document = roxmltree::Document::parse(&out).unwrap();
++        let labels: Vec<_> = document
++            .descendants()
++            .filter(|node| node.has_tag_name("text"))
++            .filter_map(|node| node.text())
++            .collect();
++        assert_eq!(labels, ["\u{00A0}", "\u{202F}"], "{out}");
++        assert!(!out.contains("<foreignObject"));
++    }
++
+     #[test]
+     fn strip_foreign_objects_handles_journey_switch_pattern() {
+         let svg = r##"<svg><g><rect class="section-type-0"/><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section section-type-0" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333" class="journey-section section-type-0" style="text-anchor: middle;"><tspan x="425" dy="0">Go to work</tspan></text></switch></g></svg>"##;
 diff --git a/crates/merman-render/src/svg/pipeline/mod.rs b/crates/merman-render/src/svg/pipeline/mod.rs
 index 349c673f..34331760 100644
 --- a/crates/merman-render/src/svg/pipeline/mod.rs
