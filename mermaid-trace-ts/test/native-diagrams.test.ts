@@ -670,7 +670,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       const target = controlKey === "state:note:first" ? first.locator("path.note-edge").first() : controlKey === "state:note:last" ? first.locator("path.note-edge").last() : controlKey === "state:region:last" ? first.locator("g:has(> g > rect.divider)").last() : first.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       const background = target.locator(':scope > rect[width], :scope > g > rect.outer, :scope > g > rect.divider, :scope > g > path[fill]:not([fill=none])');
       if (await target.evaluate(element => ['line', 'path'].includes(element.tagName))) {
-        const point = controlKey.startsWith('state:note:') ? await connectorPoint(target) : await target.evaluate(element => {
+        const point = role === 'edge' || controlKey.startsWith('state:note:') ? await connectorPoint(target) : await target.evaluate(element => {
           const shape = element as SVGGeometryElement;
           const point = shape.getPointAtLength(shape.getTotalLength() * (element.tagName === 'path' ? 0.2 : 0.5)).matrixTransform(shape.getScreenCTM()!);
           return { x: point.x, y: point.y };
@@ -2570,5 +2570,15 @@ test('STATE AC4/6: implicit state bodies and labels share selection when their r
   for (const header of ['stateDiagram', 'stateDiagram-v2']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
     const source = `---\nconfig:\n  look: ${look}\n  handDrawnSeed: 42\n  htmlLabels: ${html}\n---\n${header}\n%% 😀\n[*] --> Indexing\nIndexing --> [*] : indexed\n`;
     await verifyNative(source, 'state:node:Indexing', 'Indexing', 'Indexing');
+  }
+});
+
+test('FLOW AC5/6: minimum-width nodes preserve saved/live selection across layouts and looks', { timeout: 180_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+    const source = `---\nconfig:\n  htmlLabels: ${htmlLabels}\n  look: ${look}\n  handDrawnSeed: 42\n  flowchart:\n    minNodeWidth: 240\n---\n${header}\nA["Short 😀"] -->|next| B["Other"]\n`;
+    await verifyNative(source, 'node:A', 'A["Short 😀"]', 'Short 😀', [
+      ['edge:L_A_B_0', '-->|next|', 'edge'],
+      ['edge:L_A_B_0', 'next', 'edge-label'],
+    ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
   }
 });

@@ -1,6 +1,6 @@
 # Existing-family goal: evidence audit
 
-2026-09-28. The baseline below records the read-only audit at the named Trace revision; subsequent authorized fixes are recorded under [implementation checkpoints](#implementation-checkpoints). The broader goal is still marked blocked until resumed; its browser/fidelity boundaries were agreed on 2026-09-29. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
+2026-09-28. The baseline below records the read-only audit at the named Trace revision; subsequent authorized fixes are recorded under [implementation checkpoints](#implementation-checkpoints). The user resumed the broader goal on 2026-09-29 with its agreed browser/fidelity boundaries unchanged. Process: [goal reassessment](../../GOAL-REASSESSMENT.md).
 
 ## Reference and audit boundary
 
@@ -97,6 +97,25 @@ Browser and visual-fidelity boundaries agreed 2026-09-29; the six-family feature
 3. Preserve all existing acceptance. Each distinct source-backed visual has exact original UTF-16 ownership; references do not hijack declarations; multiple occurrences survive; equal-span visuals form one logical selection/focus group. Verify source→visual and visual→source, labels, unlabeled connectors, background selection and copied Markdown locations.
 4. Verify mapped/plain rendering parity, inert saved SVG activation without the producer, nested/repeated Markdown instances, optional native source selection, CLI reload/error recovery and the outstanding migration checks. Retain the existing safe-export/resource constraints. Newly discovered bugs inside this behavior stay in scope.
 5. Keep other families, WASM, packaging/VS Code and the all-family release outside this goal; they remain separate requirements. Require interaction acceptance in Chromium, Safari and Firefox. Accept Merman's visual interpretation: correct content, relationships, readability, required features and exact source mapping are mandatory; matching official Mermaid pixels, spacing or routing is not. Native mapped/plain parity remains required. Current Chromium-only evidence does not establish acceptance in the other two browsers.
+
+## Flowchart configuration crosswalk (resumed work)
+
+Reference remains Mermaid `f9387456a1e27315e325ada0d8a1cc583ecdf95b`, schema `FlowchartDiagramConfig` plus `BaseDiagramConfig`: all 17 distinct keys are enumerated below. This table narrows the earlier unverified configuration row into checks; it does not replace the grammar inventory or establish complete shared/root configuration coverage. Current minimum-width fix: native fork `e3abfb57dedda6eb2923ad096f6a0380002afad5`; all 115 Trace Rust tests pass, including the 1,158-fixture flowchart gate and existing state corpus. The minimum-width saved/live Chromium test passes its 12 variants; seven existing state browser checks also pass. The final focused run passes 25 flowchart/state browser tests (198.5 seconds), plus TypeScript compilation and the fork-bootstrap regression. Native paths are relative to `crates/merman-render/src/` in the pinned fork. Accepted native defaults/layout remain valid; authored options must retain their documented effects.
+
+| Options | Status | Evidence / next check | Layer |
+| --- | --- | --- | --- |
+| `minNodeWidth` | verified for the declared native/Chromium cases | New `flow_ac5_min_node_width_*` tests check minimum plus existing shape padding, larger minimums, long/empty labels, zero/negative values, absent defaults, icon/image exceptions, unaffected groups/edges, both layouts/HTML modes, exact CRLF/UTF-16 spans and mapped/plain parity. Saved/live acceptance uses all three looks. Safari/Firefox remain required. | Shared node metrics before Dagre/ELK layout; carried into SVG |
+| `nodeSpacing`, `rankSpacing` | unverified | Read by `flowchart/config.rs`; need project geometry/ownership cases for zero and positive values across orientation/layout and nested groups. Existing configuration provenance is not proof of spacing effects. | Layout |
+| `padding`, `wrappingWidth` | unverified | Existing shape/Markdown/math inventories exercise paths; minimum-width regression covers padding interaction. Need boundary and wrapping interaction assertions, including distinct node/edge/group behavior. | Label measurement, shape layout/drawing |
+| `titleTopMargin`, `subGraphTitleMargin` (`top`, `bottom`), `diagramPadding` | unverified | Readers exist in `flowchart/config.rs`; title/group provenance is covered. Need geometry and viewport checks at zero/positive margins with nested/empty groups. | Layout and viewport |
+| `curve` (all 13 enum values) | confirmed broken for `bumpX`; remaining crosswalk unverified | `svg/parity/flowchart/edge_geom/curve_path.rs` recognizes every listed curve except `bumpX`, which falls through to basis. A native render probe of `A[Start] e@--> B[Finish]; A --> C[Branch]; C --> B` produces identical edge paths for `basis` and `bumpX`, while `bumpY` differs. Next: failing rendered-path regression and shared dispatch fix; verify edge overrides, default precedence and bounds too. | Native curve dispatch |
+| `inheritDir` | unverified | Config reader and scoped-direction tests exist; finish explicit/inherited direction interaction assertions for nested groups and external edges in both layouts. | Semantic/layout direction |
+| `htmlLabels` | unverified for full precedence contract | Existing HTML/SVG and safe-conversion inventories pass; remaining check is diagram-scoped versus root settings, including null/deprecated configuration behavior. | Config resolution and labels |
+| `useMaxWidth`, `useWidth` | unverified | Responsive sizing reader exists; need emitted root sizing acceptance and classification of `useWidth` against the pinned renderer. | Viewport |
+| `theme`, `look`, `layout` | unverified for diagram-scoped resolution | Root look/layout variants pass existing tests. Pinned Mermaid 12 permits these under `flowchart`; cross-check scoped/root precedence and all pinned themes, rather than assuming root tests cover it. | Config resolution |
+| `arrowMarkerAbsolute` | unverified | Pinned schema itself questions its use; flowchart init propagates the value. Trace actual marker emission before classifying as effect/no-op; keep saved artifacts portable. | Marker URL/export |
+
+Shared/root options (theme variables/CSS, fonts, Markdown auto-wrap, security/link handling, renderer-specific ELK options and deterministic look settings) and remaining grammar alternatives still need an explicit crosswalk. They are open work under the same frozen reference, not newly added scope.
 
 ## Measurements and next decision
 

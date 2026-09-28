@@ -2774,3 +2774,117 @@ fn own_flow_real_node_origins_survive_reference_consolidation() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_min_node_width_sizes_labels_before_padding_without_changing_ownership() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false, "deterministicIds": true, "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            let mut widths = Vec::new();
+            for minimum in [0, 240, 360] {
+                let source = format!(
+                    "---\r\nconfig:\r\n  look: classic\r\n  htmlLabels: {html}\r\n  flowchart:\r\n    minNodeWidth: {minimum}\r\n    wrappingWidth: 1000\r\n    padding: 15\r\n---\r\n{header}\r\nA[\"Short 😀\"] --> B[\"\"]\r\nC[\"This label is deliberately much longer than any configured minimum label width in this example\"]\r\n"
+                );
+                let result = mermaid_trace_rs::render("minimum-width", &source).unwrap();
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "minimum-width", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let width = |key| {
+                    svg.descendants()
+                        .find(|node| {
+                            node.attribute("data-mt-key") == Some(key)
+                                && node.attribute("data-mt-role") == Some("node")
+                        })
+                        .unwrap()
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect")
+                                && node.attribute("class").is_some_and(|class| {
+                                    class.split_whitespace().any(|c| c == "basic")
+                                })
+                        })
+                        .unwrap()
+                        .attribute("width")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                };
+                widths.push((width("node:A"), width("node:B"), width("node:C")));
+                let piece = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "node:A" && p["kind"] == "node")
+                    .unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                let slice = |span: &Value| {
+                    String::from_utf16(
+                        &utf16[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize],
+                    )
+                    .unwrap()
+                };
+                assert_eq!(slice(&piece["span"]), "A[\"Short 😀\"]");
+                assert_eq!(slice(&piece["labelSpan"]), "Short 😀");
+            }
+            assert!(
+                widths[0].0 < 240.0,
+                "baseline must be narrower: {header}/{html}"
+            );
+            assert_eq!(
+                widths[1].0, 300.0,
+                "minimum label width plus padding: {header}/{html}"
+            );
+            assert_eq!(widths[2].0, 420.0, "larger minimum: {header}/{html}");
+            assert_eq!(widths[0].1, widths[1].1, "empty label must stay empty");
+            assert_eq!(widths[1].1, widths[2].1);
+            assert_eq!(widths[0].2, widths[1].2, "long label must not shrink");
+            assert_eq!(widths[1].2, widths[2].2);
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_min_node_width_leaves_explicit_assets_and_non_node_labels_unchanged() {
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for html in [false, true] {
+            for body in [
+                "A@{ icon: \"fa:star\", form: square, label: \"Icon\", w: 60, h: 60 }",
+                "A@{ img: \"https://example.com/image.png\", label: \"Image\", w: 60, h: 60 }",
+                "subgraph G[Group title]\nA[\"\"] -->|Edge label| B[\"\"]\nend",
+            ] {
+                let source = format!(
+                    "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    minNodeWidth: 0\n---\n{header}\n{body}\n"
+                );
+                let baseline = mermaid_trace_rs::render("minimum-exceptions", &source).unwrap();
+                for minimum in [-1, 500] {
+                    let changed =
+                        source.replace("minNodeWidth: 0", &format!("minNodeWidth: {minimum}"));
+                    let result = mermaid_trace_rs::render("minimum-exceptions", &changed).unwrap();
+                    assert_eq!(
+                        strip_trace(result["svg"].as_str().unwrap()),
+                        strip_trace(baseline["svg"].as_str().unwrap()),
+                        "{header}/{html}/{body}"
+                    );
+                }
+                let absent = mermaid_trace_rs::render(
+                    "minimum-exceptions",
+                    &source.replace("    minNodeWidth: 0\n", ""),
+                )
+                .unwrap();
+                assert_eq!(
+                    strip_trace(absent["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}

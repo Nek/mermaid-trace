@@ -4,11 +4,11 @@ Agreed process, 2026-09-28. Read this before reassessing or resuming the existin
 
 ## Current position
 
-- The stored goal is `existing families`, still marked blocked until resumed. Its completion boundary is now recorded below; the browser/fidelity decisions were settled on 2026-09-29.
+- The user resumed `existing families` on 2026-09-29 under the unchanged completion boundary below. The goal tool still reports blocked and exposes no resume operation; that stale tool status does not replace the user’s instruction. Browser/fidelity decisions were settled on 2026-09-29.
 - The boundary is full support for flowchart (including ELK), sequence, Gantt, user journey, Kanban and state under the audit's finite completion contract. Accept Merman's visual interpretation while preserving required content, relationships, features and exact source mapping; no pixel match to official Mermaid is required. Chromium, Safari and Firefox must pass interaction acceptance. This must not silently expand into the separate [all-family release gate](specs/diagram-coverage/spec.md), Class/ER work or other milestones.
 - The [bounded audit](specs/diagram-coverage/existing-families-audit.md) records the pinned references, coverage evidence, four baseline sequence/Kanban defects and remaining unverified areas. Following the instruction to proceed, all four defects have focused passing regressions; its implementation checkpoints retain measured timing and verification. State's pinned inventory gate remains valid; it does not establish every Mermaid 12 configuration. This is an evidence summary, not a completion percentage.
 - The earlier 80–160 and 150–300+ AI wall-clock-hour forecasts, and the 8–16-hour inventory estimate, were withdrawn as unsupported. Do not reuse them as a baseline. There is no credible remaining-hours forecast yet.
-- This document records the audit process; it does not resume implementation or change the stored goal.
+- Resumption adds no families, native GUI, WASM or other milestones.
 
 ## Reduce uncertainty
 
@@ -35,4 +35,4 @@ The audit ends after one defined pass through the named pinned sources and exist
 - A newly discovered bug within agreed behavior remains part of the work. If resolving a discovery requires changing the agreed goal or acceptance boundary, stop implementation immediately and discuss the scope with the user before proceeding.
 - Preserve full-feature coverage, source ownership, migration acceptance, TDD and atomic commits. Missing or failing acceptance must remain visible until resolved; do not weaken it to close a gate.
 
-Next step: resume the existing-family work under these agreed boundaries, finishing FLOW-2's syntax/configuration inventory and closing its gaps before moving to another family. Use the four measured fixes when classifying comparable remaining work, not as a uniform per-family rate. Browser acceptance still needs evidence; agreeing its scope does not mark it passed.
+Current work: continue under these agreed boundaries, finishing FLOW-2's syntax/configuration inventory and closing its gaps before moving to another family. Use the four measured fixes when classifying comparable remaining work, not as a uniform per-family rate. Browser acceptance still needs evidence; agreeing its scope does not mark it passed.
