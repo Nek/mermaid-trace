@@ -13073,7 +13073,7 @@ index 242dc0f3..a15eda6d 100644
      Ok(Ok(()))
  }
 diff --git a/crates/merman-core/src/diagrams/journey.rs b/crates/merman-core/src/diagrams/journey.rs
-index 68bde024..90708d71 100644
+index 68bde024..ecdca6ef 100644
 --- a/crates/merman-core/src/diagrams/journey.rs
 +++ b/crates/merman-core/src/diagrams/journey.rs
 @@ -1,6 +1,6 @@
@@ -13294,7 +13294,46 @@ index 68bde024..90708d71 100644
      }
  }
  
-@@ -394,6 +509,14 @@ fn parse_journey_semantic_source(
+@@ -198,7 +313,7 @@ fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
+     }
+     let rest = t[key.len()..].trim_start();
+     let rest = rest.strip_prefix(':')?;
+-    Some(split_statement_suffix_hash_or_semi(rest).trim().to_string())
++    Some(rest.trim().to_string())
+ }
+ 
+ struct JourneyBlockText {
+@@ -266,6 +381,17 @@ fn parse_acc_descr_block_spanned(
+     }))
+ }
+ 
++fn is_inline_accessibility_payload(line: &str) -> bool {
++    let t = line.trim_start();
++    ["accTitle", "accDescr"].iter().any(|keyword| {
++        if !starts_with_case_insensitive(t, keyword) {
++            return false;
++        }
++        let rest = t[keyword.len()..].trim_start();
++        rest.starts_with(':') || (*keyword == "accDescr" && rest.starts_with('{'))
++    })
++}
++
+ fn strip_comment_prefix(line: &str) -> &str {
+     let t = line.trim_start();
+     if t.starts_with('#') {
+@@ -274,7 +400,10 @@ fn strip_comment_prefix(line: &str) -> &str {
+     if t.starts_with("%%") && !t.starts_with("%%{") {
+         return "";
+     }
+-    split_statement_suffix_hash_or_semi(line)
++    if is_inline_accessibility_payload(line) {
++        return line;
++    }
++    line.split_once('#').map_or(line, |(before, _)| before)
+ }
+ 
+ pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+@@ -394,6 +523,14 @@ fn parse_journey_semantic_source(
      control.checkpoint()?;
      let mut db = JourneyDb::default();
      db.clear();
@@ -13309,7 +13348,26 @@ index 68bde024..90708d71 100644
      let mut editor_facts = EditorSemanticFacts::new();
      let mut lines = LineCursor::new(code);
      let mut header_seen = false;
-@@ -442,6 +565,13 @@ fn parse_journey_semantic_source(
+@@ -406,6 +543,18 @@ fn parse_journey_semantic_source(
+         if t.is_empty() {
+             continue;
+         }
++        if !is_inline_accessibility_payload(stripped) {
++            if let Some(semi) = stripped.find(';') {
++                first_error.get_or_insert_with(|| {
++                    Error::diagram_parse_exact(
++                        meta.diagram_type.clone(),
++                        "unexpected semicolon in journey statement",
++                        SourceSpan::new(line_start + semi, line_start + semi + 1),
++                    )
++                });
++                continue;
++            }
++        }
+ 
+         if !header_seen {
+             if starts_with_case_insensitive(t, "journey") {
+@@ -442,6 +591,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
              editor_facts.push_directive_prefix("title");
              let value = spanned_keyword_value(line, line_start, "title");
@@ -13323,7 +13381,7 @@ index 68bde024..90708d71 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -456,6 +586,13 @@ fn parse_journey_semantic_source(
+@@ -456,6 +612,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
              editor_facts.push_directive_prefix("accTitle");
              let value = spanned_colon_value(line, line_start, "accTitle");
@@ -13337,7 +13395,7 @@ index 68bde024..90708d71 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -470,6 +607,13 @@ fn parse_journey_semantic_source(
+@@ -470,6 +633,13 @@ fn parse_journey_semantic_source(
          if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
              editor_facts.push_directive_prefix("accDescr");
              let value = spanned_colon_value(line, line_start, "accDescr");
@@ -13351,7 +13409,7 @@ index 68bde024..90708d71 100644
              if let Some(value) = value {
                  push_journey_payload_fact(
                      &mut editor_facts,
-@@ -482,6 +626,16 @@ fn parse_journey_semantic_source(
+@@ -482,6 +652,16 @@ fn parse_journey_semantic_source(
              continue;
          }
          if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
@@ -13368,7 +13426,7 @@ index 68bde024..90708d71 100644
              editor_facts.push_directive_prefix("accDescr");
              push_journey_payload_fact_spanned(
                  &mut editor_facts,
-@@ -508,11 +662,20 @@ fn parse_journey_semantic_source(
+@@ -508,11 +688,20 @@ fn parse_journey_semantic_source(
          }
          if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
              let v = v.split(':').next().unwrap_or("").to_string();
@@ -13389,7 +13447,7 @@ index 68bde024..90708d71 100644
                      editor_facts.push_symbol(EditorSemanticSymbol::outline(
                          section_text.to_string(),
                          Some("journey section".to_string()),
-@@ -577,8 +740,12 @@ fn parse_journey_semantic_source(
+@@ -577,8 +766,12 @@ fn parse_journey_semantic_source(
              continue;
          }
  
@@ -13403,7 +13461,7 @@ index 68bde024..90708d71 100644
          let rest_start =
              line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
          if rest.is_empty() {
-@@ -588,9 +755,12 @@ fn parse_journey_semantic_source(
+@@ -588,9 +781,12 @@ fn parse_journey_semantic_source(
              continue;
          }
          let score_end = rest.find(':').unwrap_or(rest.len());
@@ -13417,7 +13475,7 @@ index 68bde024..90708d71 100644
              editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                  EditorExpectedSyntaxKind::Payload,
                  SourceSpan::new(score_start, score_start + score_text.len()),
-@@ -605,13 +775,35 @@ fn parse_journey_semantic_source(
+@@ -605,13 +801,35 @@ fn parse_journey_semantic_source(
          }
  
          if score_end < rest.len() {
@@ -13459,7 +13517,7 @@ index 68bde024..90708d71 100644
                  editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                      EditorExpectedSyntaxKind::Payload,
                      SourceSpan::new(people_start, people_start + people.len()),
-@@ -639,9 +831,86 @@ fn parse_journey_semantic_source(
+@@ -639,9 +857,86 @@ fn parse_journey_semantic_source(
          )));
      }
  
@@ -13546,7 +13604,7 @@ index 68bde024..90708d71 100644
          title: (!db.title.is_empty()).then_some(db.title),
          acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
          acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
-@@ -674,7 +943,7 @@ fn spanned_keyword_value<'a>(
+@@ -674,7 +969,7 @@ fn spanned_keyword_value<'a>(
      if value.is_empty() {
          return None;
      }
@@ -13555,7 +13613,12 @@ index 68bde024..90708d71 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -697,7 +966,7 @@ fn spanned_colon_value<'a>(
+@@ -693,11 +988,11 @@ fn spanned_colon_value<'a>(
+     }
+     let rest = trimmed[key.len()..].trim_start();
+     let rest = rest.strip_prefix(':')?;
+-    let value = split_statement_suffix_hash_or_semi(rest).trim();
++    let value = rest.trim();
      if value.is_empty() {
          return None;
      }
@@ -13564,7 +13627,7 @@ index 68bde024..90708d71 100644
      Some(EditorPayloadSpan {
          text: value,
          start: line_start + value_rel,
-@@ -1189,6 +1458,53 @@ R task: 5:\n",
+@@ -1189,6 +1484,53 @@ R task: 5:\n",
          assert!(compat["tasks"][0].get("sectionIndex").is_none());
      }
  
@@ -13618,7 +13681,7 @@ index 68bde024..90708d71 100644
      #[test]
      fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
          let mut db = JourneyDb::default();
-@@ -1210,7 +1526,7 @@ R task: 5:\n",
+@@ -1210,7 +1552,7 @@ R task: 5:\n",
                  .iter()
                  .map(|t| {
                      json!({

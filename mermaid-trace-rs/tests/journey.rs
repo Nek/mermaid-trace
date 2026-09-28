@@ -1633,3 +1633,72 @@ fn journey_2_title_yaml_origin_and_body_precedence_preserve_static_svg() {
         }
     }
 }
+
+#[test]
+fn journey_2_delimiters_follow_pinned_grammar_and_preserve_accessibility_payloads() {
+    for statement in [
+        "journey;\nTask: 5\n",
+        "journey\ntitle Work;\nTask: 5\n",
+        "journey\nsection Work;\nTask: 5\n",
+        "journey\nTask: 5;\n",
+        "journey\nTask: 5: Alice; comment\n",
+    ] {
+        assert!(
+            mermaid_trace_rs::render("journey-delimiter", statement).is_err(),
+            "the pinned Journey grammar rejects semicolons: {statement:?}"
+        );
+    }
+
+    let source = "journey\r\naccTitle: Hello # and ; world\r\naccDescr: Detail # and ; world\r\nsection Work # hide ;\r\nTask: 5: Alice # hide ;\r\n";
+    let result = mermaid_trace_rs::render("journey-delimiter", source).unwrap();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    let baseline = mermaid_trace_rs::render_with(&plain, "journey-delimiter", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    for (tag, expected) in [
+        ("title", "Hello # and ; world"),
+        ("desc", "Detail # and ; world"),
+    ] {
+        assert_eq!(
+            svg.descendants()
+                .find(|node| node.has_tag_name(tag))
+                .and_then(|node| node.text()),
+            Some(expected)
+        );
+    }
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let accessibility: Vec<_> = native
+        .iter()
+        .filter(|piece| piece["classification"] == "accessibility")
+        .collect();
+    assert_eq!(accessibility.len(), 2);
+    for (piece, (statement, payload)) in accessibility.iter().zip([
+        ("accTitle: Hello # and ; world", "Hello # and ; world"),
+        ("accDescr: Detail # and ; world", "Detail # and ; world"),
+    ]) {
+        assert_eq!(selected(source, &piece["span"]), statement);
+        assert_eq!(selected(source, &piece["labelSpan"]), payload);
+        assert_eq!(piece["kind"], "nonvisual");
+    }
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let section = pieces
+        .iter()
+        .find(|piece| piece["domId"] == "journey:section:0")
+        .unwrap();
+    assert_eq!(selected(source, &section["labelSpan"]), "Work");
+    let task = pieces
+        .iter()
+        .find(|piece| piece["domId"] == "journey:task:0")
+        .unwrap();
+    assert_eq!(selected(source, &task["labelSpan"]), "Task");
+}
