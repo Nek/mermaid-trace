@@ -240,6 +240,111 @@ fn gantt_2_click_action_orders_and_quoted_tails_keep_native_ranges() {
 }
 
 #[test]
+fn gantt_2_task_fields_keep_parsed_roles_and_original_source_ranges() {
+    let source = "gantt\r\n%% 😀\r\ndateFormat YYYY-MM-DD\r\nBase 😀 :done, done, base, 2026-01-01, 1d\r\nDeadline :deadline, 2026-01-10, 1d\r\nMain :active, crit, main, after base, until deadline\r\nAuto :milestone, 2d\r\nMarker :vert, marker, 2026-01-02, 1d ; ignored\r\n";
+    let result = mermaid_trace_rs::render("gantt-fields", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    let expect = |relation: &str, id: &str, text: &str, from: usize, tag: Option<&str>| {
+        let start = source[from..].find(text).unwrap() + from;
+        let bytes = serde_json::json!({"start":start,"end":start+text.len()});
+        let utf16 = serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+text.len()].encode_utf16().count()});
+        assert!(
+            native.iter().any(|item| item["relation"] == relation
+                && item["semanticId"] == id
+                && item["span"] == bytes
+                && tag.is_none_or(|tag| item["tag"] == tag)),
+            "missing original {relation} {id} {text}"
+        );
+        assert!(
+            pieces.iter().any(|item| item["relation"] == relation
+                && item["domId"] == format!("gantt:task:{id}")
+                && item["span"] == utf16),
+            "missing mapped {relation} {id} {text}"
+        );
+        start + text.len()
+    };
+    let base = source.find("Base 😀 :").unwrap();
+    let first_done = expect("task-tag", "base", "done", base, Some("done"));
+    expect("task-tag", "base", "done", first_done, Some("done"));
+    expect("task-id", "base", "base", first_done, None);
+    expect("task-start", "base", "2026-01-01", base, None);
+    expect("task-end", "base", "1d", base, None);
+    let main = source.find("Main :").unwrap();
+    expect("task-tag", "main", "active", main, Some("active"));
+    expect("task-tag", "main", "crit", main, Some("crit"));
+    expect("task-id", "main", "main", main, None);
+    expect("task-start", "main", "after base", main, None);
+    expect("task-end", "main", "until deadline", main, None);
+    expect(
+        "task-tag",
+        "task1",
+        "milestone",
+        source.find("Auto :").unwrap(),
+        Some("milestone"),
+    );
+    expect(
+        "task-end",
+        "task1",
+        "2d",
+        source.find("Auto :").unwrap(),
+        None,
+    );
+    expect(
+        "task-tag",
+        "marker",
+        "vert",
+        source.find("Marker :").unwrap(),
+        Some("vert"),
+    );
+    assert!(
+        !native
+            .iter()
+            .any(|item| item["relation"] == "task-id" && item["semanticId"] == "task1"),
+        "auto ID has no authored token"
+    );
+    assert!(
+        !native.iter().any(|item| item["relation"] == "task-end"
+            && item["span"]["end"].as_u64().unwrap() as usize > source.find(" ; ignored").unwrap()),
+        "suffix comment is not task data"
+    );
+    assert!(
+        native.iter().any(|item| item["kind"] == "node"
+            && item["semanticId"] == "marker"
+            && item["relation"].is_null()
+            && item["span"]["end"] == source.find(" ; ignored").unwrap()),
+        "task statement must end before the ignored suffix comment"
+    );
+    for (id, token) in [("main", "base"), ("main", "deadline")] {
+        let start = source
+            .find(if token == "base" {
+                "after base"
+            } else {
+                "until deadline"
+            })
+            .unwrap()
+            + if token == "base" {
+                "after ".len()
+            } else {
+                "until ".len()
+            };
+        assert!(pieces.iter().any(|item| item["relation"] == "dependency-reference" && item["domId"] == format!("gantt:task:{id}") && item["span"] == serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+token.len()].encode_utf16().count()})), "dependency {token} stays within its owning task");
+    }
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"traceSource":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+    let baseline = mermaid_trace_rs::render_with(&plain, "gantt-fields", source).unwrap();
+    assert_eq!(
+        support::strip_trace(result["svg"].as_str().unwrap()),
+        support::strip_trace(baseline["svg"].as_str().unwrap())
+    );
+}
+
+#[test]
 fn gantt_2_directives_retain_each_nonvisual_source_origin() {
     let source = "---\r\nconfig:\r\n  htmlLabels: false\r\n---\r\ngantt\r\n%% 😀 comment\r\n  dateFormat YYYY-MM-DD\r\n  inclusiveEndDates\r\n  topAxis\r\n  axisFormat %Y-%m-%d ; note\r\n  tickInterval 1day\r\n  includes weekends\r\n  excludes weekends\r\n  todayMarker off\r\n  weekday monday\r\n  weekend friday\r\n  dateFormat YYYY-MM-DD\r\n  topAxis\r\n  Task :a, 2026-01-01, 1d\r\n";
     let result = mermaid_trace_rs::render("gantt-directives", source).unwrap();

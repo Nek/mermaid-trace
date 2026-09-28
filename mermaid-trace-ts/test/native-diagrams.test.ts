@@ -757,6 +757,78 @@ test('GANTT-2-CLICK-ORIGINS: task interaction syntax selects its own existing ta
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-TASK-FIELDS: parsed task properties select their owner without selecting ignored comments', { timeout: 60_000 }, async () => {
+  const source = 'gantt\ndateFormat YYYY-MM-DD\nBase 😀 :base, 2026-01-01, 1d\nMain :active, crit, main, after base, 2d ; ignored\n';
+  const statement = 'Main :active, crit, main, after base, 2d';
+  const markdown = '```mermaid\n' + source + '```\n';
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-fields-'));
+  const filename = join(directory, 'gantt.md');
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg } = await producer.render('gantt-fields', source);
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.setContent(svg + svg.replaceAll('gantt-fields', 'gantt-copy'));
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const events: unknown[] = [];
+      Object.assign(window, { events, handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (selection: unknown) => events.push(selection) })) });
+    }, activation);
+    const first = page.locator('svg').first();
+    const main = first.locator('[data-mt-key="gantt:task:main"][data-mt-role=node]');
+    const base = first.locator('[data-mt-key="gantt:task:base"][data-mt-role=node]');
+    const fields = ['active', 'crit', 'main,', 'after base', '2d'];
+    for (const value of fields) {
+      const start = source.indexOf(value, source.indexOf('Main :'));
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + value.length });
+      assert.equal(await main.getAttribute('data-mt-selected'), 'true', value);
+      assert.equal(await base.getAttribute('data-mt-selected'), null, value);
+      assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected=true]').count(), 0);
+    }
+    const comment = source.indexOf('; ignored');
+    await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: comment, end: comment + '; ignored'.length });
+    assert.equal(await first.locator('[data-mt-selected=true]').count(), 0, 'ignored suffix is not task source');
+    await clickExposedTarget(main);
+    const event = await page.evaluate(() => (window as any).events.at(-1));
+    assert.equal(source.slice(event.span.start, event.span.end), statement);
+    await main.focus(); await main.press('Enter');
+    assert.equal(source.slice((await page.evaluate(() => (window as any).events.at(-1))).span.start, (await page.evaluate(() => (window as any).events.at(-1))).span.end), statement);
+    await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const original = page.frameLocator('#source-frame').locator('#source');
+    const liveMain = page.locator('svg[data-mt-map] [data-mt-key="gantt:task:main"][data-mt-role=node]');
+    const liveBase = page.locator('svg[data-mt-map] [data-mt-key="gantt:task:base"][data-mt-role=node]');
+    for (const value of fields) {
+      const start = markdown.indexOf(value, markdown.indexOf('Main :'));
+      await original.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start, end: start + value.length });
+      await page.waitForFunction(() => document.querySelector('svg[data-mt-map] [data-mt-key="gantt:task:main"][data-mt-role=node][data-mt-selected=true]'));
+      assert.equal(await liveBase.getAttribute('data-mt-selected'), null, value);
+    }
+    const ignored = markdown.indexOf('; ignored');
+    await original.evaluate((element, span) => {
+      const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+      range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+      selection.removeAllRanges(); selection.addRange(range);
+    }, { start: ignored, end: ignored + '; ignored'.length });
+    await page.waitForFunction(() => !document.querySelector('svg[data-mt-map] [data-mt-selected=true]'));
+    await clickExposedTarget(liveMain);
+    assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), statement);
+    const start = markdown.indexOf(statement);
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + statement.length }));
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });
