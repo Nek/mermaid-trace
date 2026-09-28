@@ -4,6 +4,242 @@ use serde_json::Value;
 const GANTT: &str = "---\r\nconfig:\r\n  theme: default\r\n---\r\ngantt\r\n  title Plan 😀\r\n  dateFormat YYYY-MM-DD\r\n  todayMarker off\r\n  section Build\r\n  Same 😀 :done, a, 2026-01-01, 2d\r\n  Same 😀 :crit, b, after a, 1d\r\n  Ship :milestone, c, after b, 0d\r\n";
 
 #[test]
+fn gantt_2_click_statements_retain_task_owned_parts_without_unknown_targets() {
+    let source = "gantt\r\n%% 😀\r\ndateFormat YYYY-MM-DD\r\nclick a href \"https://early.test\"\r\nFirst :a, 2026-01-01, 1d\r\nSecond :b, 2026-01-02, 1d\r\nclick a,b href \"https://example.test/😀\" call cb(\"x\", 2) \"Open 😀\"\r\nclick a href \"https://later.test\"\r\nclick ghost href \"https://missing.test\"\r\n";
+    for security in ["strict", "loose"] {
+        let config = serde_json::json!({"traceSource":true,"securityLevel":security,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"});
+        let renderer = merman::Renderer::new().with_engine(
+            merman::Engine::new()
+                .with_site_config(merman::MermaidConfig::from_value(config.clone())),
+        );
+        let result = mermaid_trace_rs::render_with(&renderer, "gantt-click", source).unwrap();
+        let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            svg.descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let statements: Vec<_> = native
+            .iter()
+            .filter(|item| item["classification"] == "gantt-click")
+            .collect();
+        assert_eq!(
+            statements.len(),
+            4,
+            "every accepted click remains queryable"
+        );
+        for (item, text) in statements.iter().zip([
+            "click a href \"https://early.test\"",
+            "click a,b href \"https://example.test/😀\" call cb(\"x\", 2) \"Open 😀\"",
+            "click a href \"https://later.test\"",
+            "click ghost href \"https://missing.test\"",
+        ]) {
+            let start = source.find(text).unwrap();
+            assert_eq!(item["kind"], "nonvisual");
+            assert_eq!(
+                item["span"],
+                serde_json::json!({"start":start,"end":start+text.len()})
+            );
+        }
+        let source_span = |text: &str| {
+            let start = source.find(text).unwrap();
+            serde_json::json!({"start":start,"end":start+text.len()})
+        };
+        assert!(
+            native
+                .iter()
+                .any(|item| item["classification"] == "unresolved-click-action"
+                    && item["semanticId"] == "a"
+                    && item["relation"] == "click-href"
+                    && item["span"] == source_span("https://early.test")),
+            "forward interactions retain their value even when nonvisual"
+        );
+        for (relation, text) in [
+            ("click-href", "https://example.test/😀"),
+            ("click-callback", "cb"),
+            ("click-args", "\"x\", 2"),
+            ("click-tooltip", "Open 😀"),
+        ] {
+            assert_eq!(native.iter().filter(|item| item["relation"] == relation && item["span"] == source_span(text)).count(), 2, "each parsed action keeps an original byte range for both tasks");
+        }
+        let unresolved: Vec<_> = native
+            .iter()
+            .filter(|item| item["classification"] == "unresolved-click-target")
+            .collect();
+        assert_eq!(
+            unresolved.len(),
+            2,
+            "forward and unknown targets remain nonvisual"
+        );
+        for (item, id, line) in [
+            (unresolved[0], "a", "click a href \"https://early.test\""),
+            (
+                unresolved[1],
+                "ghost",
+                "click ghost href \"https://missing.test\"",
+            ),
+        ] {
+            let start = source.find(line).unwrap() + "click ".len();
+            assert_eq!(item["semanticId"], id);
+            assert_eq!(
+                item["span"],
+                serde_json::json!({"start":start,"end":start+id.len()})
+            );
+        }
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        let span = |text: &str| {
+            let start = source.find(text).unwrap();
+            serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+text.len()].encode_utf16().count()})
+        };
+        let targets: Vec<_> = pieces
+            .iter()
+            .filter(|item| item["relation"] == "click-target")
+            .collect();
+        assert_eq!(targets.len(), 3);
+        let ids = source.find("click a,b ").unwrap() + "click ".len();
+        assert!(targets.iter().any(|item| item["domId"] == "gantt:task:a" && item["span"] == serde_json::json!({"start":source[..ids].encode_utf16().count(),"end":source[..ids+1].encode_utf16().count()})));
+        assert!(targets.iter().any(|item| item["domId"] == "gantt:task:b" && item["span"] == serde_json::json!({"start":source[..ids+2].encode_utf16().count(),"end":source[..ids+3].encode_utf16().count()})));
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|item| item["relation"] == "click-href"
+                    && item["span"] == span("https://example.test/😀"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|item| item["relation"] == "click-callback" && item["span"] == span("cb"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|item| item["relation"] == "click-args" && item["span"] == span("\"x\", 2"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(
+                    |item| item["relation"] == "click-tooltip" && item["span"] == span("Open 😀")
+                )
+                .count(),
+            2
+        );
+        assert!(!pieces.iter().any(
+            |item| item["span"] == span("ghost") || item["span"] == span("https://early.test")
+        ));
+        let task = svg
+            .descendants()
+            .find(|node| {
+                node.attribute("data-mt-key") == Some("gantt:task:a")
+                    && node.attribute("data-mt-role") == Some("node")
+            })
+            .unwrap();
+        assert_eq!(
+            task.attribute("data-mt-start")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap(),
+            source[..source.find("First :a").unwrap()]
+                .encode_utf16()
+                .count(),
+            "task activation still selects its declaration"
+        );
+        let mut plain_config = config;
+        plain_config["traceSource"] = serde_json::json!(false);
+        let plain = merman::Renderer::new().with_engine(
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(plain_config)),
+        );
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-click", source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
+fn gantt_2_click_action_orders_and_quoted_tails_keep_native_ranges() {
+    let source = "gantt\r\ndateFormat YYYY-MM-DD\r\nTask :a, 2026-01-01, 1d\r\nclick a bareFn\r\nclick a call cb() href \"https://example.test\" \"First 😀\" \"Second\"\r\nclick a,ghost href \"https://mixed.test\"\r\nclick a href \"\" \"\"\r\n";
+    let result = mermaid_trace_rs::render("gantt-click-forms", source).unwrap();
+    let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+    let native: Vec<Value> = serde_json::from_str(
+        svg.descendants()
+            .find_map(|node| node.attribute("data-mt-native"))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        native
+            .iter()
+            .filter(|item| item["classification"] == "gantt-click")
+            .count(),
+        4
+    );
+    let pieces = result["mapping"]["pieces"].as_array().unwrap();
+    for (relation, text) in [
+        ("click-callback", "bareFn"),
+        ("click-callback", "cb"),
+        ("click-href", "https://example.test"),
+        ("click-href", "https://mixed.test"),
+        ("click-tooltip", "First 😀"),
+        ("click-tooltip", "Second"),
+    ] {
+        let start = source.find(text).unwrap();
+        let span = serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+text.len()].encode_utf16().count()});
+        assert!(
+            pieces.iter().any(|item| item["relation"] == relation
+                && item["domId"] == "gantt:task:a"
+                && item["span"] == span),
+            "{relation}: {text}"
+        );
+    }
+    assert_eq!(
+        pieces
+            .iter()
+            .filter(|item| item["relation"] == "click-call-keyword")
+            .count(),
+        1
+    );
+    assert_eq!(
+        pieces
+            .iter()
+            .filter(|item| item["relation"] == "click-args")
+            .count(),
+        0,
+        "empty callback args have no invented value range"
+    );
+    let empty_line = source.find("click a href \"\" \"\"").unwrap();
+    for (relation, start) in [
+        ("click-href", empty_line + "click a href ".len()),
+        ("click-tooltip", empty_line + "click a href \"\" ".len()),
+    ] {
+        let span = serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+2].encode_utf16().count()});
+        assert!(
+            pieces.iter().any(|item| item["relation"] == relation
+                && item["domId"] == "gantt:task:a"
+                && item["span"] == span),
+            "empty {relation} should own its selectable quote token"
+        );
+    }
+    let ghost = source.find("ghost").unwrap();
+    assert!(
+        native
+            .iter()
+            .any(|item| item["classification"] == "unresolved-click-target"
+                && item["semanticId"] == "ghost"
+                && item["span"] == serde_json::json!({"start":ghost,"end":ghost+"ghost".len()}))
+    );
+    assert!(!pieces.iter().any(|item| item["span"] == serde_json::json!({"start":source[..ghost].encode_utf16().count(),"end":source[..ghost+"ghost".len()].encode_utf16().count()})));
+}
+
+#[test]
 fn gantt_2_directives_retain_each_nonvisual_source_origin() {
     let source = "---\r\nconfig:\r\n  htmlLabels: false\r\n---\r\ngantt\r\n%% 😀 comment\r\n  dateFormat YYYY-MM-DD\r\n  inclusiveEndDates\r\n  topAxis\r\n  axisFormat %Y-%m-%d ; note\r\n  tickInterval 1day\r\n  includes weekends\r\n  excludes weekends\r\n  todayMarker off\r\n  weekday monday\r\n  weekend friday\r\n  dateFormat YYYY-MM-DD\r\n  topAxis\r\n  Task :a, 2026-01-01, 1d\r\n";
     let result = mermaid_trace_rs::render("gantt-directives", source).unwrap();

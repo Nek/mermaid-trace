@@ -664,6 +664,99 @@ test('GANTT-2-DIRECTIVE-ORIGINS: source-only settings survive saved and live SVG
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('GANTT-2-CLICK-ORIGINS: task interaction syntax selects its own existing targets', { timeout: 60_000 }, async () => {
+  const source = 'gantt\n%% 😀\ndateFormat YYYY-MM-DD\nclick a href "https://early.test"\nFirst :a, 2026-01-01, 1d\nSecond :b, 2026-01-02, 1d\nclick a,b href "https://example.test/😀" call cb("x", 2) "Open 😀"\nclick a href "https://later.test"\nclick ghost href "https://missing.test"\nclick a href "" ""\n';
+  const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-click-'));
+  const filename = join(directory, 'gantt.md');
+  const markdown = '```mermaid\n' + source + '```\n';
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const { svg } = await producer.render('gantt-click', source);
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.setContent(svg + svg.replaceAll('gantt-click', 'gantt-copy'));
+    const original = await page.locator('svg').first().evaluate(element => element.outerHTML);
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const events: unknown[] = [];
+      const handles = [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (selection: unknown) => events.push(selection) }));
+      Object.assign(window, { events, handles });
+    }, activation);
+    const first = page.locator('svg').first();
+    const second = page.locator('svg').nth(1);
+    const savedNative = await first.locator('[data-mt-native]').getAttribute('data-mt-native');
+    const bars = (root: Locator, id: string) => root.locator(`[data-mt-key="gantt:task:${id}"][data-mt-role=node]`);
+    const select = async (text: string, expected: readonly string[], from = 0) => {
+      const start = source.indexOf(text, from);
+      assert.ok(start >= 0);
+      await page.evaluate(span => (window as any).handles[0].highlight([span]), { start, end: start + text.length });
+      for (const id of ['a', 'b']) assert.equal(await bars(first, id).getAttribute('data-mt-selected'), expected.includes(id) ? 'true' : null, `${text} selects ${id}`);
+      assert.equal(await second.locator('[data-mt-selected=true]').count(), 0, 'saved instances remain isolated');
+    };
+    await select('a', [], source.indexOf('click a href') + 'click '.length); // The earlier click precedes task creation.
+    await select('a,b', ['a', 'b']);
+    const ids = source.indexOf('click a,b') + 'click '.length;
+    await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: ids, end: ids + 1 });
+    assert.equal(await bars(first, 'a').getAttribute('data-mt-selected'), 'true');
+    assert.equal(await bars(first, 'b').getAttribute('data-mt-selected'), null);
+    await page.evaluate(span => (window as any).handles[0].highlight([span]), { start: ids + 2, end: ids + 3 });
+    assert.equal(await bars(first, 'a').getAttribute('data-mt-selected'), null);
+    assert.equal(await bars(first, 'b').getAttribute('data-mt-selected'), 'true');
+    for (const value of ['https://example.test/😀', 'cb', '"x", 2', 'Open 😀']) await select(value, ['a', 'b']);
+    await select('https://later.test', ['a']);
+    await select('ghost', []);
+    await select('https://early.test', []);
+    await select('https://missing.test', []);
+    await select('""', ['a'], source.indexOf('click a href ""'));
+    await select('""', ['a'], source.indexOf('click a href ""') + 'click a href "" '.length);
+    await clickExposedTarget(bars(first, 'a'));
+    const event = await page.evaluate(() => (window as any).events.at(-1));
+    assert.equal(source.slice(event.span.start, event.span.end), 'First :a, 2026-01-01, 1d');
+    assert.equal(await bars(first, 'a').getAttribute('tabindex'), '0', 'interaction source adds no keyboard stop');
+    await bars(first, 'a').focus(); await bars(first, 'a').press('Enter');
+    const keyboard = await page.evaluate(() => (window as any).events.at(-1));
+    assert.deepEqual(keyboard.span, event.span, 'keyboard activation keeps task declaration ownership');
+    await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+    assert.equal(await first.evaluate(element => element.outerHTML), original, 'disposal restores the saved SVG');
+
+    await writeFile(filename, markdown);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await page.locator('svg[data-mt-map] [data-mt-native]').getAttribute('data-mt-native'), savedNative, 'Markdown embedding keeps click occurrence evidence');
+    const sourceView = page.frameLocator('#source-frame').locator('#source');
+    await page.evaluate(() => navigator.clipboard.writeText('source-selection-does-not-copy'));
+    const multi = markdown.indexOf('click a,b') + 'click '.length;
+    const selections: { start: number; end: number; targets: string[] }[] = [
+      { start: multi, end: multi + 3, targets: ['a', 'b'] },
+      { start: multi, end: multi + 1, targets: ['a'] },
+      { start: multi + 2, end: multi + 3, targets: ['b'] },
+      ...['https://example.test/😀', 'cb', 'Open 😀'].map(text => ({ start: markdown.indexOf(text), end: markdown.indexOf(text) + text.length, targets: ['a', 'b'] })),
+      ...['ghost', 'https://early.test', 'https://missing.test'].map(text => ({ start: markdown.indexOf(text), end: markdown.indexOf(text) + text.length, targets: [] })),
+      { start: markdown.indexOf('https://later.test'), end: markdown.indexOf('https://later.test') + 'https://later.test'.length, targets: ['a'] },
+      ...[markdown.indexOf('click a href ""') + 'click a href '.length, markdown.indexOf('click a href ""') + 'click a href "" '.length].map(start => ({ start, end: start + 2, targets: ['a'] })),
+    ];
+    for (const { start, end, targets } of selections) {
+      await sourceView.evaluate((element, span) => {
+        const range = element.ownerDocument.createRange(), selection = element.ownerDocument.getSelection()!;
+        range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+        selection.removeAllRanges(); selection.addRange(range);
+      }, { start, end });
+      await page.waitForFunction(count => document.querySelectorAll('svg[data-mt-map] [data-mt-role=node][data-mt-selected=true]').length === count, targets.length);
+      for (const id of ['a', 'b']) assert.equal(await bars(page.locator('svg[data-mt-map]'), id).getAttribute('data-mt-selected'), targets.includes(id) ? 'true' : null);
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'source-selection-does-not-copy');
+    }
+    await clickExposedTarget(bars(page.locator('svg[data-mt-map]'), 'a'));
+    assert.equal(await sourceView.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'First :a, 2026-01-01, 1d');
+    const task = source.indexOf('First :a');
+    const start = markdown.indexOf(source) + task;
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start, end: start + 'First :a, 2026-01-01, 1d'.length }));
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('JOURNEY PLAN-AC2/3: native cards, labels and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative('journey\n  title Trip\n  section Morning\n  Same 😀 : 5 : Alice, Bob\n  Same 😀 : 2 : Alice\n', 'journey:task:0', 'Same 😀 : 5 : Alice, Bob', 'Same 😀', [['journey:score:0', '5'], ['journey:actor:1:0', 'Alice'], ['journey:actor:Alice', 'Alice']]);
 });
