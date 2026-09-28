@@ -753,6 +753,82 @@ fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements()
 }
 
 #[test]
+fn gantt_2_cross_line_title_and_section_keep_one_original_construct_each() {
+    for (source, title_statement, section_statement) in [
+        (
+            "gantt\r\ndateFormat YYYY-MM-DD\r\ntitle\r\nPlan 😀\r\nsection\r\nWork 😀\r\nTask :a, 2026-01-01, 1d\r\n",
+            "title\r\nPlan 😀",
+            "section\r\nWork 😀",
+        ),
+        (
+            "gantt\r\ndateFormat YYYY-MM-DD\r\ntitle\r\n%% title comment\r\nPlan 😀\r\nsection\r\n%% section comment\r\nWork 😀\r\nTask :a, 2026-01-01, 1d\r\n",
+            "title\r\n%% title comment\r\nPlan 😀",
+            "section\r\n%% section comment\r\nWork 😀",
+        ),
+    ] {
+        let result = mermaid_trace_rs::render("gantt-cross-line", source).unwrap();
+        let document = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        let native: Vec<Value> = serde_json::from_str(
+            document
+                .descendants()
+                .find_map(|node| node.attribute("data-mt-native"))
+                .unwrap(),
+        )
+        .unwrap();
+        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+        for (construct, statement, label, key) in [
+            ("title", title_statement, "Plan 😀", "gantt:title"),
+            (
+                "section:0",
+                section_statement,
+                "Work 😀",
+                "gantt:section:Work 😀",
+            ),
+        ] {
+            let start = source.find(statement).unwrap();
+            let label_start = start + statement.find(label).unwrap();
+            let span = serde_json::json!({"start":start,"end":start+statement.len()});
+            let label_span = serde_json::json!({"start":label_start,"end":label_start+label.len()});
+            let occurrence = native
+                .iter()
+                .find(|item| item["semanticId"] == construct)
+                .unwrap();
+            assert_eq!(occurrence["span"], span);
+            assert_eq!(occurrence["labelSpan"], label_span);
+            let mapped = pieces.iter().find(|item| item["domId"] == key).unwrap();
+            assert_eq!(
+                mapped["span"],
+                serde_json::json!({"start":source[..start].encode_utf16().count(),"end":source[..start+statement.len()].encode_utf16().count()})
+            );
+            assert_eq!(
+                mapped["labelSpan"],
+                serde_json::json!({"start":source[..label_start].encode_utf16().count(),"end":source[..label_start+label.len()].encode_utf16().count()})
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.attribute("data-mt-key") == Some(key)
+                        && node.descendants().any(|child| child.is_text()
+                            && child.text().is_some_and(|text| text.contains(label))))
+            );
+        }
+        assert!(pieces.iter().any(|item| item["domId"] == "gantt:task:a"));
+        let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+        let baseline = mermaid_trace_rs::render_with(&plain, "gantt-cross-line", source).unwrap();
+        assert_eq!(
+            support::strip_trace(result["svg"].as_str().unwrap()),
+            support::strip_trace(baseline["svg"].as_str().unwrap())
+        );
+    }
+    for invalid in [
+        "gantt\ntitle\n\nTask :a, 2026-01-01, 1d\n",
+        "gantt\nsection\n",
+    ] {
+        assert!(mermaid_trace_rs::render("gantt-cross-line", invalid).is_err());
+    }
+}
+
+#[test]
 fn gantt_2_accessibility_statements_keep_exact_nonvisual_origins() {
     let source = "gantt\r\n  accTitle: First 😀\r\n  accTitle: Last 😀\r\n  accDescr: Old text\r\n  accDescr {\r\n    New 😀 line\r\n    second line\r\n  }\r\n  dateFormat YYYY-MM-DD\r\n  Task :a, 2026-01-01, 1d\r\n";
     let result = mermaid_trace_rs::render("gantt-accessibility", source).unwrap();

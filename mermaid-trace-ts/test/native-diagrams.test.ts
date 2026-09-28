@@ -656,6 +656,18 @@ test('GANTT-2-TITLE-ORIGINS: body replacements and frontmatter fallback keep exa
   ]);
 });
 
+test('GANTT-2-CROSS-LINE-TITLE-SECTION: saved and live labels select two-line constructs', { timeout: 60_000 }, async () => {
+  const task = 'Task :a, 2026-01-01, 1d';
+  for (const comments of ['', '%% title comment\n']) {
+    const sectionComment = comments ? '%% section comment\n' : '';
+    const source = `gantt\ndateFormat YYYY-MM-DD\ntitle\n${comments}Plan 😀\nsection\n${sectionComment}Work 😀\n${task}\n`;
+    await verifyNative(source, 'gantt:task:a', task, 'Task', [
+      ['gantt:title', `title\n${comments}Plan 😀`, 'control', source.indexOf('title')],
+      ['gantt:section:Work 😀', `section\n${sectionComment}Work 😀`, 'control', source.indexOf('section')],
+    ], 'Plan 😀', [], 'gantt:title');
+  }
+});
+
 test('GANTT-2-ACCESSIBILITY: source-only title and description evidence survives saved/live SVG', { timeout: 60_000 }, async () => {
   const task = 'Task :a, 2026-01-01, 1d';
   const source = `gantt\naccTitle: First 😀\naccTitle: Last 😀\naccDescr: Old text\naccDescr {\n  New 😀 line\n  second line\n}\ndateFormat YYYY-MM-DD\n${task}\n`;
