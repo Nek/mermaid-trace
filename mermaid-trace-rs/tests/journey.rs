@@ -11,6 +11,73 @@ fn selected(source: &str, span: &Value) -> String {
 }
 
 #[test]
+fn journey_2_root_preserves_fixed_and_responsive_artifact_sizing() {
+    use merman::{Engine, MermaidConfig, Renderer};
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [false, true] {
+            for width in [0, 150] {
+                for title in [false, true] {
+                    let source = format!(
+                        "journey\r\n{}section Day 😀\r\nTask 😀 : 5 : Alice\r\n",
+                        if title { "title Root 😀\r\n" } else { "" }
+                    );
+                    let mut roots = Vec::new();
+                    for max_width in [false, true] {
+                        let config = |trace| {
+                            MermaidConfig::from_value(json!({
+                                "traceSource":trace,"look":look,"htmlLabels":html,
+                                "journey":{"useMaxWidth":max_width,"width":width}
+                            }))
+                        };
+                        let mapped = Renderer::new()
+                            .with_engine(Engine::new().with_site_config(config(true)));
+                        let plain = Renderer::new()
+                            .with_engine(Engine::new().with_site_config(config(false)));
+                        let result =
+                            mermaid_trace_rs::render_with(&mapped, "journey-root", &source)
+                                .unwrap();
+                        let baseline =
+                            mermaid_trace_rs::render_with(&plain, "journey-root", &source).unwrap();
+                        assert_eq!(
+                            support::strip_trace(result["svg"].as_str().unwrap()),
+                            support::strip_trace(baseline["svg"].as_str().unwrap())
+                        );
+                        let document =
+                            roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                        let root = document.root_element();
+                        let emitted_width = root.attribute("width").unwrap();
+                        assert_eq!(emitted_width == "100%", max_width);
+                        if !max_width {
+                            assert!(emitted_width.parse::<f64>().unwrap() > 0.0);
+                        }
+                        assert!(root.attribute("height").unwrap().parse::<f64>().unwrap() > 0.0);
+                        assert_eq!(root.attribute("preserveAspectRatio"), Some("xMinYMin meet"));
+                        let view_box = root.attribute("viewBox").unwrap().to_string();
+                        let height = root.attribute("height").unwrap().to_string();
+                        roots.push((view_box, height));
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        let section = pieces
+                            .iter()
+                            .find(|piece| piece["domId"] == "journey:section:0")
+                            .unwrap();
+                        assert_eq!(selected(&source, &section["labelSpan"]), "Day 😀");
+                        let task = pieces
+                            .iter()
+                            .find(|piece| piece["domId"] == "journey:task:0")
+                            .unwrap();
+                        assert_eq!(selected(&source, &task["labelSpan"]), "Task 😀");
+                    }
+                    assert_eq!(
+                        roots[0], roots[1],
+                        "width mode only changes root width and max-width style"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_2_palette_cycles_follow_effective_actor_and_section_identities() {
     use merman::{
         Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,

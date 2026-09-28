@@ -794,6 +794,46 @@ test('JOURNEY-2-PALETTE: theme colors preserve one source selection per visual g
   } finally { await browser.close(); await producer.close(); }
 });
 
+test('JOURNEY-2-ROOT: saved fixed and responsive SVGs retain independent selection', { timeout: 30_000 }, async () => {
+  const producer = await createMermanProducer();
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const diagrams = await Promise.all([false, true].map(async useMaxWidth => {
+      const source = '---\nconfig: ' + JSON.stringify({ journey: { useMaxWidth, width: 500 } }) + '\n---\njourney\nsection Day\nTask : 5 : Alice\n';
+      const { svg, mapping } = await producer.render(useMaxWidth ? 'root-responsive' : 'root-fixed', source);
+      return { svg, actor: mapping.pieces.find(piece => piece.domId === 'journey:actor:Alice')!.span, useMaxWidth };
+    }));
+    await producer.close();
+    const page = await browser.newPage({ viewport: { width: 400, height: 900 } });
+    await page.setContent(diagrams.map(({ svg }) => `<div style="width:320px;overflow:auto">${svg}</div>`).join(''));
+    const before = await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML));
+    await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      Object.assign(window, { events: [], handles: [...document.querySelectorAll('svg')].map(svg => activateSvg(svg, { onSelect: (event: unknown) => (window as any).events.push(event) })) });
+    }, activation);
+    for (const [index, { actor, useMaxWidth }] of diagrams.entries()) {
+      const svg = page.locator('svg').nth(index);
+      assert.equal(await svg.getAttribute('width') === '100%', useMaxWidth);
+      const group = svg.locator(`[data-mt-start="${actor.start}"][data-mt-end="${actor.end}"]`);
+      assert.equal(await group.count(), 3);
+      assert.equal(await group.locator(':scope[tabindex="0"]').count(), 1);
+      await clickExposedTarget(group.first());
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), actor);
+      assert.equal(await svg.locator('[data-mt-selected=true]').count(), 3);
+      assert.equal(await page.locator('svg').nth(1 - index).locator('[data-mt-selected=true]').count(), 0);
+      await group.locator(':scope[tabindex="0"]').press('Enter');
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), actor);
+      await page.evaluate(({ index, actor }) => (window as any).handles[index].highlight([actor]), { index, actor });
+      assert.equal(await svg.locator('[data-mt-selected=true]').count(), 3);
+      await page.evaluate((index: number) => (window as any).handles[index].highlight([]), index);
+    }
+    await page.evaluate(() => (window as any).handles.forEach((handle: any) => handle.dispose()));
+    assert.deepEqual(await page.locator('svg').evaluateAll(elements => elements.map(element => element.outerHTML)), before);
+  } finally { await browser.close(); await producer.close(); }
+});
+
 test('KANBAN PLAN-AC2/3: columns, cards, metadata and original Markdown selection', { timeout: 60_000 }, async () => {
   await verifyNative("kanban\n  todo[Todo]\n    a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }\n    b[Same 😀]\n  done[Done]\n    c[Ship]\n", 'kanban:card:a', "a[Same 😀]@{ ticket: 'T-1', assigned: 'Alice', priority: 'High' }", 'Same 😀', [['kanban:column:todo', 'todo[Todo]'], ['kanban:field:a:ticket', 'T-1'], ['kanban:field:a:assigned', 'Alice'], ['kanban:field:a:priority', 'High']]);
 });

@@ -15,6 +15,68 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
 const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
+test('JOURNEY-2-ROOT: live Markdown respects fixed and responsive SVG sizing', { timeout: 90_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-journey-root-'));
+  const filename = join(directory, 'root.md');
+  const variants = ['classic', 'neo', 'handDrawn'].flatMap(look => [false, true].flatMap(htmlLabels => [false, true].map(useMaxWidth => ({ look, htmlLabels, useMaxWidth }))));
+  const source = variants.map(({ look, htmlLabels, useMaxWidth }, index) => '```mermaid\n---\nconfig: ' + JSON.stringify({ look, htmlLabels, journey: { useMaxWidth, width: 500 } }) + '\n---\njourney\ntitle Root\nsection Day\nTask' + index + ' : 5 : Alice\n```\n').join('\n');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  const browser = await chromium.launch();
+  try {
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0, sourceView: true });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 420, height: 900 } });
+    const page = await context.newPage(); page.setDefaultTimeout(10_000);
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const diagrams = page.locator('[data-mt-block]');
+    assert.equal(await diagrams.count(), variants.length);
+    for (const [index, variant] of variants.entries()) {
+      const size = await diagrams.nth(index).evaluate(block => {
+        const svg = block.querySelector('svg')!;
+        const box = svg.getBoundingClientRect();
+        return { width: svg.getAttribute('width'), height: svg.getAttribute('height'),
+          displayedWidth: box.width, displayedHeight: box.height,
+          available: block.clientWidth, scrollWidth: block.scrollWidth, overflow: getComputedStyle(block).overflowX };
+      });
+      assert.equal(size.width === '100%', variant.useMaxWidth, `root width mode ${index}`);
+      assert.ok(Number(size.height) > 0, `root height ${index}`);
+      assert.ok(Math.abs(size.displayedHeight - Number(size.height)) < 1, `emitted height survives host CSS ${index}`);
+      if (variant.useMaxWidth) {
+        assert.ok(Math.abs(size.displayedWidth - size.available) < 1, `responsive root fits the narrow column ${index}`);
+      } else {
+        assert.ok(Math.abs(size.displayedWidth - Number(size.width)) < 1, `fixed root keeps its width ${index}`);
+        assert.ok(size.scrollWidth > size.available && size.overflow === 'auto', `fixed root scrolls inside its block ${index}`);
+      }
+    }
+    const fixed = diagrams.first();
+    await fixed.locator('[data-mt-key="journey:task:0"][data-mt-role=node] rect.task').click();
+    const taskStart = source.indexOf('Task0 : 5 : Alice');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+      formatLocation({ id: filename, source }, { start: taskStart, end: taskStart + 'Task0 : 5 : Alice'.length }));
+    assert.equal(await fixed.locator('[data-mt-role=node][data-mt-selected=true]').count(), 1);
+    assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const wide = await diagrams.nth(1).evaluate(block => {
+      const svg = block.querySelector('svg')!;
+      return { width: svg.getBoundingClientRect().width, available: block.clientWidth, max: parseFloat(getComputedStyle(svg).maxWidth) };
+    });
+    assert.ok(Math.abs(wide.width - Math.min(wide.available, wide.max)) < 1, 'responsive root expands only to its emitted maximum');
+    const original = page.frameLocator('#source-frame').locator('#source');
+    const secondStart = source.indexOf('Task1 : 5 : Alice');
+    await diagrams.nth(1).locator('[data-mt-key="journey:task:0"][data-mt-role=node]').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+      formatLocation({ id: filename, source }, { start: secondStart, end: secondStart + 'Task1 : 5 : Alice'.length }));
+    await original.evaluate((element, span) => {
+      const range = element.ownerDocument.createRange();
+      range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+      element.ownerDocument.getSelection()!.removeAllRanges(); element.ownerDocument.getSelection()!.addRange(range);
+    }, { start: secondStart, end: secondStart + 'Task1 : 5 : Alice'.length });
+    await page.waitForFunction(() => document.querySelectorAll('[data-mt-block]')[1]!.querySelector('[data-mt-role=node][data-mt-selected=true]'));
+    assert.equal(await diagrams.first().locator('[data-mt-selected=true]').count(), 0, 'reverse source selection stays in its diagram');
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('WATCH-AC1: CLI help and argument diagnostics work outside the checkout', () => {
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: tmpdir(), encoding: 'utf8' });
   const help = run('--help');
