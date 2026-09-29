@@ -2592,3 +2592,14 @@ test('FLOW AC5/6: bumpX defaults and edge overrides preserve saved/live connecto
     ], 'e@-->|next|', ['edge:e'], 'edge:e');
   }
 });
+
+test('FLOW AC5/6: scoped appearance preserves saved/live source and connector selection', { timeout: 180_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const directive of [false, true]) {
+    const config = { theme: 'forest', look: 'classic', layout: 'dagre', htmlLabels, handDrawnSeed: 42, flowchart: { theme: 'dark', look, layout: 'elk' } };
+    const source = `${directive ? `%%{init: ${JSON.stringify(config)}}%%` : `---\nconfig: ${JSON.stringify(config)}\n---`}\n${header}\nA["Short 😀"] e@-->|next| B[Finish]\nA --> C[Branch]\nC --> B\n`;
+    await verifyNative(source, 'node:A', 'A["Short 😀"]', 'Short 😀', [
+      ['edge:e', 'e@-->|next|', 'edge'],
+      ['edge:e', 'next', 'edge-label'],
+    ], 'e@-->|next|', ['edge:e'], 'edge:e');
+  }
+});

@@ -2945,3 +2945,88 @@ fn flow_ac5_bump_x_curve_and_edge_override_keep_distinct_geometry_and_exact_owne
         "edge override takes precedence over the diagram default"
     );
 }
+
+#[test]
+fn flow_ac5_scoped_appearance_matches_effective_root_rendering() {
+    use serde_json::json;
+    let mut site = json!({"traceSource":true,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"});
+    let native = merman::Renderer::new().with_engine(
+        merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(site.clone())),
+    );
+    site["traceSource"] = json!(false);
+    let plain = merman::Renderer::new().with_engine(
+        merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(site)),
+    );
+    for (config, expected) in [
+        (
+            json!({"flowchart":{"theme":"dark"}}),
+            json!({"theme":"dark"}),
+        ),
+        (
+            json!({"flowchart":{"look":"handDrawn"},"handDrawnSeed":42}),
+            json!({"look":"handDrawn","handDrawnSeed":42}),
+        ),
+        (
+            json!({"flowchart":{"layout":"elk"}}),
+            json!({"layout":"elk"}),
+        ),
+        (
+            json!({"theme":"forest","look":"classic","layout":"dagre","flowchart":{"theme":"dark","look":"neo","layout":"elk"}}),
+            json!({"theme":"dark","look":"neo","layout":"elk"}),
+        ),
+        (
+            json!({"theme":"forest","look":"classic","flowchart":{"theme":"constructor","look":"invalid"}}),
+            json!({"theme":"forest","look":"classic"}),
+        ),
+        (
+            json!({"flowchart":{"theme":"dark"},"themeVariables":{"primaryColor":"#123456"}}),
+            json!({"theme":"dark","themeVariables":{"primaryColor":"#123456"}}),
+        ),
+    ].into_iter().chain([
+        "default", "base", "dark", "forest", "neutral", "neo", "neo-dark",
+        "redux", "redux-dark", "redux-color", "redux-dark-color", "null",
+    ].into_iter().map(|theme| (json!({"flowchart":{"theme":theme}}), json!({"theme":theme})))) {
+        for header in ["flowchart LR", "graph LR", "flowchart-elk LR"] {
+            for directive in [false, true] {
+                let source = |cfg: &Value| {
+                    format!(
+                        "{}\n{header}\nA[\"Short 😀\"] e@-->|next| B[Finish]\nA --> C[Branch]\nC --> B\n",
+                        if directive {
+                            format!("%%{{init: {cfg}}}%%")
+                        } else {
+                            format!("---\nconfig: {cfg}\n---")
+                        }
+                    )
+                };
+                let actual =
+                    mermaid_trace_rs::render_with(&native, "scoped-config", &source(&config))
+                        .unwrap();
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "scoped-config", &source(&expected))
+                        .unwrap();
+                assert_eq!(
+                    strip_trace(actual["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap()),
+                    "{header}, directive={directive}: {config}"
+                );
+                let input = source(&config);
+                let utf16: Vec<_> = input.encode_utf16().collect();
+                let node = actual["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "node:A" && p["kind"] == "node")
+                    .unwrap();
+                let span = &node["labelSpan"];
+                assert_eq!(
+                    String::from_utf16(
+                        &utf16[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize]
+                    )
+                    .unwrap(),
+                    "Short 😀"
+                );
+            }
+        }
+    }
+}

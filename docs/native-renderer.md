@@ -10,7 +10,7 @@ make native-test
 make preview ARGS='watch docs/examples/watch-preview.md'
 ```
 
-The bootstrap script clones [our Merman fork](https://github.com/Nek/merman) into ignored `mermaid-trace-rs/vendor/merman/` and checks out exact commit `02a27e7aa34e7da234d5a82e3d64656424deece8`. The initial fork preserved the former upstream-base-plus-patch source; subsequent verified fixes are carried as pinned fork commits. The fork preserves the original native commits and Merman's MIT/Apache-2.0 attribution; these are our changes, not accepted upstream contributions. Cargo dependencies remain locked.
+The bootstrap script clones [our Merman fork](https://github.com/Nek/merman) into ignored `mermaid-trace-rs/vendor/merman/` and checks out exact commit `e47d21087300eb3514348f5d39c8b238396bb6a2`. The initial fork preserved the former upstream-base-plus-patch source; subsequent verified fixes are carried as pinned fork commits. The fork preserves the original native commits and Merman's MIT/Apache-2.0 attribution; these are our changes, not accepted upstream contributions. Cargo dependencies remain locked.
 
 Bootstrap accepts a clean checkout at the pinned commit, including a development symlink, and otherwise fails without resetting or deleting existing work. To update an existing checkout, preserve local work, fetch the fork and explicitly check out the revision in `bootstrap.sh`. Commit and push native changes to `Nek/merman` before updating that pin and verifying Trace. Keep `Latias94/merman` as `upstream`; routine delivery never pushes there. The existing development branch is `feat/sequence-source-mappings`; builds depend on the commit, not its moving branch tip.
 

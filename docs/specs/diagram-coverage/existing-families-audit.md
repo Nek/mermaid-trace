@@ -113,10 +113,12 @@ Reference remains Mermaid `f9387456a1e27315e325ada0d8a1cc583ecdf95b`, schema `Fl
 | `inheritDir` | unverified | Config reader and scoped-direction tests exist; finish explicit/inherited direction interaction assertions for nested groups and external edges in both layouts. | Semantic/layout direction |
 | `htmlLabels` | unverified for full precedence contract | Existing HTML/SVG and safe-conversion inventories pass; remaining check is diagram-scoped versus root settings, including null/deprecated configuration behavior. | Config resolution and labels |
 | `useMaxWidth`, `useWidth` | unverified | Responsive sizing reader exists; need emitted root sizing acceptance and classification of `useWidth` against the pinned renderer. | Viewport |
-| `theme`, `look`, `layout` | unverified for diagram-scoped resolution | Root look/layout variants pass existing tests. Pinned Mermaid 12 permits these under `flowchart`; cross-check scoped/root precedence and all pinned themes, rather than assuming root tests cover it. | Config resolution |
+| `theme`, `look`, `layout` | verified for scoped resolution; broader theme/layout interactions remain unverified | Fork `e47d21087300eb3514348f5d39c8b238396bb6a2` fixes ignored namespaces before theme generation. Native tests cover source/site precedence, invalid scoped fallback, secure keys, theme variables and isolation across six families. Trace static equivalence covers all 12 pinned theme names/sentinel, frontmatter/directives and three flowchart headers; 24 scoped saved/live Chromium variants pass. Native defaults and forced ELK headers are preserved. | Shared filtered configuration resolution |
 | `arrowMarkerAbsolute` | unverified | Pinned schema itself questions its use; flowchart init propagates the value. Trace actual marker emission before classifying as effect/no-op; keep saved artifacts portable. | Marker URL/export |
 
-Next bounded slice: verify diagram-scoped `theme`/`look`/`layout` resolution against the pinned reference, then close demonstrated gaps.
+Scoped-resolution verification: all **117 Trace Rust tests**, the full native core suite (**1,563 unit tests**, integration tests and doctests), ten focused Chromium tests (including the 24 scoped variants and existing-family acceptance), TypeScript build and bootstrap checks pass. The goal remains incomplete; Safari/Firefox acceptance is still open.
+
+Next bounded slice: spacing, padding and wrapping boundary/interaction checks in both layouts, using emitted geometry and exact source ownership. Keep native layout interpretation and defaults; do not turn this into pixel matching against Mermaid.
 
 Shared/root options (theme variables/CSS, fonts, Markdown auto-wrap, security/link handling, renderer-specific ELK options and deterministic look settings) and remaining grammar alternatives still need an explicit crosswalk. They are open work under the same frozen reference, not newly added scope.
 
