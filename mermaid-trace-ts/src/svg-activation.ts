@@ -23,9 +23,10 @@ export function activateSvg(svg: SVGSVGElement, options: {
   const painted = (element: Element) => {
     const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
     if (style && (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0)) return false;
-    if (!element.querySelector('rect,path,line,polygon,circle,ellipse,foreignObject,image,use')) {
+    const shapes = 'rect,path,line,polygon,circle,ellipse,foreignObject,image,use';
+    if (!element.matches(shapes) && !element.querySelector(shapes)) {
       const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
-      if (text.length && text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
+      if (!text.length || text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
     }
     if (element.getAttribute('data-mt-role') !== 'edge' || !['path', 'line'].includes(element.localName)) return true;
     if (!style || !style.stroke) return true;

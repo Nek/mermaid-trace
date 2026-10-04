@@ -273,3 +273,40 @@ for (const references of [false, true]) test(`FONT-PORTABLE: saved ${references 
     }), true, 'disposal restores the saved artifact');
   } finally { await browser.close(); }
 });
+
+test('FONT-INVISIBLE: an empty glyph wrapper retains source ownership without a keyboard stop', async () => {
+  const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    const result = await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const root = document.querySelector('svg') as SVGSVGElement;
+      const label = root.querySelector('[data-mt-role=node-label]')!;
+      const node = root.querySelector('[data-mt-role=node]') as SVGElement;
+      const title = document.createElementNS(root.namespaceURI, 'title');
+      title.textContent = 'Nonpainting label';
+      label.replaceChildren(title);
+      const before = root.outerHTML;
+      const events: { role: string }[] = [];
+      const handle = activateSvg(root, { onSelect: (event: { role: string }) => events.push(event) });
+      const start = Number(label.getAttribute('data-mt-start'));
+      const pieces = handle.highlight([{ start, end: start + 1 }]);
+      const result = { labelStop: label.getAttribute('tabindex'), nodeStop: node.getAttribute('tabindex'),
+        labelSelected: label.getAttribute('data-mt-selected'), nodeSelected: node.getAttribute('data-mt-selected'),
+        pieces: pieces.length, hasHitTarget: !!label.querySelector('rect'), disposed: false, roles: [] as string[] };
+      node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      result.roles = events.filter(event => event.role === 'node').map(event => event.role);
+      handle.dispose(); result.disposed = root.outerHTML === before;
+      return result;
+    }, activation);
+    assert.equal(result.labelStop, null); assert.equal(result.nodeStop, '0');
+    assert.equal(result.labelSelected, null); assert.equal(result.nodeSelected, 'true');
+    assert.ok(result.pieces > 0); assert.equal(result.hasHitTarget, false);
+    assert.ok(result.roles.length >= 2); assert.equal(result.disposed, true);
+  } finally { await browser.close(); }
+});

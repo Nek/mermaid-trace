@@ -733,10 +733,13 @@ dependencies = [
 name = "merman-export"
 version = "0.8.0-alpha.6"
 dependencies = [
+ "cssparser",
  "merman-render",
  "quick-xml",
  "roxmltree 0.21.1",
  "rustybuzz",
+ "simplecss",
+ "svgtypes",
  "unicase",
  "usvg",
 ]
