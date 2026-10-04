@@ -2674,3 +2674,23 @@ test('FLOW AC5/6: every curve preserves saved/live self-loop and group-boundary 
     ], { start, end: start + curve.length }, ['edge:e'], 'edge:e');
   }
 });
+
+test('FLOW AC5/6: inherited directions and conflicting HTML options preserve saved/live ownership', { timeout: 240_000 }, async () => {
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const external of [false, true]) for (const html of [
+    { htmlLabels: true, flowchart: { htmlLabels: false } },
+    { htmlLabels: false, flowchart: { htmlLabels: true } },
+    { flowchart: { htmlLabels: true } },
+    { htmlLabels: null, flowchart: { htmlLabels: true } },
+    { htmlLabels: true, flowchart: { htmlLabels: null } },
+  ]) {
+    const group = 'subgraph G[Group 😀]\ndirection RL\ndirection TB\nA[Alpha] e@-->|next| B[Beta]\nend';
+    const inherited = 'subgraph H[Inherited]\nC[Gamma] --> D[Delta]\nend';
+    const config = { ...html, flowchart: { ...html.flowchart, inheritDir: true } };
+    const source = `---\nconfig: ${JSON.stringify(config)}\n---\n${header}\nsubgraph Outer\ndirection BT\n${group}\n${inherited}\nend\n${external ? 'A --> X[Outside]\n' : ''}`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group 😀', 'control-label'],
+      ['flowchart:subgraph:H', inherited], ['flowchart:subgraph:H', 'Inherited', 'control-label'],
+    ], 'direction TB', ['flowchart:subgraph:G'], 'flowchart:subgraph:G');
+  }
+});

@@ -3535,3 +3535,237 @@ fn flow_ac5_all_curves_keep_defaults_overrides_group_routes_and_source_ownership
         }
     }
 }
+
+#[test]
+fn flow_ac5_inherited_directions_match_explicit_global_directions_with_scoped_overrides() {
+    for header in ["flowchart", "flowchart-elk"] {
+        for direction in ["TB", "TD", "BT", "LR", "RL"] {
+            for html in [false, true] {
+                for external in [false, true] {
+                    for (outer_explicit, inner_explicit) in
+                        [(false, false), (true, false), (true, true)]
+                    {
+                        let source = |inherit: bool, materialize: bool| {
+                            format!(
+                                "---\r\nconfig: {{htmlLabels: {html}, flowchart: {{inheritDir: {inherit}}}}}\r\n---\r\n{header} {direction}\r\nsubgraph Outer\r\n{}subgraph G[Inner 😀]\r\n{}A[Alpha] e@-->|next| B[Beta]\r\nend\r\nend\r\n{}",
+                                if outer_explicit {
+                                    "direction BT\r\n".into()
+                                } else if materialize {
+                                    format!("direction {direction}\r\n")
+                                } else {
+                                    String::new()
+                                },
+                                if inner_explicit {
+                                    "direction RL\r\ndirection TB\r\n".into()
+                                } else if materialize {
+                                    format!("direction {direction}\r\n")
+                                } else {
+                                    String::new()
+                                },
+                                if external { "A --> X[Outside]\r\n" } else { "" }
+                            )
+                        };
+                        let inherited = source(true, false);
+                        let result =
+                            mermaid_trace_rs::render("inherit-direction", &inherited).unwrap();
+                        let expected =
+                            mermaid_trace_rs::render("inherit-direction", &source(false, true))
+                                .unwrap();
+                        assert_eq!(
+                            strip_trace(result["svg"].as_str().unwrap()),
+                            strip_trace(expected["svg"].as_str().unwrap()),
+                            "{header}/{direction}/{html}/{external}/{outer_explicit}/{inner_explicit}"
+                        );
+                        let disabled = source(false, false);
+                        let absent = disabled.replace(", flowchart: {inheritDir: false}", "");
+                        assert_eq!(strip_trace(mermaid_trace_rs::render("inherit-direction", &disabled).unwrap()["svg"].as_str().unwrap()), strip_trace(mermaid_trace_rs::render("inherit-direction", &absent).unwrap()["svg"].as_str().unwrap()));
+                        let pieces = result["mapping"]["pieces"].as_array().unwrap();
+                        let utf16: Vec<_> = inherited.encode_utf16().collect();
+                        let mut selected: Vec<_> = pieces
+                            .iter()
+                            .filter(|p| p["relation"] == "direction")
+                            .map(|p| {
+                                let span = &p["span"];
+                                (
+                                    p["domId"].as_str().unwrap(),
+                                    String::from_utf16(
+                                        &utf16[span["start"].as_u64().unwrap() as usize
+                                            ..span["end"].as_u64().unwrap() as usize],
+                                    )
+                                    .unwrap(),
+                                )
+                            })
+                            .collect();
+                        let mut expected = Vec::new();
+                        if outer_explicit {
+                            expected.push(("flowchart:subgraph:Outer", "direction BT".into()));
+                        }
+                        if inner_explicit {
+                            expected.extend([
+                                ("flowchart:subgraph:G", "direction RL".into()),
+                                ("flowchart:subgraph:G", "direction TB".into()),
+                            ]);
+                            let last_only = mermaid_trace_rs::render(
+                                "inherit-direction",
+                                &inherited.replace("direction RL\r\n", ""),
+                            )
+                            .unwrap();
+                            assert_eq!(
+                                strip_trace(result["svg"].as_str().unwrap()),
+                                strip_trace(last_only["svg"].as_str().unwrap()),
+                                "last scoped direction wins"
+                            );
+                        }
+                        selected.sort();
+                        expected.sort();
+                        assert_eq!(
+                            selected, expected,
+                            "inherited layout must not invent authored direction spans"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_html_label_precedence_reaches_node_edge_and_group_output() {
+    use serde_json::json;
+    for (site, source_config, node_html, edge_html) in [
+        (json!({}), json!({}), true, true),
+        (
+            json!({}),
+            json!({"flowchart":{"htmlLabels":false}}),
+            true,
+            false,
+        ),
+        (
+            json!({"flowchart":{"htmlLabels":false}}),
+            json!({}),
+            true,
+            false,
+        ),
+        (
+            json!({"flowchart":{"htmlLabels":false}}),
+            json!({"flowchart":{"htmlLabels":null}}),
+            true,
+            false,
+        ),
+        (
+            json!({"htmlLabels":false}),
+            json!({"flowchart":{"htmlLabels":true}}),
+            false,
+            false,
+        ),
+        (
+            json!({"flowchart":{"htmlLabels":false}}),
+            json!({"htmlLabels":true}),
+            true,
+            true,
+        ),
+        (
+            json!({"htmlLabels":true}),
+            json!({"flowchart":{"htmlLabels":false}}),
+            true,
+            true,
+        ),
+        (
+            json!({"htmlLabels":false}),
+            json!({"htmlLabels":true,"flowchart":{"htmlLabels":false}}),
+            true,
+            true,
+        ),
+        (
+            json!({"htmlLabels":true}),
+            json!({"htmlLabels":false,"flowchart":{"htmlLabels":true}}),
+            false,
+            false,
+        ),
+        (
+            json!({"htmlLabels":false}),
+            json!({"htmlLabels":null,"flowchart":{"htmlLabels":true}}),
+            false,
+            false,
+        ),
+        (
+            json!({}),
+            json!({"flowchart":{"htmlLabels":null}}),
+            true,
+            true,
+        ),
+    ] {
+        let mut config = site.clone();
+        config["traceSource"] = json!(true);
+        config["deterministicIds"] = json!(true);
+        config["deterministicIDSeed"] = json!("mermaid-trace");
+        let mapped = merman::Renderer::new().with_engine(
+            merman::Engine::new()
+                .with_site_config(merman::MermaidConfig::from_value(config.clone())),
+        );
+        config["traceSource"] = json!(false);
+        let plain = merman::Renderer::new().with_engine(
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(config)),
+        );
+        for header in ["flowchart LR", "flowchart-elk LR"] {
+            for directive in [false, true] {
+                let source = format!(
+                    "{}\r\n{header}\r\nsubgraph G[Group title]\r\nA[\"Alpha 😀\"] e@-->|Edge label| B[Beta]\r\nend\r\n",
+                    if directive {
+                        format!("%%{{init: {source_config}}}%%")
+                    } else {
+                        format!("---\r\nconfig: {source_config}\r\n---")
+                    }
+                );
+                let result =
+                    mermaid_trace_rs::render_with(&mapped, "html-precedence", &source).unwrap();
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "html-precedence", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                for (key, role, html, text) in [
+                    ("node:A", "node-label", node_html, "Alpha 😀"),
+                    ("edge:e", "edge-label", edge_html, "Edge label"),
+                    (
+                        "flowchart:subgraph:G",
+                        "control-label",
+                        edge_html,
+                        "Group title",
+                    ),
+                ] {
+                    let piece = result["mapping"]["pieces"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|p| p["domId"] == key && p.get("relation").is_none())
+                        .unwrap();
+                    let span = &piece["labelSpan"];
+                    let utf16: Vec<_> = source.encode_utf16().collect();
+                    assert_eq!(
+                        String::from_utf16(
+                            &utf16[span["start"].as_u64().unwrap() as usize
+                                ..span["end"].as_u64().unwrap() as usize]
+                        )
+                        .unwrap(),
+                        text
+                    );
+                    let label = xml
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(key)
+                                && n.attribute("data-mt-role") == Some(role)
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        !label.descendants().any(|n| n.has_tag_name("tspan")),
+                        html,
+                        "{header}/{directive}/{key}: site={site}, source={source_config}"
+                    );
+                }
+            }
+        }
+    }
+}
