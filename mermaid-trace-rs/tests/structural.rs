@@ -23,6 +23,10 @@ fn state_ac4_each_description_row_has_its_own_original_source() {
             .descendants()
             .filter(|n| n.attribute("data-mt-role") == Some("node-label"))
             .map(|n| {
+                assert!(
+                    n.has_tag_name("text"),
+                    "independent source labels must remain separate text objects for glyph conversion"
+                );
                 let refs = n.attribute("data-mt-refs").unwrap();
                 let piece = pieces.iter().find(|p| p["id"] == refs).unwrap();
                 selected(&source, piece.get("labelSpan").unwrap_or(&piece["span"]))
