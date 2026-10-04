@@ -14,11 +14,11 @@ async function clickExposedTarget(target: Locator) {
     const box = element.getBoundingClientRect();
     for (const x of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const y of [0.1, 0.5, 0.9]) {
       const hit = element.ownerDocument.elementFromPoint(box.x + box.width * x, box.y + box.height * y);
-      if (hit?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return { x: box.width * x, y: box.height * y };
+      if (hit?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return { x: box.x + box.width * x, y: box.y + box.height * y };
     }
     throw new Error('mapped visual has no exposed pointer target');
   });
-  await target.click({ position });
+  await target.page().mouse.click(position.x, position.y);
 }
 
 async function connectorPoint(target: Locator) {
@@ -676,6 +676,8 @@ async function verifyNative(source: string, key: string, expected: string, label
           return { x: point.x, y: point.y };
         });
         await page.mouse.click(point.x, point.y);
+      } else if (controlKey.startsWith("flowchart:subgraph:")) {
+        await clickExposedTarget(target);
       } else {
         const shape = await background.count() ? background.first() : target;
         const centered = role === 'node' && await shape.evaluate(element => element.tagName === 'path');
@@ -2601,5 +2603,19 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
       ['edge:e', 'e@-->|next|', 'edge'],
       ['edge:e', 'next', 'edge-label'],
     ], 'e@-->|next|', ['edge:e'], 'edge:e');
+  }
+});
+
+test('FLOW AC5/6: wrapping boundaries preserve saved/live node, group and connector selection', { timeout: 240_000 }, async () => {
+  for (const header of ['flowchart TB', 'flowchart-elk TB']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const wrappingWidth of [0, 60]) {
+    const group = 'subgraph G[Group]\nA["`Alpha beta 😀`"] e@-->|next| B[Finish]\nend';
+    const config = { look, htmlLabels, handDrawnSeed: 42, flowchart: { wrappingWidth, padding: 8, nodeSpacing: 120, rankSpacing: 120 } };
+    const source = `---\nconfig: ${JSON.stringify(config)}\n---\n${header}\n${group}\n`;
+    await verifyNative(source, 'node:A', 'A["`Alpha beta 😀`"]', 'Alpha beta 😀', [
+      ['edge:e', 'e@-->|next|', 'edge'],
+      ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:G', group],
+      ['flowchart:subgraph:G', 'Group', 'control-label'],
+    ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
   }
 });

@@ -3030,3 +3030,223 @@ fn flow_ac5_scoped_appearance_matches_effective_root_rendering() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_layout_and_drawing_share_padding_and_wrapping_boundaries() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false, "deterministicIds": true, "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for header in ["flowchart TB", "flowchart-elk TB"] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for (key, effective, authored) in [
+                    ("wrappingWidth", 1, 0),
+                    ("wrappingWidth", 1, -10),
+                    ("padding", 0, -10),
+                ] {
+                    let source = |value| {
+                        format!(
+                            "---\r\nconfig: {{htmlLabels: {html}, look: {look}, handDrawnSeed: 42, flowchart: {{{key}: {value}}}}}\r\n---\r\n{header}\r\nsubgraph G[\"`Group alpha beta gamma delta epsilon`\"]\r\nA[\"`Alpha beta gamma delta epsilon 😀`\"] -->|\"`Edge alpha beta gamma delta epsilon`\"| B[Beta]\r\nend\r\n"
+                        )
+                    };
+                    let input = source(authored);
+                    let result = mermaid_trace_rs::render("wrap-boundary", &input).unwrap();
+                    let expected =
+                        mermaid_trace_rs::render_with(&plain, "wrap-boundary", &source(effective))
+                            .unwrap();
+                    assert_eq!(
+                        strip_trace(result["svg"].as_str().unwrap()),
+                        strip_trace(expected["svg"].as_str().unwrap()),
+                        "layout/drawing disagree: {header}/{html}/{look}/{key}={authored}"
+                    );
+                    let node = result["mapping"]["pieces"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|p| p["domId"] == "node:A" && p["kind"] == "node")
+                        .unwrap();
+                    let utf16: Vec<_> = input.encode_utf16().collect();
+                    let span = &node["labelSpan"];
+                    assert_eq!(
+                        String::from_utf16(
+                            &utf16[span["start"].as_u64().unwrap() as usize
+                                ..span["end"].as_u64().unwrap() as usize]
+                        )
+                        .unwrap(),
+                        "Alpha beta gamma delta epsilon 😀"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_spacing_padding_and_wrapping_preserve_geometry_and_ownership() {
+    use serde_json::json;
+    for elk in [false, true] {
+        for direction in ["TB", "BT", "LR", "RL"] {
+            for nested in [false, true] {
+                for html in [false, true] {
+                    let render = |options: Value| {
+                        let header = if elk { "flowchart-elk" } else { "flowchart" };
+                        let source = format!(
+                            "---\r\nconfig: {}\r\n---\r\n{header} {direction}\r\n{}A[\"`Alpha beta gamma delta epsilon 😀`\"] -->|\"`Edge alpha beta gamma delta epsilon`\"| B[Beta]\r\nA --> C[Gamma]\r\n{}",
+                            json!({"htmlLabels":html,"flowchart":options}),
+                            if nested {
+                                format!(
+                                    "subgraph Outer\r\ndirection {direction}\r\nsubgraph G[\"`Group alpha beta gamma delta epsilon`\"]\r\ndirection {direction}\r\n"
+                                )
+                            } else {
+                                String::new()
+                            },
+                            if nested { "end\r\nend\r\n" } else { "" }
+                        );
+                        let result = mermaid_trace_rs::render("spacing-wrap", &source).unwrap();
+                        let xml =
+                            roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                        let geometry = ["node:A", "node:B", "node:C"].map(|key| {
+                            let node = xml
+                                .descendants()
+                                .find(|n| {
+                                    n.attribute("data-mt-key") == Some(key)
+                                        && n.attribute("data-mt-role") == Some("node")
+                                })
+                                .unwrap();
+                            let position: Vec<f64> = node
+                                .attribute("transform")
+                                .unwrap()
+                                .strip_prefix("translate(")
+                                .unwrap()
+                                .trim_end_matches(')')
+                                .split(',')
+                                .map(|n| n.parse().unwrap())
+                                .collect();
+                            let rect = node
+                                .descendants()
+                                .find(|n| {
+                                    n.has_tag_name("rect")
+                                        && n.attribute("class").is_some_and(|c| {
+                                            c.split_whitespace().any(|c| c == "basic")
+                                        })
+                                })
+                                .unwrap();
+                            [
+                                position[0],
+                                position[1],
+                                rect.attribute("width").unwrap().parse().unwrap(),
+                                rect.attribute("height").unwrap().parse().unwrap(),
+                            ]
+                        });
+                        let utf16: Vec<_> = source.encode_utf16().collect();
+                        for (key, kind, expected) in [
+                            (
+                                "node:A",
+                                "node",
+                                "A[\"`Alpha beta gamma delta epsilon 😀`\"]",
+                            ),
+                            (
+                                "edge:L_A_B_0",
+                                "edge",
+                                "-->|\"`Edge alpha beta gamma delta epsilon`\"|",
+                            ),
+                        ] {
+                            let piece = result["mapping"]["pieces"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .find(|p| {
+                                    p["domId"] == key
+                                        && p["kind"] == kind
+                                        && p.get("relation").is_none()
+                                })
+                                .unwrap();
+                            let span = &piece["span"];
+                            assert_eq!(
+                                String::from_utf16(
+                                    &utf16[span["start"].as_u64().unwrap() as usize
+                                        ..span["end"].as_u64().unwrap() as usize]
+                                )
+                                .unwrap(),
+                                expected
+                            );
+                        }
+                        // Edges use a fixed wrap width; group line breaks can follow frame geometry.
+                        let other_labels: Vec<_> = xml
+                            .descendants()
+                            .filter(|n| {
+                                matches!(
+                                    n.attribute("data-mt-role"),
+                                    Some("edge-label" | "control-label")
+                                )
+                            })
+                            .map(|n| {
+                                let parts: Vec<_> = n
+                                    .descendants()
+                                    .filter(|n| n.is_text())
+                                    .map(|n| n.text().unwrap())
+                                    .collect();
+                                if n.attribute("data-mt-role") == Some("control-label") {
+                                    parts
+                                        .iter()
+                                        .flat_map(|text| text.split_whitespace())
+                                        .map(str::to_string)
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    parts.into_iter().map(str::to_string).collect()
+                                }
+                            })
+                            .collect();
+                        (
+                            geometry,
+                            other_labels,
+                            strip_trace(result["svg"].as_str().unwrap()),
+                        )
+                    };
+                    let baseline = render(json!({}));
+                    let zero = render(json!({"nodeSpacing":0,"rankSpacing":0}));
+                    assert_eq!(baseline.2, zero.2, "numeric-zero native spacing fallback");
+                    let axis = usize::from(matches!(direction, "TB" | "BT"));
+                    for (option, a, b, coordinate) in
+                        [("nodeSpacing", 1, 2, 1 - axis), ("rankSpacing", 0, 1, axis)]
+                    {
+                        let changed = render(json!({option:180}));
+                        if elk {
+                            assert_eq!(baseline.2, changed.2, "ELK owns its spacing");
+                        } else {
+                            let gap =
+                                |g: [[f64; 4]; 3]| (g[a][coordinate] - g[b][coordinate]).abs();
+                            assert!(
+                                gap(changed.0) > gap(baseline.0) + 100.0,
+                                "{direction}/{nested}/{html}/{option}: before={:?}, after={:?}",
+                                baseline.0,
+                                changed.0
+                            );
+                        }
+                    }
+                    let unpadded = render(json!({"padding":0}));
+                    let padded = render(json!({"padding":30}));
+                    assert!(padded.0[0][2] > unpadded.0[0][2]);
+                    assert!(padded.0[0][3] > unpadded.0[0][3]);
+                    let narrow = render(json!({"wrappingWidth":60}));
+                    let wide = render(json!({"wrappingWidth":400}));
+                    assert!(narrow.0[0][2] < wide.0[0][2]);
+                    assert!(narrow.0[0][3] > wide.0[0][3]);
+                    assert!(!narrow.1.is_empty());
+                    assert_eq!(
+                        narrow.1, wide.1,
+                        "edge line wrapping and group text must survive node wrapping changes"
+                    );
+                    let minimum = render(json!({"wrappingWidth":60,"minNodeWidth":300}));
+                    assert!(minimum.0[0][2] >= 300.0);
+                    assert!(
+                        (minimum.0[0][3] - narrow.0[0][3]).abs() < 0.01,
+                        "minimum width must preserve measured line wrapping"
+                    );
+                }
+            }
+        }
+    }
+}
