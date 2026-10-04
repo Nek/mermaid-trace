@@ -199,3 +199,66 @@ test('ACT-VISIBILITY-TRANSITIONS: a hidden saved connector becomes selectable wh
     assert.equal(await page.locator('svg').evaluate(element => element.outerHTML === (window as any).original), true);
   } finally { await browser.close(); }
 });
+
+test('FONT-PORTABLE: saved glyph labels preserve paint, gestures and source ownership without fonts', async () => {
+  const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
+    .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const location = 'data:text/javascript;base64,' + (await readFile('dist/src/markdown-source.js')).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await context.newPage();
+    await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: svg + svg }));
+    await page.goto('http://127.0.0.1/glyph');
+    await page.evaluate(async ({ activation, location }) => {
+      const { activateSvg } = await import(activation);
+      const { formatLocation } = await import(location);
+      const root = document.querySelector('svg')!;
+      const original = root.outerHTML;
+      const events: any[] = [];
+      const handle = activateSvg(root, { onSelect: (event: any) => {
+        events.push(event);
+        if (event.trigger === 'activation') {
+          const mapping = JSON.parse(decodeURIComponent(root.getAttribute('data-mt-map')!));
+          (window as any).copied = navigator.clipboard.writeText(formatLocation({ id: 'glyph.md', source: mapping.source }, event.span));
+        }
+      } });
+      Object.assign(window, { handle, events, original });
+    }, { activation, location });
+    const root = page.locator('svg').first();
+    const label = root.locator('[data-mt-role=node-label]');
+    assert.equal(await label.locator('text').count(), 0, 'fixture must exercise portable glyph geometry');
+    assert.equal(await label.locator('path').first().evaluate(element => getComputedStyle(element).fill), 'rgb(51, 51, 51)', 'node shape CSS must not recolor glyphs');
+    assert.equal(await label.locator('path').first().evaluate(element => getComputedStyle(element).stroke), 'none');
+    await label.click();
+    for (const key of ['Enter', 'Space']) await label.press(key);
+    const result = await page.evaluate(async () => {
+      const w = window as any; await w.copied;
+      const events = w.events.filter((event: any) => event.trigger === 'activation');
+      const span = events[0].span; w.handle.highlight([span]);
+      const root = document.querySelector('svg')!;
+      const mapping = JSON.parse(decodeURIComponent(root.getAttribute('data-mt-map')!));
+      return { roles: events.map((event: any) => event.role), spans: events.map((event: any) => event.span),
+        text: mapping.source.slice(span.start, span.end), clipboard: await navigator.clipboard.readText(),
+        label: root.querySelector('[data-mt-role=node-label]')!.getAttribute('data-mt-selected'),
+        node: root.querySelector('[data-mt-role=node]')!.getAttribute('data-mt-selected') };
+    });
+    assert.deepEqual(result.roles, ['node-label', 'node-label', 'node-label']);
+    assert.ok(result.spans.every((span: unknown) => JSON.stringify(span) === JSON.stringify(result.spans[0])));
+    assert.equal(result.text, 'Alpha **bold** beta gamma delta epsilon 😀');
+    assert.equal(result.clipboard, 'glyph.md:5:5-5:47');
+    assert.equal(result.label, 'true'); assert.equal(result.node, null);
+    assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected]').count(), 0);
+    const before = await label.screenshot();
+    const previousStyle = await label.getAttribute('style');
+    await label.evaluate(element => { (element as SVGElement).style.fontFamily = 'MissingFont, monospace'; (element as SVGElement).style.fontSize = '99px'; });
+    assert.deepEqual(await label.screenshot(), before, 'font availability must not change saved glyph pixels');
+    await label.evaluate((element, value) => value === null ? element.removeAttribute('style') : element.setAttribute('style', value), previousStyle);
+    assert.equal(await page.evaluate(() => {
+      const w = window as any; w.handle.dispose();
+      return document.querySelector('svg')!.outerHTML === w.original;
+    }), true, 'disposal restores the saved artifact');
+  } finally { await browser.close(); }
+});
