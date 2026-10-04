@@ -3250,3 +3250,152 @@ fn flow_ac5_spacing_padding_and_wrapping_preserve_geometry_and_ownership() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_elk_group_title_margins_reserve_space_without_inflating_text() {
+    use serde_json::json;
+    for html in [false, true] {
+        for external in [false, true] {
+            let render = |top: u32, bottom: u32| {
+                let source = format!(
+                    "---\nconfig: {}\n---\nflowchart-elk TB\nsubgraph Outer\nsubgraph G[Group]\nA[Alpha] --> B[Beta]\nend\nend\nsubgraph E[Empty]\nend\n{}",
+                    json!({"htmlLabels":html,"flowchart":{"subGraphTitleMargin":{"top":top,"bottom":bottom}}}),
+                    if external { "A --> X[Outside]\n" } else { "" }
+                );
+                let result = mermaid_trace_rs::render("group-margin", &source).unwrap();
+                let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                [
+                    "flowchart:subgraph:Outer",
+                    "flowchart:subgraph:G",
+                    "flowchart:subgraph:E",
+                ]
+                .map(|key| {
+                    let group = xml
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(key)
+                                && n.attribute("data-mt-role") == Some("control")
+                        })
+                        .unwrap();
+                    let rect = group
+                        .descendants()
+                        .find(|n| n.has_tag_name("rect"))
+                        .unwrap();
+                    let height = rect.attribute("height").unwrap().parse::<f64>().unwrap();
+                    let label = xml
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(key)
+                                && n.attribute("data-mt-role") == Some("control-label")
+                        })
+                        .unwrap();
+                    let texts = label
+                        .descendants()
+                        .filter(|n| n.is_text())
+                        .map(|n| n.text().unwrap().to_string())
+                        .collect::<Vec<_>>();
+                    (height, texts)
+                })
+            };
+            let baseline = render(0, 0);
+            for (top, bottom) in [(60, 0), (0, 60), (30, 30)] {
+                let changed = render(top, bottom);
+                for (index, ((height, text), (original, original_text))) in
+                    changed.iter().zip(&baseline).enumerate()
+                {
+                    assert!(
+                        *height >= original + 60.0 - 0.01,
+                        "group {index}, html={html}, external={external}, margins={top}/{bottom}: {original} -> {height}"
+                    );
+                    assert_eq!(
+                        text, original_text,
+                        "margins must not change the title content"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flow_ac5_viewport_padding_title_margin_and_sizing_preserve_static_mapping() {
+    use serde_json::json;
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    for header in ["flowchart TB", "flowchart-elk TB"] {
+        for html in [false, true] {
+            let render = |options: Value| {
+                let source = format!(
+                    "---\r\ntitle: Diagram 😀\r\nconfig: {}\r\n---\r\n{header}\r\nsubgraph Outer\r\nsubgraph G[Group]\r\nA[Alpha] --> B[Beta]\r\nend\r\nend\r\nsubgraph E[Empty]\r\nend\r\n",
+                    json!({"htmlLabels":html,"flowchart":options})
+                );
+                let result = mermaid_trace_rs::render("viewport", &source).unwrap();
+                let baseline = mermaid_trace_rs::render_with(&plain, "viewport", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let title = result["mapping"]["pieces"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["domId"] == "flowchart:title")
+                    .unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                let span = &title["labelSpan"];
+                assert_eq!(
+                    String::from_utf16(
+                        &utf16[span["start"].as_u64().unwrap() as usize
+                            ..span["end"].as_u64().unwrap() as usize]
+                    )
+                    .unwrap(),
+                    "Diagram 😀"
+                );
+                let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let root = xml.root_element();
+                let view: Vec<f64> = root
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                for value in &view {
+                    assert!(value.is_finite());
+                }
+                let fixed = options["useMaxWidth"] == false;
+                if fixed {
+                    assert_eq!(
+                        root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                        view[2]
+                    );
+                    assert_eq!(
+                        root.attribute("height").unwrap().parse::<f64>().unwrap(),
+                        view[3]
+                    );
+                } else {
+                    assert_eq!(root.attribute("width"), Some("100%"));
+                    assert!(root.attribute("style").unwrap().contains("max-width:"));
+                }
+                (view, strip_trace(result["svg"].as_str().unwrap()))
+            };
+            let zero = render(json!({"diagramPadding":0}));
+            let padded = render(json!({"diagramPadding":30}));
+            for (index, delta) in [-30.0, -30.0, 60.0, 60.0].into_iter().enumerate() {
+                assert!((padded.0[index] - zero.0[index] - delta).abs() < 0.001);
+            }
+            let baseline = render(json!({"titleTopMargin":0}));
+            let moved = render(json!({"titleTopMargin":60}));
+            assert!((moved.0[1] - baseline.0[1] + 60.0).abs() < 0.001);
+            assert!((moved.0[3] - baseline.0[3] - 60.0).abs() < 0.001);
+            for fixed in [false, true] {
+                let normal = render(json!({"useMaxWidth":!fixed}));
+                let unused = render(json!({"useMaxWidth":!fixed,"useWidth":640}));
+                assert_eq!(
+                    normal.1, unused.1,
+                    "pinned flowchart viewport does not consume useWidth"
+                );
+            }
+        }
+    }
+}

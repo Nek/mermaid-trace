@@ -2619,3 +2619,42 @@ test('FLOW AC5/6: wrapping boundaries preserve saved/live node, group and connec
     ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
   }
 });
+
+test('FLOW AC5/6: title margins and viewport sizing preserve visible saved/live targets', { timeout: 240_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const header of ['flowchart TB', 'flowchart-elk TB']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const useMaxWidth of [false, true]) {
+      const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
+      const empty = 'subgraph E[Empty]\nend';
+      const config = { look, htmlLabels, handDrawnSeed: 42, flowchart: { diagramPadding: 30, titleTopMargin: 60, subGraphTitleMargin: { top: 30, bottom: 30 }, useMaxWidth } };
+      const source = `---\ntitle: Diagram 😀\nconfig: ${JSON.stringify(config)}\n---\n${header}\nsubgraph Outer\n${group}\nend\n${empty}\nA --> X[Outside]\n`;
+      const { svg } = await producer.render('margin-geometry', source);
+      await page.setContent(svg!);
+      const boxes = await page.evaluate(() => {
+        const root = document.querySelector('svg')!;
+        const scale = root.getScreenCTM()!.a;
+        const bounds = (e: Element) => { const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+        return ['Outer', 'G', 'E'].map(id => {
+          const frame = document.querySelector(`[data-mt-key="flowchart:subgraph:${id}"][data-mt-role=control]`)!;
+          const shape = frame.querySelector(':scope > rect, :scope > g > path')!;
+          const label = document.querySelector(`[data-mt-key="flowchart:subgraph:${id}"][data-mt-role=control-label]`)!;
+          const child = id === 'G' ? document.querySelector('[data-mt-key="node:A"][data-mt-role=node]') : null;
+          return { id, scale, frame: bounds(shape), label: bounds(label), child: child && bounds(child) };
+        });
+      });
+      for (const box of boxes) {
+        // Dagre renders an empty group as a centered proxy node, without title margins.
+        assert.ok(box.label.top >= box.frame.top - 3 * box.scale && box.label.bottom <= box.frame.bottom + 3 * box.scale && box.label.left >= box.frame.left - 3 * box.scale && box.label.right <= box.frame.right + 3 * box.scale, `${header}/${look}/${htmlLabels}/${useMaxWidth}/${box.id}: title must fit its frame`);
+        if (header.startsWith('flowchart-elk') && box.child) assert.ok(box.child.top >= box.label.bottom + 27 * box.scale, 'ELK must reserve the bottom title margin before its children');
+      }
+      await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+        ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group', 'control-label'],
+        ['flowchart:subgraph:E', empty], ['flowchart:subgraph:E', 'Empty', 'control-label'],
+        ['flowchart:title', 'Diagram 😀', 'control-label'],
+      ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
