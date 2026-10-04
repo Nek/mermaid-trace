@@ -3399,3 +3399,139 @@ fn flow_ac5_viewport_padding_title_margin_and_sizing_preserve_static_mapping() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_all_curves_keep_defaults_overrides_group_routes_and_source_ownership() {
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"})),
+    ));
+    let curves = [
+        "basis",
+        "bumpX",
+        "bumpY",
+        "cardinal",
+        "catmullRom",
+        "linear",
+        "monotoneX",
+        "monotoneY",
+        "natural",
+        "step",
+        "stepAfter",
+        "stepBefore",
+        "rounded",
+    ];
+    for header in ["flowchart LR", "flowchart-elk LR"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let mut elk_baseline = None;
+                for curve in curves {
+                    let source = |overrides: bool| {
+                        format!(
+                            "---\r\nconfig: {{htmlLabels: {html}, look: {look}, handDrawnSeed: 42, flowchart: {{curve: {}}}}}\r\n---\r\n{header}\r\nsubgraph G[Group]\r\nA[\"Start 😀\"] e@-->|inside| B[Middle]\r\nA s@--> A\r\nend\r\nB x@-->|outside| C[Finish]\r\nG g@-->|group| C\r\nA y@--> C\r\n{}",
+                            if overrides { "basis" } else { curve },
+                            if overrides {
+                                ["e", "s", "x", "g", "y"]
+                                    .map(|id| format!("{id}@{{curve: {curve}}}\r\n"))
+                                    .concat()
+                            } else {
+                                String::new()
+                            }
+                        )
+                    };
+                    let input = source(false);
+                    let result = mermaid_trace_rs::render("curve-inventory", &input).unwrap();
+                    let expected =
+                        mermaid_trace_rs::render_with(&plain, "curve-inventory", &input).unwrap();
+                    let overridden =
+                        mermaid_trace_rs::render("curve-inventory", &source(true)).unwrap();
+                    let svg = strip_trace(result["svg"].as_str().unwrap());
+                    assert_eq!(
+                        svg,
+                        strip_trace(expected["svg"].as_str().unwrap()),
+                        "plain parity: {header}/{look}/{html}/{curve}"
+                    );
+                    assert_eq!(
+                        svg,
+                        strip_trace(overridden["svg"].as_str().unwrap()),
+                        "explicit edge overrides: {header}/{look}/{html}/{curve}"
+                    );
+                    if curve == "basis" {
+                        let absent = mermaid_trace_rs::render(
+                            "curve-inventory",
+                            &input.replace("curve: basis", ""),
+                        )
+                        .unwrap();
+                        assert_eq!(
+                            svg,
+                            strip_trace(absent["svg"].as_str().unwrap()),
+                            "absent curve retains the native default"
+                        );
+                    }
+                    if header.starts_with("flowchart-elk") {
+                        if let Some(baseline) = &elk_baseline {
+                            assert_eq!(&svg, baseline, "ELK retains native rounded routing");
+                        } else {
+                            elk_baseline = Some(svg);
+                        }
+                    }
+                    let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let utf16: Vec<_> = input.encode_utf16().collect();
+                    for (id, operator, label) in [
+                        ("e", "e@-->|inside|", "inside"),
+                        ("s", "s@-->", ""),
+                        ("x", "x@-->|outside|", "outside"),
+                        ("g", "g@-->|group|", "group"),
+                        ("y", "y@-->", ""),
+                    ] {
+                        let key = format!("edge:{id}");
+                        let path = xml
+                            .descendants()
+                            .find(|n| {
+                                n.attribute("data-mt-key") == Some(&key)
+                                    && n.attribute("data-mt-role") == Some("edge")
+                            })
+                            .unwrap()
+                            .attribute("d")
+                            .unwrap();
+                        assert!(
+                            path.starts_with('M') && !path.contains("NaN") && !path.contains("inf"),
+                            "{key}: {path}"
+                        );
+                        if !label.is_empty() {
+                            assert!(
+                                xml.descendants()
+                                    .any(|n| n.attribute("data-mt-key") == Some(&key)
+                                        && n.attribute("data-mt-role") == Some("edge-label")),
+                                "{key}: missing visible label binding"
+                            );
+                        }
+                        let piece = result["mapping"]["pieces"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|p| {
+                                p["domId"] == key
+                                    && p["kind"] == "edge"
+                                    && p.get("relation").is_none()
+                            })
+                            .unwrap();
+                        for (field, expected) in [("span", operator), ("labelSpan", label)] {
+                            if expected.is_empty() {
+                                continue;
+                            }
+                            let span = &piece[field];
+                            assert_eq!(
+                                String::from_utf16(
+                                    &utf16[span["start"].as_u64().unwrap() as usize
+                                        ..span["end"].as_u64().unwrap() as usize]
+                                )
+                                .unwrap(),
+                                expected
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

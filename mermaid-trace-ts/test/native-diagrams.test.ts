@@ -25,12 +25,12 @@ async function connectorPoint(target: Locator) {
   await target.scrollIntoViewIfNeeded();
   return target.evaluate(element => {
     const path = element as SVGGeometryElement;
-    for (const fraction of [0.2, 0.4, 0.6, 0.8]) {
+    for (let fraction = 0.05; fraction < 1; fraction += 0.05) {
       const point = path.getPointAtLength(path.getTotalLength() * fraction).matrixTransform(path.getScreenCTM()!);
       const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
       if (hit === element || (hit === element.previousElementSibling && hit?.getAttribute('aria-hidden') === 'true')) return { x: point.x, y: point.y };
     }
-    throw new Error('note connector has no exposed pointer target');
+    throw new Error(`connector ${element.getAttribute('data-mt-key')} has no exposed pointer target`);
   });
 }
 
@@ -2657,4 +2657,20 @@ test('FLOW AC5/6: title margins and viewport sizing preserve visible saved/live 
       ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
     }
   } finally { await browser.close(); await producer.close(); }
+});
+
+test('FLOW AC5/6: every curve preserves saved/live self-loop and group-boundary selection', { timeout: 240_000 }, async () => {
+  const curves = ['basis', 'bumpX', 'bumpY', 'cardinal', 'catmullRom', 'linear', 'monotoneX', 'monotoneY', 'natural', 'step', 'stepAfter', 'stepBefore', 'rounded'];
+  for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const curve of curves) {
+    const group = 'subgraph G[Group]\nA["Start 😀"] e@-->|inside| B[Middle]\nA s@--> A\nend';
+    const source = `---\nconfig: {flowchart: {curve: ${curve}}}\n---\n${header}\n${group}\nB x@-->|outside| C[Finish]\nG g@-->|group| C\ne@{curve: ${curve}}\n`;
+    const start = source.lastIndexOf(curve);
+    await verifyNative(source, 'node:A', 'A["Start 😀"]', 'Start 😀', [
+      ['edge:e', 'e@-->|inside|', 'edge'], ['edge:e', 'inside', 'edge-label'],
+      ['edge:s', 's@-->', 'edge'],
+      ['edge:x', 'x@-->|outside|', 'edge'], ['edge:x', 'outside', 'edge-label'],
+      ['edge:g', 'g@-->|group|', 'edge'], ['edge:g', 'group', 'edge-label'],
+      ['flowchart:subgraph:G', group],
+    ], { start, end: start + curve.length }, ['edge:e'], 'edge:e');
+  }
 });
