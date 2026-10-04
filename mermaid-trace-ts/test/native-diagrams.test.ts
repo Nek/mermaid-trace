@@ -2694,3 +2694,67 @@ test('FLOW AC5/6: inherited directions and conflicting HTML options preserve sav
     ], 'direction TB', ['flowchart:subgraph:G'], 'flowchart:subgraph:G');
   }
 });
+
+test('FLOW AC5/6: portable markers survive HTML base URLs and saved/live selection', { timeout: 240_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    let html = '';
+    await page.route('http://trace.test/**', route => route.fulfill({ contentType: 'text/html', body: html }));
+    await page.route('https://elsewhere.invalid/**', route => route.abort());
+    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) {
+      for (const absolute of [false, true]) {
+        const source = `---
+config:
+  layout: ${layout}
+  look: ${look}
+  handDrawnSeed: 42
+  arrowMarkerAbsolute: ${absolute}
+---
+flowchart LR
+A[Alpha 😀]
+B[Beta]
+A e@<-->|Go| B
+B o--o C
+C x--x D
+`;
+        const { svg } = await producer.render('marker-portability', source);
+        let baseline: Buffer | undefined;
+        for (const base of ['', 'http://trace.test/other/', 'https://elsewhere.invalid/']) {
+          html = `<!doctype html><head>${base ? `<base href="${base}">` : ''}</head><body>${svg}</body>`;
+          await page.goto('http://trace.test/document');
+          const refs = await page.locator('[marker-start], [marker-end]').evaluateAll(elements =>
+            elements.flatMap(element => ['marker-start', 'marker-end'].flatMap(name => {
+              const value = element.getAttribute(name);
+              if (!value) return [];
+              const id = /^url\(#([^)]*)\)$/.exec(value)?.[1];
+              return [{ value, exists: !!id && element.ownerDocument.getElementById(id)?.localName === 'marker' }];
+            })));
+          assert.equal(refs.length, 6, `${layout}/${look}: all three double-ended marker kinds`);
+          assert.ok(refs.every(ref => ref.exists), 'every portable reference resolves inside the saved artifact');
+          const screenshot = await page.locator('svg').screenshot();
+          if (baseline) assert.deepEqual(screenshot, baseline, `${layout}/${look}/${absolute}/${base}: base must not change marker pixels`);
+          else baseline = screenshot;
+          for (const kind of ['point', 'circle', 'cross']) {
+            const markerPaths = page.locator(`[marker-start*="-${kind}Start"]`);
+            assert.equal(await markerPaths.count(), 1);
+            const markers = await markerPaths.evaluate(element => {
+              const values = [element.getAttribute('marker-start')!, element.getAttribute('marker-end')!];
+              element.removeAttribute('marker-start'); element.removeAttribute('marker-end');
+              return values;
+            });
+            assert.notDeepEqual(await page.locator('svg').screenshot(), baseline, `${kind}: comparison must include visible marker geometry`);
+            // Only the edge under test has had its markers removed.
+            await page.locator('[data-mt-role=edge]:not([marker-start])').evaluate((element, values) => {
+              element.setAttribute('marker-start', values[0]!); element.setAttribute('marker-end', values[1]!);
+            }, markers);
+          }
+        }
+        if (look === 'classic') await verifyNative(source, 'node:A', 'A[Alpha 😀]', 'Alpha 😀', [
+          ['edge:e', 'e@<-->|Go|', 'edge'], ['edge:e', 'Go', 'edge-label'],
+        ], 'e@<-->|Go|', [], 'edge:e');
+      }
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
