@@ -200,7 +200,7 @@ test('ACT-VISIBILITY-TRANSITIONS: a hidden saved connector becomes selectable wh
   } finally { await browser.close(); }
 });
 
-test('FONT-PORTABLE: saved glyph labels preserve paint, gestures and source ownership without fonts', async () => {
+for (const references of [false, true]) test(`FONT-PORTABLE: saved ${references ? 'referenced' : 'inline'} glyph labels preserve paint, gestures and source ownership without fonts`, async () => {
   const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
@@ -212,10 +212,20 @@ test('FONT-PORTABLE: saved glyph labels preserve paint, gestures and source owne
     const page = await context.newPage();
     await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: svg + svg }));
     await page.goto('http://127.0.0.1/glyph');
-    await page.evaluate(async ({ activation, location }) => {
+    await page.evaluate(async ({ activation, location, references }) => {
       const { activateSvg } = await import(activation);
       const { formatLocation } = await import(location);
       const root = document.querySelector('svg')!;
+      if (references) {
+        const label = root.querySelector('[data-mt-role=node-label]')!;
+        const glyphs = document.createElementNS(root.namespaceURI, 'g');
+        glyphs.id = 'portable-label-glyphs';
+        glyphs.append(...label.childNodes);
+        const defs = document.createElementNS(root.namespaceURI, 'defs');
+        defs.append(glyphs); root.append(defs);
+        const use = document.createElementNS(root.namespaceURI, 'use');
+        use.setAttribute('href', '#portable-label-glyphs'); label.append(use);
+      }
       const original = root.outerHTML;
       const events: any[] = [];
       const handle = activateSvg(root, { onSelect: (event: any) => {
@@ -226,12 +236,13 @@ test('FONT-PORTABLE: saved glyph labels preserve paint, gestures and source owne
         }
       } });
       Object.assign(window, { handle, events, original });
-    }, { activation, location });
+    }, { activation, location, references });
     const root = page.locator('svg').first();
     const label = root.locator('[data-mt-role=node-label]');
     assert.equal(await label.locator('text').count(), 0, 'fixture must exercise portable glyph geometry');
-    assert.equal(await label.locator('path').first().evaluate(element => getComputedStyle(element).fill), 'rgb(51, 51, 51)', 'node shape CSS must not recolor glyphs');
-    assert.equal(await label.locator('path').first().evaluate(element => getComputedStyle(element).stroke), 'none');
+    const paths = references ? root.locator('#portable-label-glyphs path') : label.locator('path');
+    assert.equal(await paths.first().evaluate(element => getComputedStyle(element).fill), 'rgb(51, 51, 51)', 'node shape CSS must not recolor glyphs');
+    assert.equal(await paths.first().evaluate(element => getComputedStyle(element).stroke), 'none');
     await label.click();
     for (const key of ['Enter', 'Space']) await label.press(key);
     const result = await page.evaluate(async () => {

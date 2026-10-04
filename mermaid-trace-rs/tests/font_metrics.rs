@@ -136,3 +136,83 @@ fn existing_family_font_requests_have_no_silent_approximate_fallback() {
         }
     }
 }
+
+#[test]
+fn measured_existing_family_labels_outline_without_losing_native_ownership() {
+    let fonts = Arc::new(NativeFontContext::system().unwrap());
+    for html in [false, true] {
+        for source in [
+            "flowchart LR\nA[\"`Alpha **bold** beta 😀`\"] -->|next| B[Beta]",
+            "flowchart-elk LR\nA[\"`Alpha **bold** beta 😀`\"] -->|next| B[Beta]",
+            "sequenceDiagram\nparticipant A as Alpha 😀\nA->>B: Hello world\nNote right of A: Review",
+            "gantt\ndateFormat YYYY-MM-DD\nsection Build\nAlpha 😀 :a, 2026-10-01, 2d",
+            "journey\ntitle Build\nsection Work\nAlpha 😀: 5: Alice, Bob",
+            "kanban\n  todo[Todo]\n    task[Alpha 😀]",
+            "stateDiagram-v2\nstate \"Alpha 😀\" as A: Repeated\nA : Repeated\nA --> B: next\nnote right of B: Review",
+        ] {
+            let output = render(&fonts, source, "Arial, sans-serif", true, html);
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let pipeline = merman::svg::SvgPipeline::resvg_safe();
+            let sealed = pipeline
+                .process_resvg_compatible(output.svg(), &session)
+                .unwrap();
+            let glyphs = fonts
+                .outline_svg(&sealed)
+                .unwrap_or_else(|e| panic!("{source}: {e}"));
+            let final_svg = pipeline
+                .process_resvg_compatible(&glyphs, &session)
+                .unwrap();
+            let plain = render(&fonts, source, "Arial, sans-serif", false, html);
+            let plain_sealed = pipeline
+                .process_resvg_compatible(plain.svg(), &session)
+                .unwrap();
+            let plain_glyphs = fonts.outline_svg(&plain_sealed).unwrap();
+            let plain_final = pipeline
+                .process_resvg_compatible(&plain_glyphs, &session)
+                .unwrap();
+            assert_eq!(
+                support::strip_trace(final_svg.as_str()),
+                support::strip_trace(plain_final.as_str()),
+                "outlining must preserve mapped/plain parity: {source}"
+            );
+            let before = roxmltree::Document::parse(output.svg()).unwrap();
+            let after = roxmltree::Document::parse(final_svg.as_str()).unwrap();
+            let identities = |document: &roxmltree::Document<'_>| {
+                document
+                    .descendants()
+                    .filter_map(|node| {
+                        node.attribute("data-mt-key").map(|key| {
+                            (
+                                key.to_owned(),
+                                node.attribute("data-mt-label").map(str::to_owned),
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                identities(&before),
+                identities(&after),
+                "every native identity must survive: {source}"
+            );
+            assert_eq!(
+                before
+                    .descendants()
+                    .find_map(|n| n.attribute("data-mt-native")),
+                after
+                    .descendants()
+                    .find_map(|n| n.attribute("data-mt-native"))
+            );
+            assert!(
+                !after.descendants().any(|node| node.has_tag_name("text")),
+                "font-dependent text remains: {source}"
+            );
+            assert!(
+                after.descendants().any(|node| node.has_tag_name("use")),
+                "no outlined labels: {source}"
+            );
+        }
+    }
+}
