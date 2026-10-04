@@ -198,7 +198,8 @@ ${selector} [data-mt-role=edge][data-mt-selected=true]{stroke:#007c8a!important;
   for (const helper of svg.querySelectorAll('[data-mt-generated="bounds"]')) set(helper, 'pointer-events', 'none');
   function ensureHitTargets(element: Element) {
     if ([...hitTargets.values()].includes(element)) return;
-    if (element.localName === 'g' && element.getAttribute('data-mt-role')!.endsWith('-label')) {
+    const glyphsOnly = element.querySelector('use') && !element.querySelector('rect,path,line,polygon,polyline,circle,ellipse,image,foreignObject,[data-mt-refs]');
+    if (element.localName === 'g' && (element.getAttribute('data-mt-role')!.endsWith('-label') || glyphsOnly)) {
       const bounds = (element as SVGGElement).getBBox();
       if (bounds.width > 0 && bounds.height > 0) {
         const target = svg.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');

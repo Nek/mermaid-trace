@@ -310,3 +310,62 @@ test('FONT-INVISIBLE: an empty glyph wrapper retains source ownership without a 
     assert.ok(result.roles.length >= 2); assert.equal(result.disposed, true);
   } finally { await browser.close(); }
 });
+
+for (const nested of [false, true]) test(`FONT-CONTROL: ${nested ? 'nested' : 'direct'} glyph controls retain clickable whitespace and exact disposal`, async () => {
+  const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    const setup = await page.evaluate(async ({ activation, nested }) => {
+      const { activateSvg } = await import(activation);
+      const root = document.querySelector('svg') as SVGSVGElement;
+      const label = root.querySelector('[data-mt-role=node-label]') as SVGGElement;
+      const node = root.querySelector('[data-mt-role=node]')!;
+      const span = { start: Number(label.getAttribute('data-mt-start')), end: Number(label.getAttribute('data-mt-end')) };
+      const mapping = JSON.parse(decodeURIComponent(root.getAttribute('data-mt-map')!));
+      mapping.format = 'mermaid-trace/1';
+      const piece = mapping.pieces.find((piece: any) => piece.id === label.getAttribute('data-mt-refs'));
+      piece.kind = 'control'; piece.span = span;
+      mapping.pieces = [piece];
+      for (const attribute of [...node.attributes]) if (attribute.name.startsWith('data-mt-')) node.removeAttribute(attribute.name);
+      label.setAttribute('data-mt-role', 'control');
+      label.setAttribute('data-mt-key', piece.domId);
+      root.setAttribute('data-mt-map', encodeURIComponent(JSON.stringify(mapping)));
+      label.id = 'glyph-control';
+      const glyphs = document.createElementNS(root.namespaceURI, 'g');
+      glyphs.id = 'control-glyphs'; glyphs.append(...label.childNodes);
+      const defs = document.createElementNS(root.namespaceURI, 'defs');
+      defs.append(glyphs); root.append(defs);
+      const use = document.createElementNS(root.namespaceURI, 'use');
+      use.setAttribute('href', '#control-glyphs');
+      const group = document.createElementNS(root.namespaceURI, 'g');
+      group.append(use); label.append(nested ? group : use);
+      const box = label.getBoundingClientRect();
+      let point: { x: number; y: number } | undefined;
+      for (let x = box.left + 1; x < box.right - 1 && !point; x += 2) {
+        const y = box.top + box.height / 2;
+        if (!label.contains(document.elementFromPoint(x, y))) point = { x, y };
+      }
+      if (!point) throw new Error('fixture needs whitespace between painted glyphs');
+      const original = root.outerHTML;
+      const events: any[] = [];
+      const handle = activateSvg(root, { onSelect: (event: any) => events.push(event) });
+      Object.assign(window, { handle, events, original });
+      return { point, span };
+    }, { activation, nested });
+    const control = page.locator('#glyph-control');
+    await page.mouse.click(setup.point.x, setup.point.y);
+    assert.equal(await control.getAttribute('data-mt-selected'), 'true');
+    assert.equal(await page.evaluate(() => (window as any).events.at(-1).role), 'control');
+    assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), setup.span);
+    await page.evaluate(span => (window as any).handle.highlight([span]), setup.span);
+    assert.equal(await control.getAttribute('data-mt-selected'), 'true');
+    assert.equal(await page.locator('[data-mt-refs][tabindex="0"]').count(), 1, 'the glyph control retains one keyboard stop');
+    await page.locator('[data-mt-refs][tabindex="0"]').focus(); await page.keyboard.press('Enter');
+    assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), setup.span);
+    assert.equal(await page.evaluate(() => { (window as any).handle.dispose(); return document.querySelector('svg')!.outerHTML === (window as any).original; }), true);
+  } finally { await browser.close(); }
+});
