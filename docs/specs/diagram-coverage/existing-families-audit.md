@@ -151,6 +151,23 @@ Marker verification uses native fork `83810e1b`, TypeScript build and one focuse
 
 Current unfinished slice: close disabled-wrapping acceptance, including the exposed native text-measurement gap. Both worktrees contain uncommitted changes; native pin remains `83810e1b` until acceptance is green. The new native unit regression and all 1,274 renderer unit tests pass; all 125 Trace Rust tests pass. Independent Chromium regression verification also passes: ten existing flowchart/Gantt/journey/Kanban/state browser tests and all four sequence activation tests. These checks preserve existing interactions; they do not resolve the two new Neo containment failures or establish Safari/Firefox acceptance. `FLOW AC5/6: disabled Markdown wrapping fits labels and preserves saved/live ownership` must remain a required failing regression, not be skipped or weakened. Merman [ADR-0086](https://github.com/Nek/merman/blob/83810e1becdebfbc0b45df3c9a46049a9bdadd8c/docs/adr/0086-deterministic-text-measurement-without-vendored-font-tables.md) intentionally makes the default provider font-agnostic and leaves surface-exact measurements to host callbacks. User decision, 2026-10-04: require font-accurate sizing across the six scoped families; the requirement question is resolved. Backend selection and saved-artifact font portability remain unverified implementation work. The native `TextMeasurementPolicy` already supports measured font widths. A temporary usvg/system-font probe showed case-sensitive family matching and LastResort fallback hazards; no font dependency or renderer-policy change has been introduced. Do not infer general font accuracy from that probe or add guessed padding. ELK option effects, the other shared rows, remaining grammar and Safari/Firefox acceptance remain open; only the explicitly agreed typography requirement changes the acceptance boundary.
 
+
+### Font backend admission probe (2026-10-04)
+
+The installed usvg 0.47 native shaping path is a candidate, not an adopted backend. Its font resolver counterparts already exist in `merman-export/src/lib.rs` (`shared_system_fontdb`, case-insensitive selection and generic family setup); do not duplicate them. A bounded local comparison used identical 16px Trebuchet MS SVG text in native usvg and Chromium. The browser confirmed the TrebuchetMS face. Explicit `xml:space="preserve"` removed a 4.82px discrepancy at a bold span boundary; silently losing whitespace is not an acceptable sizing fix.
+
+| Text case | Native width × height (px) | Chromium bbox (px) |
+| --- | --- | --- |
+| Plain Latin | 231.133 × 18.578 | 231.141 × 19 |
+| Bold run | 268.320 × 18.578 | 268.328 × 19 |
+| Italic `AV fj` | 34.313 × 18.578 | 34.563 × 19 |
+| Combining marks | 22.984 × 18.578 | 22.984 × 19 |
+| Latin + CJK fallback | 102.258 × 21.438 | 102.688 × 19 |
+| Latin + emoji | 61.039 × 21 | 66.039 × 22 |
+| Full failing mixed label | 289.141 × 21 | 294.164 × 22 |
+
+This rules out treating an unmodified usvg bbox as interchangeable with browser text bounds. Advances alone also miss italic overhang. A native self-contained glyph export is technically available: the mixed-label probe produced six paths plus one embedded color-emoji image with no remaining text element (about 52 KB). However, whole-document serialization retained the probe's SVG ID and **discarded its source mapping attributes**. It is not an acceptable drop-in export path. Before adopting native glyph output, verify source-preserving replacement at the existing label boundary, accessible authored text, color glyphs, artifact size and saved/live selection; compare that approach with retaining text and resolved font assets. Neither path is admitted yet. The current two failing Neo regressions and all other coverage gates remain required.
+
 ## Measurements and next decision
 
 `make test typecheck` passed with Node 24.19.0: **107 Rust tests, 98 TypeScript/browser tests, zero failures, and typechecking**. The TypeScript/browser test runner reported **786.3 seconds (13.1 minutes)** for this run. These are existing assertions; the four new reproducers are audit findings, not yet regression tests.
