@@ -4,10 +4,11 @@ Agreed process, 2026-09-28. Read this before reassessing or resuming the existin
 
 ## Current position
 
-- The user resumed `existing families` on 2026-09-29 under the unchanged completion boundary below. The goal tool reports active as verified on 2026-10-04. Browser/fidelity decisions were settled on 2026-09-29.
+- The user resumed `existing families` on 2026-09-29 under the unchanged completion boundary below. The goal was marked blocked on 2026-10-04 pending a typography decision. The user subsequently required font-accurate sizing, resolving that requirement question. Browser targets remain as agreed on 2026-09-29.
 - The boundary is full support for flowchart (including ELK), sequence, Gantt, user journey, Kanban and state under the audit's finite completion contract. Accept Merman's visual interpretation while preserving required content, relationships, features and exact source mapping; no pixel match to official Mermaid is required. Chromium, Safari and Firefox must pass interaction acceptance. This must not silently expand into the separate [all-family release gate](specs/diagram-coverage/spec.md), Class/ER work or other milestones.
 - The [bounded audit](specs/diagram-coverage/existing-families-audit.md) records the pinned references, coverage evidence, four baseline sequence/Kanban defects and remaining unverified areas. Following the instruction to proceed, all four defects have focused passing regressions; its implementation checkpoints retain measured timing and verification. State's pinned inventory gate remains valid; it does not establish every Mermaid 12 configuration. This is an evidence summary, not a completion percentage.
 - The earlier 80–160 and 150–300+ AI wall-clock-hour forecasts, and the 8–16-hour inventory estimate, were withdrawn as unsupported. Do not reuse them as a baseline. There is no credible remaining-hours forecast yet.
+- Explicit scope clarification, 2026-10-04: font-accurate sizing is required across the existing six families, including resolved fonts/fallback, shaping and horizontal/vertical bounds in portable static artifacts. This supersedes the option to accept approximate native typography. The font backend and portability implementation still need verification; no new time estimate is established. See [rendering acceptance](DESIGN.md#rendering-and-browser-acceptance).
 - Resumption adds no families, native GUI, WASM or other milestones.
 
 ## Reduce uncertainty
