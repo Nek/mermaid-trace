@@ -62,6 +62,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => ['FORBID_CONTENTS', 'ADD_FORBID_CONTENTS'].map((option): [string, string] => {
+      const label = '<div>Hidden <b>nested</b></div>Alpha 😀';
+      return [`%% SANITIZER ${layout} ${htmlLabels} ${option}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { FORBID_TAGS: ['div'], [option]: ['DIV'] } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
+    }))));
     cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
       `%% MAX-TEXT ${source.split('\n')[0]}\n%%{init: {maxTextSize: 0}}%%\n${source.replace('Alpha', 'Alpha 😀')}`, 'Alpha 😀',
     ]));

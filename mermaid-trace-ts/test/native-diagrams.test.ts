@@ -911,6 +911,14 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-SANITIZER: filtered labels retain saved and live source ownership', { timeout: 120_000 }, async () => {
+  const label = '<div>Hidden <b>nested</b></div>Alpha 😀';
+  for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const option of ['FORBID_CONTENTS', 'ADD_FORBID_CONTENTS']) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { FORBID_TAGS: ['div'], [option]: ['DIV'] } })}\n---\nflowchart LR\nA["${label}"] --> B[Beta]`;
+    await verifyNative(source, 'node:A', `A["${label}"]`, label);
+  }
+});
+
 test('SHARED-MAX-TEXT: secure source limits preserve all-family saved and live selection', { timeout: 120_000 }, async () => {
   for (const [body, key, expected] of [
     ['flowchart LR\nA[Alpha 😀] --> B', 'node:A', 'A[Alpha 😀]'],
