@@ -80,7 +80,7 @@ On macOS with Safari 27's native automation interface, run the saved/live native
 TRACE_TEST_SAFARI=1 node --test dist/test/safari-activation.test.js
 ```
 
-This opt-in check opens and closes its own Safari test tab and temporary previews. Across six families plus ELK and both formula layouts, it verifies trusted pointer/keyboard events, exact source ranges, reverse highlighting, instance isolation and saved-artifact disposal. Live checks also verify scrolling and actual location copying; focus and reverse selection leave the clipboard unchanged. It writes to the system clipboard, so run it separately from other browser suites. It is skipped by default. Full typography/configuration and other visual-element acceptance remain open.
+This opt-in check opens and closes its own Safari test tab and temporary previews. Across six families plus ELK, both formula layouts and repeated combining/emoji labels, it verifies trusted pointer/keyboard events, exact source ranges, reverse highlighting, instance isolation and saved-artifact disposal. Live checks also verify scrolling and actual location copying; focus and reverse selection leave the clipboard unchanged. It writes to the system clipboard, so run it separately from other browser suites. It is skipped by default. Full typography/configuration and other visual-element acceptance remain open.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 

@@ -57,8 +57,12 @@ test('SAFARI: saved and live native labels retain gestures, source ownership and
       ['journey\nsection Work\nAlpha: 5: Alice', 'Alpha'],
       ['kanban\n  todo[Todo]\n    task[Alpha]', 'Alpha'], ['stateDiagram-v2\nstate "Alpha" as A', 'Alpha'],
       ...['flowchart LR', 'flowchart-elk LR'].map((header): [string, string] => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
+      ...['A\u20dd A 😀', '🧑\u200d💻 123 ABC'].flatMap(unit => ['dagre', 'elk'].map((layout): [string, string] => {
+        const label = Array(12).fill(unit).join(' ');
+        return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
+      })),
     ];
-    for (const [source, label] of cases) await t.test(source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]!, async () => {
+    for (const [source, label] of cases) await t.test(source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]!, async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
@@ -74,6 +78,13 @@ test('SAFARI: saved and live native labels retain gestures, source ownership and
         window.label=window.roots[0].querySelector('[data-mt-start="${span.start}"][data-mt-end="${span.end}"]');
         return window.label.getAttribute('aria-label');
       })();`);
+      if (source.includes('markdownAutoWrap')) {
+        const geometry = await evaluate(`const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
+          return {label:box(window.label),shape:box(window.roots[0].querySelector('[data-mt-role=node] > rect')),scale:window.roots[0].getScreenCTM().a,text:window.label.textContent};`);
+        assert.equal(geometry.text, label);
+        for (const side of ['left', 'top']) assert.ok(geometry.label[side] >= geometry.shape[side] - 3 * geometry.scale, JSON.stringify(geometry));
+        for (const side of ['right', 'bottom']) assert.ok(geometry.label[side] <= geometry.shape[side] + 3 * geometry.scale, JSON.stringify(geometry));
+      }
       const content = JSON.parse(await call('get_page_content', { format: 'textTree', nodeIds: 'allContainers', region: 'entire_page' })).content as string;
       const row = content.split('\n').find(line => line.includes(`label='${aria}'`));
       const uid = row?.match(/uid=(\d+)/)?.[1];
@@ -98,7 +109,7 @@ test('SAFARI: saved and live native labels retain gestures, source ownership and
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
-    for (const [source, label] of cases) await t.test('live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('$$') ? ' formula' : ''), async () => {
+    for (const [source, label] of cases) await t.test('live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : ''), async () => {
       const fence = '\n\n```mermaid\n' + source + '\n```\n';
       const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
       await writeFile(filename, markdown);
@@ -111,7 +122,6 @@ test('SAFARI: saved and live native labels retain gestures, source ownership and
           await document.fonts.ready;
           window.roots=[...document.querySelectorAll('svg[data-mt-map]')];
           window.label=window.roots[1].querySelector('[data-mt-start="${source.indexOf(label)}"][data-mt-end="${source.indexOf(label) + label.length}"]');
-          window.label.id='safari-live-target';
           window.trusted=[];
           document.addEventListener('click',e=>window.trusted.push({type:e.type,trusted:e.isTrusted}));
           document.addEventListener('keydown',e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted}));
