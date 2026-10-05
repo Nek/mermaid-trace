@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Locator } from 'playwright';
+import { launchBrowser, clipboardPermissions } from './browser.js';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
@@ -13,8 +14,10 @@ async function clickExposedTarget(target: Locator) {
   const position = await target.evaluate(element => {
     const box = element.getBoundingClientRect();
     for (const x of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const y of [0.1, 0.5, 0.9]) {
-      const hit = element.ownerDocument.elementFromPoint(box.x + box.width * x, box.y + box.height * y);
-      if (hit?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return { x: box.x + box.width * x, y: box.y + box.height * y };
+      // Firefox delivers integer pointer coordinates; hit-test the pixel we actually click.
+      const point = { x: Math.round(box.x + box.width * x), y: Math.round(box.y + box.height * y) };
+      const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
+      if (hit?.closest('[data-mt-role]') === element.closest('[data-mt-role]')) return point;
     }
     throw new Error('mapped visual has no exposed pointer target');
   });
@@ -42,10 +45,10 @@ test('OWN-FLOW-ENDPOINT: saved and live references select owning connection grou
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) {
       for (const html of [false, true]) for (const nested of [false, true]) {
@@ -111,13 +114,13 @@ test('FLOW-2-SUBGRAPH-ID-SHADOW: unrendered node source stays nonvisual while th
   const directory = await mkdtemp(join(tmpdir(), 'trace-subgraph-shadow-'));
   const filename = join(directory, 'groups.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     for (const header of ['flowchart LR', 'flowchart-elk LR']) {
       const source = `${header}\na --> b\nsubgraph A\nB\nend\nsubgraph B\nb\nend\n`;
@@ -171,13 +174,13 @@ test('FLOW-2-EDGE-OCCURRENCES: grouped and repeated connectors retain one source
   const directory = await mkdtemp(join(tmpdir(), 'trace-edge-occurrences-'));
   const filename = join(directory, 'edges.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
       const source = `---\nconfig:\n  look: ${look}\n  htmlLabels: ${html}\n  handDrawnSeed: 42\n---\n${header}\nA["Actor 😀"] & B -->|Group 😀| C & D\nA --> B --> C\nA -->|first| B\nA -->|second| B\nA e1@--> B\nA e1@--> B\nA --> A\nA --> A\n`;
@@ -259,13 +262,13 @@ test('FLOW-2-NONBREAKING-LABELS: saved and live HTML labels retain exact source 
   const directory = await mkdtemp(join(tmpdir(), 'trace-nbsp-labels-'));
   const filename = join(directory, 'labels.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     const cases = [
       ['node:A', 'node-label', '&nbsp;', '\u00A0'],
@@ -325,7 +328,7 @@ test('FLOW-2-EDGE-LABEL-FORMS: saved and live connector labels select authored p
   const directory = await mkdtemp(join(tmpdir(), 'trace-edge-labels-'));
   const filename = join(directory, 'labels.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
@@ -355,7 +358,7 @@ test('FLOW-2-EDGE-LABEL-FORMS: saved and live connector labels select authored p
   ] as const;
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const header of ['flowchart LR', 'flowchart-elk LR']) for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
       for (let first = 0; first < forms.length; first += 11) {
@@ -423,10 +426,10 @@ test('FLOW-2-LOCAL-LAYOUT-BUDGET: moderate ELK document renders with saved and l
   const source = `---\r\nconfig:\r\n  look: classic\r\n  htmlLabels: false\r\n---\r\nflowchart-elk LR\r\n${Array.from({ length: 22 }, (_, index) => `A${index} -->|label${index}| B${index}\r\n`).join('')}`;
   const markdown = `# Graph\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
@@ -463,10 +466,10 @@ test('OWN-STATE-ENDPOINT: saved and live references select their transition owne
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     page.setDefaultTimeout(10_000);
     for (const header of ['stateDiagram', 'stateDiagram-v2']) {
@@ -545,7 +548,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     : reverseNodeSource;
   const labelKey = key.startsWith('state:node:') ? key.replace('state:node:', 'state:label:') + ':0' : key;
   const labelSelector = `[data-mt-key="${labelKey}"][data-mt-role=node-label], [data-mt-key="${key}"] [data-mt-role=node-label]`;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const producer = await createMermanProducer();
@@ -554,7 +557,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     finally { await producer.close(); }
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.setContent(svg! + svg!.replaceAll('planning-saved', 'planning-copy'));
     const boundsBefore = await page.locator('[data-mt-generated="bounds"]').evaluateAll(elements => elements.map(element => element.getAttribute('pointer-events')));
@@ -595,22 +598,11 @@ async function verifyNative(source: string, key: string, expected: string, label
         throw new Error('task line has no exposed painted pointer target');
       });
       await page.mouse.click(point.x, point.y);
-    } else if (await asset.count()) {
-      await asset.first().click({ position: { x: 3, y: 3 } });
-    } else if (await ellipse.count()) {
-      await ellipse.click({ position: { x: 3, y: (await ellipse.boundingBox())!.height / 2 } });
-    } else if (await consoleBody.count()) {
-      await consoleBody.click({ position: { x: 3, y: (await consoleBody.boundingBox())!.height / 2 } });
-    } else if (await rough.count()) {
-      const point = await rough.evaluate(element => {
-        const path = element as SVGGeometryElement;
-        const point = path.getPointAtLength(path.getTotalLength() * 0.2).matrixTransform(path.getScreenCTM()!);
-        return { x: point.x, y: point.y };
-      });
-      await page.mouse.click(point.x, point.y);
     } else {
-      if (key.startsWith('journey:') && await cardRect.count()) await clickExposedTarget(cardRect.first());
-      else await (await cardRect.count() ? cardRect.first() : shape.first()).click({ position: { x: key.startsWith('kanban:') ? 10 : 3, y: 3 } });
+      const body = await asset.count() ? asset.first() : await ellipse.count() ? ellipse
+        : await consoleBody.count() ? consoleBody : await rough.count() ? rough
+        : await cardRect.count() ? cardRect.first() : shape.first();
+      await clickExposedTarget(body);
     }
     let event = await page.evaluate(() => (window as any).events.at(-1));
     const nodeSpan = event.span;
@@ -680,8 +672,8 @@ async function verifyNative(source: string, key: string, expected: string, label
         await clickExposedTarget(target);
       } else {
         const shape = await background.count() ? background.first() : target;
-        const centered = role === 'node' && await shape.evaluate(element => element.tagName === 'path');
-        await shape.click(controlKey.startsWith('journey:score:') ? { position: { x: 15, y: 3 } } : await background.count() && !centered ? { position: { x: 1, y: (await shape.boundingBox())!.height / 2 } } : {});
+        if (controlKey.startsWith('journey:score:')) await shape.click({ position: { x: 15, y: 3 } });
+        else await clickExposedTarget(shape);
       }
       const control = await page.evaluate(() => (window as any).events.at(-1));
       assert.equal(source.slice(control.span.start, control.span.end), text, `control ${controlKey} ${role} in ${source}`);
@@ -855,7 +847,7 @@ async function verifyNative(source: string, key: string, expected: string, label
       }
       if (controlKey === 'state:region:last') {
         const rect = target.locator(':scope > g > rect.divider');
-        await rect.click({ position: { x: 1, y: (await rect.boundingBox())!.height / 2 } });
+        await clickExposedTarget(rect);
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
         assert.equal(await page.locator('svg[data-mt-map]').getAttribute('data-mt-selected'), null);
       }
@@ -951,13 +943,13 @@ test('GANTT-2-NARROW-PLOT-WIDTH: visible label selects its task without a phanto
   const filename = join(directory, 'gantt.md');
   const markdown = `# Narrow\n\n\`\`\`mermaid\n${source}\`\`\`\n`;
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg } = await producer.render('gantt-narrow-saved', source);
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     await page.setContent(svg);
     await page.evaluate(async activation => {
@@ -1000,13 +992,13 @@ test('GANTT-2-NARROW-PLOT-WIDTH: visible label selects its task without a phanto
 
 test('GANTT-2-CLIPPED-VIEWPORT: zero and off-viewport labels have no keyboard target', { timeout: 60_000 }, async () => {
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-clipped-'));
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     for (const width of [-1, 0, 1, 149]) {
       const source = `---\nconfig: { gantt: { useWidth: ${width}, useMaxWidth: false } }\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2026-01-01, 1d\n`;
@@ -1070,7 +1062,7 @@ test('GANTT-2-CLIPPED-VIEWPORT: zero and off-viewport labels have no keyboard ta
 
 test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', { timeout: 60_000 }, async () => {
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-late-'));
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
@@ -1078,7 +1070,7 @@ test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', {
     const { svg } = await producer.render('gantt-late-exposure', source);
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     await page.setContent(`<div id="host" style="display:none">${svg}</div>`);
     await page.evaluate(async activation => {
@@ -1156,7 +1148,7 @@ test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', {
 
 test('ACT-VISIBILITY-TRANSITIONS: Gantt text label follows font visibility', { timeout: 30_000 }, async () => {
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-font-'));
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
@@ -1164,7 +1156,7 @@ test('ACT-VISIBILITY-TRANSITIONS: Gantt text label follows font visibility', { t
     const { svg } = await producer.render('gantt-zero-font', source);
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     await page.setContent(svg);
     await page.evaluate(async activation => {
@@ -1279,7 +1271,7 @@ test('GANTT-2-ACCESSIBILITY: source-only title and description evidence survives
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-acc-'));
   const filename = join(directory, 'gantt.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg } = await producer.render('gantt-acc', source);
@@ -1316,7 +1308,7 @@ test('GANTT-2-DIRECTIVE-ORIGINS: source-only settings survive saved and live SVG
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-directives-'));
   const filename = join(directory, 'gantt.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg } = await producer.render('gantt-directives', source);
@@ -1378,11 +1370,11 @@ test('GANTT-2-CLICK-ORIGINS: task interaction syntax selects its own existing ta
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg } = await producer.render('gantt-click', source);
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.setContent(svg + svg.replaceAll('gantt-click', 'gantt-copy'));
     const original = await page.locator('svg').first().evaluate(element => element.outerHTML);
@@ -1472,11 +1464,11 @@ test('GANTT-2-TASK-FIELDS: parsed task properties select their owner without sel
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg } = await producer.render('gantt-fields', source);
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.setContent(svg + svg.replaceAll('gantt-fields', 'gantt-copy'));
     await page.evaluate(async activation => {
@@ -1544,13 +1536,13 @@ test('GANTT-2-REPEATED-IDS: each duplicate declaration owns its own saved and li
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     const { svg, mapping } = await producer.render('gantt-duplicate', source);
     const owners = statements.map(statement => mapping.pieces.find(piece => piece.kind === 'node' && piece.semanticId === 'dup' && piece.span.start === source.indexOf(statement) && piece.span.end === source.indexOf(statement) + statement.length)!);
     assert.equal(new Set(owners.map(piece => piece.domId)).size, 3);
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.setContent(svg + svg.replaceAll('gantt-duplicate', 'gantt-copy'));
     await page.evaluate(async activation => {
@@ -1648,10 +1640,10 @@ test('OWN-JOURNEY-ACTOR / JOURNEY-2-ACTOR-UNICODE: saved and live actor slots pr
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const sectionMode of [0, 1, 2, 3, 4]) {
       const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n---\r\njourney\r\n%% 😀\r\n` + (sectionMode === 4
@@ -1742,10 +1734,10 @@ test('JOURNEY-2-LEGEND: every wrapped line shares saved/live actor ownership and
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const [limit, margin, font, actor, expected] of [
       [0, 0, 16, 'Alpha', ['-', 'A-', 'l-', 'p-', 'h-', 'a']],
@@ -1842,7 +1834,7 @@ test('JOURNEY-2-PALETTE: theme colors preserve one source selection per visual g
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   const themes = {
     default: ['rgb(236, 236, 255)', 'rgb(51, 51, 51)'],
     dark: ['rgb(31, 32, 32)', 'rgb(204, 204, 204)'],
@@ -1901,7 +1893,7 @@ test('JOURNEY-2-ROOT: saved fixed and responsive SVGs retain independent selecti
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const diagrams = await Promise.all([false, true].map(async useMaxWidth => {
       const source = '---\nconfig: ' + JSON.stringify({ journey: { useMaxWidth, width: 500 } }) + '\n---\njourney\nsection Day\nTask : 5 : Alice\n';
@@ -1944,12 +1936,12 @@ test('JOURNEY-2-IGNORED: source-only Journey options create no visual selection'
     '---\nconfig:\n  look: ' + look + '\n  htmlLabels: ' + htmlLabels + '\n  journey:\n    boxMargin: 0\n    noteMargin: 99\n    messageMargin: 99\n    messageAlign: left\n    bottomMarginAdj: 5\n    rightAngles: true\n    activationWidth: 25\n---\n' +
     '%%{init: { journey: { boxMargin: 0, activationWidth: 25 } }}%%\njourney\nsection Day\nTask 😀 : 5 : Alice\n'));
   const markdown = sources.map(source => '```mermaid\n' + source + '```\n').join('\n');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     await writeFile(filename, markdown);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const diagrams = page.locator('svg[data-mt-map]');
@@ -2012,10 +2004,10 @@ test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owne
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const [body, owners] of [
       ['section Day 😀\r\nFirst : 5 : Alice\r\nsection Night\r\nSecond : 2 : Bob\r\nsection Day 😀\r\nThird : 3 : Carol\r\n', [0, 1, 2]],
@@ -2051,7 +2043,7 @@ test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owne
         assert.equal(await frame.getAttribute('data-mt-selected'), 'true');
         assert.equal(await first.locator('[data-mt-role=control][data-mt-selected=true]').count(), 1, 'only the actual owning frame selects');
         assert.equal(await first.locator('[data-mt-role=control-label][data-mt-selected=true]').count(), owner === index && source.slice(span.start, span.end).trim() !== 'section' ? 1 : 0, 'a full owner includes its label; aliases do not claim another declaration’s label');
-        await frame.locator(':scope > rect').click({ position: { x: 1, y: 1 } });
+        await clickExposedTarget(frame.locator(':scope > rect'));
         assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), declarations[owner]);
         await frame.focus(); await frame.press(index % 2 ? 'Space' : 'Enter');
         assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), declarations[owner]);
@@ -2096,7 +2088,7 @@ test('OWN-JOURNEY-SECTION: saved and live section runs keep distinct source owne
         await frame.locator(':scope[data-mt-selected=true]').waitFor();
         assert.equal(await diagrams.first().locator('[data-mt-role=control][data-mt-selected=true]').count(), 1);
         assert.equal(await diagrams.nth(1).locator('[data-mt-selected=true]').count(), 0);
-        await frame.locator(':scope > rect').click({ position: { x: 1, y: 1 } });
+        await clickExposedTarget(frame.locator(':scope > rect'));
         const primary = declarations[owner]!;
         const primarySpan = { start: markdown.indexOf(source) + primary.start, end: markdown.indexOf(source) + primary.end };
         await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, primarySpan));
@@ -2233,10 +2225,10 @@ test('JOURNEY-2-FONTS: invisible labels resolve to their owner while CSS-sized l
 test('JOURNEY-2-FONTS-LIVE: source, focus and clipboard follow the visible label or owning task', { timeout: 180_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-journey-font-'));
   const filename = join(directory, 'fonts.md');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) for (const mode of ['tspan', 'fo', 'old']) for (const [font, invisible] of [['0', true], ["'24px'", false]] as const) {
       const source = '---\nconfig:\n  look: ' + look + '\n  htmlLabels: ' + html + '\n  journey:\n    taskFontSize: ' + font + '\n    textPlacement: ' + mode + '\n---\njourney\nsection Day\nTask<br>Line : 5 : Alice\n';
@@ -2622,7 +2614,7 @@ test('FLOW AC5/6: wrapping boundaries preserve saved/live node, group and connec
 
 test('FLOW AC5/6: title margins and viewport sizing preserve visible saved/live targets', { timeout: 240_000 }, async () => {
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     for (const header of ['flowchart TB', 'flowchart-elk TB']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const useMaxWidth of [false, true]) {
@@ -2697,7 +2689,7 @@ test('FLOW AC5/6: inherited directions and conflicting HTML options preserve sav
 
 test('FLOW AC5/6: portable markers survive HTML base URLs and saved/live selection', { timeout: 240_000 }, async () => {
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     let html = '';
