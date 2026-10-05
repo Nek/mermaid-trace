@@ -77,6 +77,14 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% ELK straighten ${straightenEdges}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { straightenEdges, lineHops: false } })}}%%\nflowchart TB\nsubgraph G[Routes]\nA[Alpha] --> D\nA --> E\nA --> F\nB --> D\nB --> E\nB --> F\nC e@-->|route| D\nC --> E\nC --> F\nend`;
       return [[source, 'Alpha'], [source, 'e@-->|route|', 'edge'], [source, 'route', 'edge-label']];
     }));
+    cases.push(...['NONE', 'NODES_AND_EDGES', 'PREFER_EDGES', 'PREFER_NODES'].flatMap(considerModelOrder => [false, true].flatMap((forceNodeModelOrder): [string, string, string?][] => {
+      const source = `%% ELK ordering ${considerModelOrder}/force=${forceNodeModelOrder}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', considerModelOrder, forceNodeModelOrder } })}}%%\nflowchart TB\nS[Start]\nA[Alpha]\nB[Beta]\nC[Gamma]\nS sc@-->|route| C\nS --> B\nS --> A`;
+      return [[source, 'Alpha'], [source, 'sc@-->|route|', 'edge']];
+    })));
+    cases.push(...['GREEDY', 'DEPTH_FIRST', 'INTERACTIVE', 'MODEL_ORDER', 'GREEDY_MODEL_ORDER'].flatMap((cycleBreakingStrategy): [string, string, string?][] => {
+      const source = `%% ELK ordering ${cycleBreakingStrategy}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', cycleBreakingStrategy } })}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha]\nB[Beta]\nC[Gamma]\nD[Delta]\nA ab@-->|route| B\nB --> C\nC --> A\nB --> D\nD --> A\nend`;
+      return [[source, 'ab@-->|route|', 'edge'], [source, 'route', 'edge-label']];
+    }));
     cases.push(...[false, true].flatMap(nested => [false, true].flatMap((keepEntryNodeOnTop): [string, string, string?][] => {
       const body = 'B[Beta]\nC[Gamma]\nA[Alpha]\nA ab@-->|next| B\nB --> C\nC --> A';
       const source = `%% ELK entry nested=${nested}/entry=${keepEntryNodeOnTop}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', keepEntryNodeOnTop } })}}%%\nflowchart TB\n${nested ? `subgraph G[Group]\n${body}\nend` : body}`;

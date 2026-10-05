@@ -2616,6 +2616,25 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
+test('FLOW AC5/6: ELK ordering options preserve saved/live source ownership', { timeout: 240_000 }, async t => {
+  for (const considerModelOrder of ['NONE', 'NODES_AND_EDGES', 'PREFER_EDGES', 'PREFER_NODES']) for (const forceNodeModelOrder of [false, true]) {
+    const elk = { preset: 'legacy', considerModelOrder, forceNodeModelOrder };
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk })}\n---\nflowchart TB\nS[Start]\nA[Alpha]\nB[Beta]\nC[Gamma]\nS sc@-->|route| C\nS --> B\nS --> A`;
+    await t.test(`${considerModelOrder}/force=${forceNodeModelOrder}`, () => verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:sc', 'sc@-->|route|', 'edge'], ['edge:sc', 'route', 'edge-label'],
+    ]));
+  }
+  for (const cycleBreakingStrategy of ['GREEDY', 'DEPTH_FIRST', 'INTERACTIVE', 'MODEL_ORDER', 'GREEDY_MODEL_ORDER']) for (const nested of [false, true]) {
+    const body = 'A[Alpha]\nB[Beta]\nC[Gamma]\nD[Delta]\nA ab@-->|route| B\nB --> C\nC --> A\nB --> D\nD --> A';
+    const group = `subgraph G[Group]\n${body}\nend`;
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', cycleBreakingStrategy } })}\n---\nflowchart LR\n${nested ? group : body}`;
+    await t.test(`${cycleBreakingStrategy}/nested=${nested}`, () => verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:ab', 'ab@-->|route|', 'edge'], ['edge:ab', 'route', 'edge-label'],
+      ...(nested ? [['flowchart:subgraph:G', group] as const] : []),
+    ]));
+  }
+});
+
 test('FLOW AC5/6: ELK cycle entries preserve saved/live source ownership', { timeout: 240_000 }, async t => {
   for (const direction of ['TB', 'BT', 'LR', 'RL']) for (const nested of [false, true]) for (const keepEntryNodeOnTop of [false, true]) {
     const body = 'B[Beta]\nC[Gamma]\nA[Entry]\nA ab@-->|next| B\nB --> C\nC --> A';
