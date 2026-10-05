@@ -3032,6 +3032,113 @@ fn flow_ac5_scoped_appearance_matches_effective_root_rendering() {
 }
 
 #[test]
+fn flow_ac5_hand_drawn_seeds_preserve_determinism_geometry_and_source() {
+    let renderer = mermaid_trace_rs::renderer();
+    let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false, "deterministicIds": true, "deterministicIDSeed": "mermaid-trace"
+        })),
+    ));
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let mut geometries = Vec::new();
+            for seed in [None, Some(0), Some(42), Some(43)] {
+                let mut config = serde_json::json!({"layout": layout, "look": look});
+                if let Some(seed) = seed {
+                    config["handDrawnSeed"] = serde_json::json!(seed);
+                }
+                let source = format!(
+                    "---\nconfig: {config}\n---\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend"
+                );
+                let result =
+                    mermaid_trace_rs::render_with(&renderer, "seed-check", &source).unwrap();
+                let svg = result["svg"].as_str().unwrap();
+                assert_eq!(
+                    result,
+                    mermaid_trace_rs::render_with(&renderer, "seed-check", &source).unwrap(),
+                    "{layout}/{look}/{seed:?}: repeated render must be deterministic"
+                );
+                let baseline =
+                    mermaid_trace_rs::render_with(&plain, "seed-check", &source).unwrap();
+                assert_eq!(
+                    strip_trace(svg),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let document = roxmltree::Document::parse(svg).unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                for (key, role, expected) in [
+                    ("node:A", "node", "A[Alpha]"),
+                    ("node:A", "node-label", "Alpha"),
+                    ("edge:e", "edge", "e@-->|next|"),
+                    ("edge:e", "edge-label", "next"),
+                    (
+                        "flowchart:subgraph:G",
+                        "control",
+                        "subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend",
+                    ),
+                    ("flowchart:subgraph:G", "control-label", "Group"),
+                ] {
+                    let target = document
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(key)
+                                && n.attribute("data-mt-role") == Some(role)
+                        })
+                        .unwrap();
+                    let start: usize = target.attribute("data-mt-start").unwrap().parse().unwrap();
+                    let end: usize = target.attribute("data-mt-end").unwrap().parse().unwrap();
+                    assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), expected);
+                }
+                let coordinates = [
+                    "d",
+                    "points",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "cx",
+                    "cy",
+                    "r",
+                    "rx",
+                    "ry",
+                    "transform",
+                ];
+                let geometry: Vec<_> = document
+                    .descendants()
+                    .flat_map(|n| {
+                        n.attributes()
+                            .filter(|a| coordinates.contains(&a.name()))
+                            .map(move |a| {
+                                (
+                                    n.tag_name().name().to_owned(),
+                                    a.name().to_owned(),
+                                    a.value().to_owned(),
+                                )
+                            })
+                    })
+                    .collect();
+                assert!(
+                    geometry.iter().any(|(_, name, _)| name == "d"),
+                    "geometry comparison must include emitted paths"
+                );
+                geometries.push(geometry);
+            }
+            if look == "handDrawn" {
+                assert_ne!(
+                    geometries[2], geometries[3],
+                    "{layout}: distinct seeds must change rough geometry"
+                );
+            } else {
+                assert!(
+                    geometries.windows(2).all(|pair| pair[0] == pair[1]),
+                    "{layout}/{look}: seeds must not change non-rough geometry"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn flow_ac5_layout_and_drawing_share_padding_and_wrapping_boundaries() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
         merman::MermaidConfig::from_value(serde_json::json!({
