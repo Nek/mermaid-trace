@@ -66,10 +66,10 @@ Alternatively, use pnpm 11.28.0 directly. Corepack and pnpm use their standard u
 
 `make typecheck` runs `tsc --noEmit`; `make build` builds the native executable and compiles TypeScript into `mermaid-trace-ts/dist/`; `make test` runs native integration tests and compares raw SVG against checked-in upstream baselines across three fresh Chromium processes. It also checks exact parser-derived source spans, metadata round-trips, unsupported input, invalid mappings, Markdown provenance and browser interaction. Tests never update expected output.
 
-After building, run the saved-SVG, sequence and native diagram interaction suites in Firefox from `mermaid-trace-ts/`:
+After building, run the saved-SVG, sequence, native diagram and watch-preview suites in Firefox from `mermaid-trace-ts/`:
 
 ```sh
-TRACE_TEST_BROWSER=firefox node --test --test-concurrency=1 dist/test/svg-activation.test.js dist/test/sequence-activation.test.js dist/test/native-diagrams.test.js
+TRACE_TEST_BROWSER=firefox node --test --test-concurrency=1 dist/test/svg-activation.test.js dist/test/sequence-activation.test.js dist/test/native-diagrams.test.js dist/test/watch-cli.test.js
 ```
 
 These suites default to Chromium. Install the pinned Firefox runtime with `corepack pnpm exec playwright install firefox` if needed. On macOS, the launcher isolates test application data without changing your Firefox profile or OS permissions. Tests use the real clipboard; run browser suites sequentially to avoid competing clipboard writes. The dedicated journey font-face inspection still uses Chromium CDP; its live interaction checks use the selected browser. Other suites have not yet adopted this browser selector.

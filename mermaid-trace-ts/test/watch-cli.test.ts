@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchBrowser, clipboardPermissions } from './browser.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 
@@ -22,11 +22,11 @@ test('GANTT-2-ROOT-SIZING: live Markdown keeps fixed width and responsive select
     '```mermaid\n---\nconfig: ' + JSON.stringify({ gantt: { useWidth: 420, useMaxWidth } }) +
     '\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Work\nTask' + index + ' :task' + index + ', 2026-01-01, 1d\n```\n').join('\n');
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     await writeFile(filename, source);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 420, height: 900 } });
+    const context = await browser.newContext({ permissions: clipboardPermissions, viewport: { width: 420, height: 900 } });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const blocks = page.locator('[data-mt-block]');
@@ -73,11 +73,11 @@ test('JOURNEY-2-ROOT: live Markdown respects fixed and responsive SVG sizing', {
   const variants = ['classic', 'neo', 'handDrawn'].flatMap(look => [false, true].flatMap(htmlLabels => [false, true].map(useMaxWidth => ({ look, htmlLabels, useMaxWidth }))));
   const source = variants.map(({ look, htmlLabels, useMaxWidth }, index) => '```mermaid\n---\nconfig: ' + JSON.stringify({ look, htmlLabels, journey: { useMaxWidth, width: 500 } }) + '\n---\njourney\ntitle Root\nsection Day\nTask' + index + ' : 5 : Alice\n```\n').join('\n');
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     await writeFile(filename, source);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 420, height: 900 } });
+    const context = await browser.newContext({ permissions: clipboardPermissions, viewport: { width: 420, height: 900 } });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const diagrams = page.locator('[data-mt-block]');
@@ -147,12 +147,12 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, c
   const filename = join(directory, 'document.md');
   const errors: string[] = [];
   let preview: { url: string; close(): Promise<void> } | undefined;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     await writeFile(filename, markdown);
     await writeFile(join(directory, 'asset.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
     preview = await watchPreview(filename, { port: 0, onError: (error: unknown) => errors.push(String(error)) });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     page.setDefaultTimeout(10_000);
     const requests: string[] = [];
@@ -207,6 +207,7 @@ test('WATCH-AC2/3/4/5: live minimal Markdown preview, native sequence mapping, c
     await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
       formatLocation({ id: filename, source: markdown }, { start: connectorStart, end: connectorStart + 8 }));
     assert.equal(await edge.getAttribute('data-mt-selected'), 'true');
+    assert.equal(await page.evaluate(() => document.getSelection()!.isCollapsed), true, 'diagram activation clears the previous text selection');
     const label = page.locator('[data-mt-role="edge-label"]').first();
     await label.click();
     const start = markdown.indexOf('review');
@@ -262,12 +263,12 @@ test('WATCH-SOURCE-AC1/2/3: optional native source selection, scrolling, reverse
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-source-'));
   const filename = join(directory, 'source.md');
   const source = '# Source 🐟\r\n\r\n' + '\r\n'.repeat(100) + '```mermaid\r\n' + sequence.replaceAll('\n', '\r\n') + '```\r\n\r\n`<script>never()</script>`\r\n';
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     await writeFile(filename, source);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     page.setDefaultTimeout(10_000);
     await page.goto(preview.url);
@@ -375,12 +376,12 @@ test('MAP-NATIVE-AC2/3: production flowchart selections, source pane, clipboard,
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-flow-'));
   const filename = join(directory, 'flow.md');
   const source = '# Flowchart\n\n> ```mermaid\n> flowchart LR\n>   A[Draft] -->|review| B[Publish]\n>   A --> B\n> ```\n';
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
     await writeFile(filename, source);
     preview = await watchPreview(filename, { port: 0, sourceView: true });
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
     const original = page.frameLocator('#source-frame').locator('#source');

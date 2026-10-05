@@ -19,7 +19,8 @@ const instances: { block: MarkdownBlock; activation: Activation }[] = [];
 const select = (span: Span, copy: boolean, target = '', origin?: Activation) => {
   selectedRange = span;
   sourceView?.select(span);
-  if (target !== 'text') document.getSelection()?.removeAllRanges();
+  // A collapsed caret can be the browser's anchor for an in-progress text drag.
+  if (target !== 'text' && !document.getSelection()?.isCollapsed) document.getSelection()?.removeAllRanges();
   for (const { block, activation } of instances) if (activation !== origin) activation.highlight(fromMarkdown(block, span, data.document));
   for (const element of article.querySelectorAll('[data-md-target]')) {
     element.toggleAttribute('data-md-selected', element.getAttribute('data-md-target') === target);
