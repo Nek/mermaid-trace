@@ -911,6 +911,19 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-XML: XML attribute filtering retains saved and live source ownership', { timeout: 180_000 }, async () => {
+  const label = "<span style='color:red;/* --> */'>Alpha 😀</span>";
+  for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const safe of [false, true]) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_XML: safe } })}\n---\nflowchart LR\nA["${label}"] --> B[Beta]`;
+    await verifyNative(source, 'node:A', `A["${label}"]`, label);
+  }
+  for (const layout of ['dagre', 'elk']) for (const markdown of [false, true]) {
+    const label = '&gt;́x&amp;&lt;', authored = markdown ? '`' + label + '`' : label;
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, flowchart: { wrappingWidth: 1 } })}\n---\nflowchart LR\nA["${authored}"] --> B[Beta]`;
+    await verifyNative(source, 'node:A', `A["${authored}"]`, label);
+  }
+});
+
 test('SHARED-ATTRIBUTES: retained and removed attributes keep saved and live ownership', { timeout: 180_000 }, async () => {
   const label = "<span id='item' name='tag' title='left/>right' style='color:red;/* /> */'>Alpha 😀</span>";
   for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const allow of [false, true]) {

@@ -62,6 +62,14 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => [false, true].map((safe): [string, string] => {
+      const label = "<span style='color:red;/* --> */'>Alpha 😀</span>";
+      return [`%% XML ${layout} ${htmlLabels} ${safe}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_XML: safe } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
+    }))));
+    cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].map((markdown): [string, string] => {
+      const label = '&gt;́x&amp;&lt;', authored = markdown ? '`' + label + '`' : label;
+      return [`%% XML wrapping ${layout} ${markdown}\n%%{init: ${JSON.stringify({ layout, htmlLabels: false, flowchart: { wrappingWidth: 1 } })}}%%\nflowchart LR\nA["${authored}"] --> B[Beta]`, label];
+    })));
     cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => [false, true].map((allow): [string, string] => {
       const label = "<span id='item' name='tag' title='left/>right' style='color:red;/* /> */'>Alpha 😀</span>";
       return [`%% ATTRIBUTES ${layout} ${htmlLabels} ${allow}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { ALLOW_SELF_CLOSE_IN_ATTR: allow, SANITIZE_NAMED_PROPS: true } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
