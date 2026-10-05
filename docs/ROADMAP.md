@@ -21,6 +21,10 @@ Class and ER follow this existing-family work. They do not close the wider [all-
 
 Cross-cutting work still includes a stable SVG contract, export/security acceptance, reusable package entry points, unified/rehype and VS Code host integration, and measured Rust performance. See the [feature spec](specs/source-mapping/spec.md) and [contracts](specs/source-mapping/contracts.md) for their acceptance criteria.
 
+## Deferred known bugs
+
+- **FONT-CJK-ADVANCE — mixed-script label width:** at Arial 16px, `漢 😀 123 ABC` measures 107.96875px natively and 108.859375px in Chromium (0.890625px difference); `😀 123 ABC 漢` agrees at 107.96875px. The embedded font assets are identical. Root cause remains unconfirmed. The user explicitly postponed investigation and repair on 2026-10-05; this known limitation is deferred from the current goal, with no test tolerance relaxed. See [typography evidence](specs/flowchart-mapping/spec.md). Resume only when reprioritized.
+
 ## Later
 
 Stable identities across edits, source-rewriting visual editing and collaboration are outside the first release. [BROWSER-1](specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer) tracks dynamic Rust/WASM rendering in the browser; static SVG and separate activation remain required.
