@@ -145,7 +145,26 @@ The same pinned schema has **27 shared/root keys** after excluding diagram names
 | `legacyMathML`, `forceLegacyMathML` | Browser KaTeX/MathML fallback controls; Trace uses native RaTeX geometry. Existing formula-visibility tests verify native output, but option invariance and combined text/math cases remain unverified. | Native math conversion; pinned browser math fallback |
 | `logLevel`, `startOnLoad`, `suppressErrorRendering` | Pinned Mermaid logging/DOM lifecycle controls, not diagram geometry. Trace renders explicitly, returns errors and preserves the last good watch document. Verify these values cannot introduce scripts, error graphics or rendering side effects; no Mermaid DOM auto-start loop is required by the existing component boundary. | Integration/API; pinned `mermaid.ts`, `mermaidAPI.ts` |
 | `elk.mergeEdges`, `elk.nodePlacementStrategy`, `elk.nodePlacementAlignment`, `elk.cycleBreakingStrategy`, `elk.forceNodeModelOrder`, `elk.considerModelOrder`, `elk.keepEntryNodeOnTop` | Native readers and adapter tests exist; end-to-end geometry, combinations, cycle/container cases and exact-selection acceptance remain unverified. Reader presence alone is not a pass. | Native `flowchart/elk.rs`; pinned `rendering-util/layout-algorithms/elk/render.ts` |
-| `elk.preset`, `elk.straightenEdges`, `elk.lineHops`, `elk.layeringStrategy`, `elk.layeringLayerBound` | Unverified, with a concrete implementation concern: no readers found in the native flowchart ELK path at fork `83810e1b`. Probe authored effects independently against the pinned ELK renderer before defining minimal fixes. Retain Merman's default interpretation; silently ignoring meaningful explicit options would not satisfy coverage. | ELK layout/routing and SVG geometry |
+| `elk.preset` | **Confirmed broken:** authored presets leave native geometry unchanged. Pinned Mermaid selects different branch and nested-cycle layouts between the `legacy`, `default` and `modelOrder`/`depthFirst` recipes. Preserve native defaults when omitted; implement explicit recipes and option overrides, including distinct root/container placement. | Configuration resolution and ELK adapter/importer |
+| `elk.layeringStrategy`, `elk.layeringLayerBound` | **Confirmed broken:** native output ignores Coffman–Graham bounds and stretch-width selection. On the branch probe below, bounds 1/2 produce five/four reference rows while native keeps three. Only network-simplex layering has an executable native processor; the other declared strategy enums are not implementations. Remaining strategies need independent witnesses and source-backed implementations. | ELK adapter and phase-2 processors |
+| `elk.straightenEdges`, `elk.lineHops` | Unverified: native readers are absent, but the two probe graphs do not trigger reference geometry differences. Use actual stepped terminals/crossings before asserting a failure; retain ports, real turns and independently owned connectors. | Routing cleanup and SVG geometry |
+
+ELK option probe (2026-10-05): pinned Mermaid 12 versus native `859a3956` plus the existing font working tree, comparing emitted geometry within each renderer, not demanding cross-renderer pixel parity. Seventeen settings over a branching DAG and a nested cycle produced 33 completed comparisons. Reference `STRETCH_WIDTH` on the nested cycle exceeded the 15-second probe limit; its context was closed and later cases continued. This is unresolved reference evidence, not a native failure. Native geometry is identical for every completed setting within each graph. No production behavior or baseline was changed.
+
+Reproducer for the layering defect: render this with `layout: elk` and `elk: {layeringStrategy: COFFMAN_GRAHAM, layeringLayerBound: 1}`, then bound `2`. The three middle nodes must not all remain in one layer; native currently leaves all three at the same Y coordinate for either bound.
+
+```mermaid
+flowchart TB
+A[Alpha] --> B[Beta]
+A --> C[Gamma]
+A --> D[Delta]
+B --> E[End]
+C --> E
+D --> E
+A --> E
+```
+
+The preset probe additionally nests `A --> B --> C --> A` inside `G`, with `A/B --> D --> E` and `C --> E`. Source inspection confirms that preset recipes choose root/container placement, alignment and cycle breaking; explicit individual options win. Native defaults already contain placement/alignment values, so comparing values with defaults cannot distinguish an explicit override. Resolve this at the configuration boundary before layout; do not infer authorship from geometry or text.
 
 Marker verification uses native fork `83810e1b`, TypeScript build and one focused Chromium acceptance test (12 render variants, 36 base contexts, four saved/live variants), all passing. The current Firefox run also passes the same 12 render variants, 36 base contexts and four saved/live variants, including pixel changes when each marker kind is removed (18.7 seconds). This uses the unfinished font integration. Real Safari marker portability remains unverified. The native-driver pixel probe reports `document.visibilityState === "hidden"` even after switching to its test tab; paint-frame waits time out. Immediate screenshots were inconsistent, so they establish neither a pass nor a marker defect. The pending Safari test requires a visible tab and two paint frames before comparing all 36 base contexts and marker-removal controls; resume after the browser can paint. All test-owned tabs and servers were closed.
 
