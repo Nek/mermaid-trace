@@ -86,6 +86,8 @@ User decision, 2026-10-04: require font-accurate sizing. Accepting Merman's visu
 
 Use Merman's existing text-measurement interface. A width-only callback is insufficient while heights and baselines remain approximate. Resolve the font backend and artifact portability together: saved static SVG must retain the sizing contract when reopened in supported browsers, without requiring activation or renderer execution. Font availability and fallback must be explicit and testable; do not claim identical geometry across machines that resolve different font files. Backend/font distribution choices remain implementation work, not permission to abandon static output or native Rust rendering.
 
+User decision, 2026-10-05: if no installed font can draw an authored character, render a correctly measured replacement symbol and report a diagnostic instead of rejecting the entire diagram. Measurement and drawing must use the same replacement geometry; retain the original authored text and exact source ownership. Existing CSS font-size changes, including revealing zero-size labels, remain required by the migration contract. Portable font assets must not be confused with immutable authored font sizes.
+
 Chromium, Safari and Firefox are supported targets using the same standard SVG/DOM activation implementation. Verify pointer/keyboard selection, reverse-source highlighting, scrolling and clipboard behavior in all three; current Chromium evidence does not establish Safari or Firefox acceptance. This decision does not reduce diagram-family or syntax/configuration coverage.
 
 ## Required diagram coverage
