@@ -85,6 +85,9 @@ fn flow_ac5_layering_keeps_nested_defaults_labels_cycles_and_provenance() {
         "LONGEST_PATH",
         "LONGEST_PATH_SOURCE",
         "COFFMAN_GRAHAM",
+        "MIN_WIDTH",
+        "STRETCH_WIDTH",
+        "INTERACTIVE",
     ] {
         for body in [
             "flowchart TB\nA[Alpha] e@-->|next| B[Beta]\nB --> C[Gamma]\nC --> A\nA s@--> A\nD[Detached]".to_owned(),
@@ -121,7 +124,14 @@ fn flow_ac5_layering_keeps_nested_defaults_labels_cycles_and_provenance() {
 #[test]
 fn flow_ac5_layer_bound_only_affects_coffman_graham() {
     let body = "flowchart TB\nA --> B --> C --> D\nA --> E --> D\nA --> F\n";
-    for strategy in ["NETWORK_SIMPLEX", "LONGEST_PATH", "LONGEST_PATH_SOURCE"] {
+    for strategy in [
+        "NETWORK_SIMPLEX",
+        "LONGEST_PATH",
+        "LONGEST_PATH_SOURCE",
+        "MIN_WIDTH",
+        "STRETCH_WIDTH",
+        "INTERACTIVE",
+    ] {
         let source = |bound| {
             format!(
                 "---\nconfig: {}\n---\n{body}",
@@ -148,4 +158,20 @@ fn flow_ac5_coffman_graham_numeric_bounds_follow_elk_threshold_semantics() {
             "bound {authored}"
         );
     }
+}
+
+#[test]
+fn flow_ac5_width_and_interactive_choices_reach_rendered_rows() {
+    let source = |strategy| {
+        format!(
+            "---\nconfig: {}\n---\nflowchart TB\nA --> B --> C --> D\nA --> E --> D\nA --> F\n",
+            json!({"layout":"elk","elk":{"layeringStrategy":strategy}})
+        )
+    };
+    let minimum = positions(&source("MIN_WIDTH"));
+    let stretch = positions(&source("STRETCH_WIDTH"));
+    let interactive = positions(&source("INTERACTIVE"));
+    assert!((minimum["node:F"] - minimum["node:D"]).abs() < 1e-6);
+    assert!(stretch["node:F"] > stretch["node:D"]);
+    assert!((interactive["node:E"] - interactive["node:B"]).abs() < 1e-6);
 }

@@ -65,7 +65,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     cases.push(...['default', 'legacy', 'modelOrder', 'depthFirst'].map((preset): [string, string] => [
       `%% ELK preset ${preset}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset } })}}%%\nflowchart LR\nsubgraph Outer\nsubgraph G[Group]\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\nC --> A\nend\nend\nA --> D[Delta]\nB --> D`, 'Alpha',
     ]));
-    cases.push(...['NETWORK_SIMPLEX', 'LONGEST_PATH', 'LONGEST_PATH_SOURCE', 'COFFMAN_GRAHAM'].flatMap((layeringStrategy): [string, string, string?][] => {
+    cases.push(...['NETWORK_SIMPLEX', 'LONGEST_PATH', 'LONGEST_PATH_SOURCE', 'COFFMAN_GRAHAM', 'MIN_WIDTH', 'STRETCH_WIDTH', 'INTERACTIVE'].flatMap((layeringStrategy): [string, string, string?][] => {
       const source = `%% ELK layering ${layeringStrategy}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { layeringStrategy, layeringLayerBound: 1 } })}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\nC --> A\nend\nA --> D[Delta]\nD f@-->|last| E[End]`;
       return [[source, 'Alpha'], [source, 'f@-->|last|', 'edge'], [source, 'last', 'edge-label']];
     }));

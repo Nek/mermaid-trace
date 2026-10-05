@@ -2613,10 +2613,10 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
-test('FLOW AC5/6: ELK layering preserves saved/live selection across cycles and nested scopes', { timeout: 120_000 }, async () => {
-  for (const layeringStrategy of ['NETWORK_SIMPLEX', 'LONGEST_PATH', 'LONGEST_PATH_SOURCE', 'COFFMAN_GRAHAM']) {
+test('FLOW AC5/6: ELK layering preserves saved/live selection across cycles and nested scopes', { timeout: 240_000 }, async () => {
+  for (const layeringStrategy of ['NETWORK_SIMPLEX', 'LONGEST_PATH', 'LONGEST_PATH_SOURCE', 'COFFMAN_GRAHAM', 'MIN_WIDTH', 'STRETCH_WIDTH', 'INTERACTIVE']) for (const direction of ['TB', 'BT', 'LR', 'RL']) {
     const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nB --> C[Gamma]\nC --> A\nA s@--> A\nend';
-    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { layeringStrategy, layeringLayerBound: 1 } })}\n---\nflowchart LR\n${group}\nA --> D[Delta]\nB --> D\nD f@-->|last| E[End]\nF[Detached]\n`;
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { layeringStrategy, layeringLayerBound: 1 } })}\n---\nflowchart ${direction}\n${group}\nA --> D[Delta]\nB --> D\nD f@-->|last| E[End]\nF[Detached]\n`;
     await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
       ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
       ['edge:s', 's@-->', 'edge'], ['edge:f', 'f@-->|last|', 'edge'], ['edge:f', 'last', 'edge-label'],
