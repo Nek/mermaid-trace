@@ -4,7 +4,9 @@ The generated fork-mapped demo was retired on 2026-09-28. The native [watch prev
 
 **ACT-1 — implemented:** As a viewer user, I want to select diagram elements and original Markdown in either direction, using a saved SVG without loading Mermaid.
 
-Scope: saved SVG from the native producer, independent activation, and Markdown preview. Depends on MD-1 and MAP-1. Source editing, full AST reconstruction, unified and VS Code adapters, format v1, and publication remain separate work. Browser verification targets Chromium; wider browser support is unclaimed.
+Scope: saved SVG from the native producer, independent activation, and Markdown preview. Depends on MD-1 and MAP-1. Source editing, full AST reconstruction, unified and VS Code adapters, format v1, and publication remain separate work. Browser acceptance requires Chromium, real Safari and Firefox; passing one does not establish the others.
+
+Firefox acceptance plan: run the existing saved-SVG and native sequence saved/live checks unchanged through a shared test launcher selected by `TRACE_TEST_BROWSER`. On macOS, give the pinned Firefox test runtime its own temporary application configuration to avoid accessing the normal Firefox application-data directory. Preserve the original runtime, profiles and OS security settings. Use Firefox's test clipboard permission preference with real clipboard reads/writes, never mocks. Keep Chromium as the default; broader family and Safari checks remain required.
 
 ## Contracts and acceptance
 

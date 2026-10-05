@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import test from 'node:test';
-import { chromium } from 'playwright';
+import { launchBrowser, clipboardPermissions } from './browser.js';
 import { createMermanProducer } from '../src/producer/merman.js';
 
 const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
@@ -17,7 +17,7 @@ test('SEQ-AC2/3: saved native SVG selects sequence pieces, labels and unlabeled 
   const producer = await createMermanProducer();
   const { svg } = await producer.render('sequence-native', source);
   await producer.close();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(svg + svg.replaceAll('sequence-native', 'sequence-copy'));
@@ -68,10 +68,10 @@ test('OWN-SEQ: saved and live note attachment selection stays with the note', { 
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-owner-'));
   const filename = join(directory, 'notes.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     for (const attachment of ['left of A', 'right of A', 'over A', 'over A,B']) {
       for (const suffix of ['', 'A->>B: message\n', 'participant A\nparticipant B\n']) {
@@ -122,10 +122,10 @@ test('SEQ-TITLE: saved and live titles retain effective and earlier source owner
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-title-'));
   const filename = join(directory, 'title.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const source of [
       'sequenceDiagram\ntitle First\ntitle: Visible 😀\nA->>B: Hello\n',
@@ -177,10 +177,10 @@ test('SEQ-PARTICIPANT-ORIGINS: aliases and earlier declarations retain saved/liv
   const directory = await mkdtemp(join(tmpdir(), 'trace-seq-participants-'));
   const filename = join(directory, 'participants.md');
   const producer = await createMermanProducer();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(10_000);
     for (const [first, declaration, expected] of [
       ['', 'participant A@{ alias: "Client 😀", type: boundary }', 'Client 😀'],

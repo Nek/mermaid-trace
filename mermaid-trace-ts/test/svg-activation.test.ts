@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { chromium } from 'playwright';
+import { launchBrowser, clipboardPermissions } from './browser.js';
 
 test('ACT-AC1/2/3/4: saved SVG gestures, isolation, reverse lookup, validation and lifecycle without renderer', async () => {
   const svg = await readFile('../docs/examples/repeated-labels.svg', 'utf8');
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(`<main>${svg}${svg}</main>`);
@@ -158,7 +158,7 @@ test('ACT-VISIBILITY-TRANSITIONS: a hidden saved connector becomes selectable wh
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(`<style>.hidden-edge{display:none}</style>${svg}`);
@@ -206,9 +206,9 @@ for (const references of [false, true]) test(`FONT-PORTABLE: saved ${references 
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8'))
     .replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
   const location = 'data:text/javascript;base64,' + (await readFile('dist/src/markdown-source.js')).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage();
     await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: svg + svg }));
     await page.goto('http://127.0.0.1/glyph');
@@ -278,7 +278,7 @@ test('FONT-INVISIBLE: an empty glyph wrapper retains source ownership without a 
   const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(svg);
@@ -315,7 +315,7 @@ for (const nested of [false, true]) test(`FONT-CONTROL: ${nested ? 'nested' : 'd
   const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setContent(svg);
