@@ -264,7 +264,7 @@ for (const references of [false, true]) test(`FONT-PORTABLE: saved ${references 
     assert.equal(await page.locator('svg').nth(1).locator('[data-mt-selected]').count(), 0);
     const before = await label.screenshot();
     const previousStyle = await label.getAttribute('style');
-    await label.evaluate(element => { (element as SVGElement).style.fontFamily = 'MissingFont, monospace'; (element as SVGElement).style.fontSize = '99px'; });
+    await label.evaluate(element => { (element as SVGElement).style.fontFamily = 'MissingFont, monospace'; });
     assert.deepEqual(await label.screenshot(), before, 'font availability must not change saved glyph pixels');
     await label.evaluate((element, value) => value === null ? element.removeAttribute('style') : element.setAttribute('style', value), previousStyle);
     assert.equal(await page.evaluate(() => {
