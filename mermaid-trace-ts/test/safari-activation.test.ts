@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -211,6 +211,67 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
       } finally { await preview.close(); preview = undefined; }
     });
+    await t.test('WATCH-SAFARI: saves, invalid edits and atomic replacement preserve current mappings', async () => {
+      const sources = cases.slice(0, 7).map(([source]) => source);
+      const markdown = '# Watch 🐟\r\n\r\n' + sources.map(source => '```mermaid\r\n' + source.replaceAll('\n', '\r\n') + '\r\n```\r\n').join('\r\n');
+      const errors: string[] = [];
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true, onError: error => errors.push(String(error)) });
+      const waitForSource = async (expected: string) => {
+        for (let i = 0; i < 100; i++) {
+          if (await evaluate(`return document.body.dataset.ready==='true' && document.querySelector('#source-frame')?.contentDocument?.querySelector('#source')?.textContent===${JSON.stringify(expected)};`)) return;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.fail('Safari must reload both rendered and original source views after the file save');
+      };
+      const selectLabels = async (documentSource: string, label: string) => {
+        for (const [index, source] of sources.entries()) {
+          const logical = source.replaceAll('Alpha', label);
+          const local = logical.indexOf(label);
+          const aria = await evaluate(`return (async()=>{
+            await document.fonts.ready;
+            window.roots=[...document.querySelectorAll('svg[data-mt-map]')];
+            window.label=window.roots[${index}].querySelector('[data-mt-start="${local}"][data-mt-end="${local + label.length}"]');
+            window.trusted=[];document.onclick=e=>window.trusted.push(e.isTrusted);
+            return window.label.getAttribute('aria-label');
+          })();`);
+          // Repeated label names have different native IDs; click the actual label surface.
+          execFileSync('/usr/bin/pbcopy', { input: 'No automatic copy after reload' });
+          await call('page_interactions', { interactions: [{ type: 'click', ...await pointer(aria, 'label'), purpose: 'Select the current label after a real file update' }] });
+          const start = documentSource.indexOf(logical.replaceAll('\n', '\r\n')) + logical.slice(0, local).replaceAll('\n', '\r\n').length;
+          const span = { start, end: start + label.length };
+          assert.deepEqual(await evaluate(`const selection=document.querySelector('#source-frame').contentDocument.getSelection(),range=selection.getRangeAt(0);
+            return {start:range.startOffset,end:range.endOffset,text:range.cloneContents().textContent,trusted:window.trusted.at(-1),selected:window.label.dataset.mtSelected,other:window.roots.filter((_,i)=>i!==${index}).some(root=>root.querySelector('[data-mt-selected]'))};`),
+          { ...span, text: label, trusted: true, selected: 'true', other: false });
+          assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation({ id: filename, source: documentSource }, span));
+        }
+      };
+      try {
+        await call('navigate_to_url', { tab_uuid: tab, url: preview.url });
+        await waitForSource(markdown);
+        await selectLabels(markdown, 'Alpha');
+        await evaluate('window.watchMarker=true;return true;');
+        await writeFile(filename, markdown);
+        await new Promise(resolve => setTimeout(resolve, 750));
+        assert.equal(await evaluate("return window.watchMarker===true && window.label.dataset.mtSelected==='true';"), true, 'unchanged content must preserve the page and its selection');
+        const changed = markdown.replaceAll('Alpha', 'Updated 🐟');
+        await writeFile(filename, changed);
+        await waitForSource(changed);
+        assert.equal(await evaluate('return window.watchMarker===undefined;'), true, 'the changed file must really reload');
+        await selectLabels(changed, 'Updated 🐟');
+        await evaluate('window.watchMarker=true;return true;');
+        await writeFile(filename, '# Broken\n\n```mermaid\nflowchart LR\nA -->\n```');
+        for (let i = 0; i < 100 && !errors.length; i++) await new Promise(resolve => setTimeout(resolve, 100));
+        assert.ok(errors.some(error => /parse|syntax/i.test(error)), 'invalid syntax must report a diagnostic');
+        assert.equal(await evaluate(`return window.watchMarker===true && document.querySelector('#source-frame').contentDocument.querySelector('#source').textContent===${JSON.stringify(changed)} && window.label.dataset.mtSelected==='true' && !document.querySelector('vite-error-overlay');`), true, 'invalid edits retain the interactive last good page');
+        const recovered = changed.replaceAll('Updated 🐟', 'Recovered 🐟');
+        const replacement = join(directory, 'replacement.md');
+        await writeFile(replacement, recovered); await rename(replacement, filename);
+        await waitForSource(recovered);
+        await selectLabels(recovered, 'Recovered 🐟');
+      } finally { await preview.close(); preview = undefined; }
+    });
+
   } finally {
     try { if (tab) await call('close_tab', { handle: tab }); }
     finally { lines.close(); driver.kill(); await preview?.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
