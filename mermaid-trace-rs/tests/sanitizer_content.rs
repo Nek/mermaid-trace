@@ -158,3 +158,94 @@ fn fully_filtered_labels_match_an_equivalent_entity_authored_space() {
         }
     }
 }
+
+#[test]
+fn attribute_policies_preserve_actual_label_text_and_exact_source() {
+    let label =
+        "<span id='item' name='tag' title='left/>right' style='color:red;/* /> */'>Alpha 😀</span>";
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            for allow in [false, true] {
+                for named in [false, true] {
+                    for from_source in [false, true] {
+                        let config = json!({"layout":layout,"htmlLabels":html,"dompurifyConfig":{"ALLOW_SELF_CLOSE_IN_ATTR":allow,"SANITIZE_NAMED_PROPS":named}});
+                        let body =
+                            format!("%% Original 😀\r\nflowchart LR\r\nA[\"{label}\"] --> B[Beta]");
+                        let source = if from_source {
+                            format!("---\r\nconfig: {config}\r\n---\r\n{body}")
+                        } else {
+                            body
+                        };
+                        let render = |trace| {
+                            let mut site = if from_source {
+                                json!({})
+                            } else {
+                                config.clone()
+                            };
+                            site["traceSource"] = json!(trace);
+                            let renderer = merman::Renderer::new().with_engine(
+                                merman::Engine::new()
+                                    .with_site_config(merman::MermaidConfig::from_value(site)),
+                            );
+                            mermaid_trace_rs::render_with(&renderer, "attribute-policy", &source)
+                                .unwrap()
+                        };
+                        let mapped = render(true);
+                        let plain = render(false);
+                        let svg = mapped["svg"].as_str().unwrap();
+                        let doc = roxmltree::Document::parse(svg).unwrap();
+                        let visual = doc
+                            .descendants()
+                            .find(|n| {
+                                n.attribute("data-mt-key") == Some("node:A")
+                                    && n.attribute("data-mt-role") == Some("node-label")
+                            })
+                            .unwrap();
+                        // SVG-text labels preserve literal markup; HTML labels render its contents.
+                        let expected = if html {
+                            "Alpha 😀".to_owned()
+                        } else {
+                            let identity = if named {
+                                r#"id="user-content-item" name="user-content-tag""#
+                            } else {
+                                "id='item' name='tag'"
+                            };
+                            let attributes = if allow {
+                                r#" title="left/>right" style="color:red;/* /> */""#
+                            } else {
+                                ""
+                            };
+                            format!("<span {identity}{attributes}>Alpha 😀 </span>")
+                        };
+                        assert_eq!(
+                            support::text_content(visual),
+                            expected,
+                            "{layout} {html} {allow} {named}"
+                        );
+                        assert_eq!(
+                            visual
+                                .descendants()
+                                .any(|n| n.attribute("fill") == Some("red")),
+                            allow && html,
+                            "inline style must survive only when the attribute policy permits it"
+                        );
+                        assert_eq!(mapped["mapping"]["source"], source);
+                        let start = source[..source.find(label).unwrap()].encode_utf16().count();
+                        let span = json!({"start":start,"end":start+label.encode_utf16().count()});
+                        assert!(
+                            mapped["mapping"]["pieces"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|p| p["labelSpan"] == span)
+                        );
+                        assert_eq!(
+                            support::strip_trace(svg),
+                            support::strip_trace(plain["svg"].as_str().unwrap())
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

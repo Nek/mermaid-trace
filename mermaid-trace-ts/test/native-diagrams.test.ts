@@ -911,6 +911,14 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-ATTRIBUTES: retained and removed attributes keep saved and live ownership', { timeout: 180_000 }, async () => {
+  const label = "<span id='item' name='tag' title='left/>right' style='color:red;/* /> */'>Alpha 😀</span>";
+  for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const allow of [false, true]) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { ALLOW_SELF_CLOSE_IN_ATTR: allow, SANITIZE_NAMED_PROPS: true } })}\n---\nflowchart LR\nA["${label}"] --> B[Beta]`;
+    await verifyNative(source, 'node:A', `A["${label}"]`, label);
+  }
+});
+
 test('SHARED-TEMPLATES: filtered node edge and group labels keep saved and live ownership', { timeout: 120_000 }, async () => {
   const label = 'Alpha 😀 ${secret}', edge = 'Next ${secret}', group = 'Group ${secret}';
   for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) {

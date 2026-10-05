@@ -62,6 +62,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => [false, true].map((allow): [string, string] => {
+      const label = "<span id='item' name='tag' title='left/>right' style='color:red;/* /> */'>Alpha 😀</span>";
+      return [`%% ATTRIBUTES ${layout} ${htmlLabels} ${allow}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { ALLOW_SELF_CLOSE_IN_ATTR: allow, SANITIZE_NAMED_PROPS: true } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
+    }))));
     cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => {
       const label = 'Alpha 😀 ${secret}', edge = 'Next ${secret}', group = 'Group ${secret}';
       const source = `%% TEMPLATES ${layout} ${htmlLabels}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_TEMPLATES: true } })}}%%\nflowchart LR\nsubgraph G["${group}"]\nA["${label}"] ab@-->|"${edge}"| B[Beta]\nend`;
