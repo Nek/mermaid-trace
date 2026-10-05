@@ -2616,6 +2616,18 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
+test('FLOW AC5/6: ELK cycle entries preserve saved/live source ownership', { timeout: 240_000 }, async t => {
+  for (const direction of ['TB', 'BT', 'LR', 'RL']) for (const nested of [false, true]) for (const keepEntryNodeOnTop of [false, true]) {
+    const body = 'B[Beta]\nC[Gamma]\nA[Entry]\nA ab@-->|next| B\nB --> C\nC --> A';
+    const group = `subgraph G[Group]\n${body}\nend`;
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', keepEntryNodeOnTop } })}\n---\nflowchart ${direction}\n${nested ? group : body}`;
+    await t.test(`${direction}/nested=${nested}/entry=${keepEntryNodeOnTop}`, () => verifyNative(source, 'node:A', 'A[Entry]', 'Entry', [
+      ['edge:ab', 'ab@-->|next|', 'edge'], ['edge:ab', 'next', 'edge-label'],
+      ...(nested ? [['flowchart:subgraph:G', group] as const] : []),
+    ]));
+  }
+});
+
 test('FLOW AC5/6: ELK merging and placement keep connectors independently selectable', { timeout: 240_000 }, async t => {
   const variants = [
     ...['SIMPLE', 'NETWORK_SIMPLEX', 'LINEAR_SEGMENTS', 'BRANDES_KOEPF'].flatMap(nodePlacementStrategy => [false, true].flatMap(mergeEdges => ['TB', 'LR'].map(direction => ({ direction, elk: { nodePlacementStrategy, mergeEdges } })))),

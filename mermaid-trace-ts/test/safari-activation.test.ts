@@ -77,6 +77,11 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% ELK straighten ${straightenEdges}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { straightenEdges, lineHops: false } })}}%%\nflowchart TB\nsubgraph G[Routes]\nA[Alpha] --> D\nA --> E\nA --> F\nB --> D\nB --> E\nB --> F\nC e@-->|route| D\nC --> E\nC --> F\nend`;
       return [[source, 'Alpha'], [source, 'e@-->|route|', 'edge'], [source, 'route', 'edge-label']];
     }));
+    cases.push(...[false, true].flatMap(nested => [false, true].flatMap((keepEntryNodeOnTop): [string, string, string?][] => {
+      const body = 'B[Beta]\nC[Gamma]\nA[Alpha]\nA ab@-->|next| B\nB --> C\nC --> A';
+      const source = `%% ELK entry nested=${nested}/entry=${keepEntryNodeOnTop}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', keepEntryNodeOnTop } })}}%%\nflowchart TB\n${nested ? `subgraph G[Group]\n${body}\nend` : body}`;
+      return [[source, 'Alpha'], [source, 'ab@-->|next|', 'edge'], [source, 'next', 'edge-label']];
+    })));
     cases.push(...['SIMPLE', 'NETWORK_SIMPLEX', 'LINEAR_SEGMENTS', 'BRANDES_KOEPF'].flatMap((nodePlacementStrategy): [string, string, string?][] => {
       const source = `%% ELK placement ${nodePlacementStrategy}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', nodePlacementStrategy, mergeEdges: true, nodePlacementAlignment: nodePlacementStrategy === 'BRANDES_KOEPF' ? 'RIGHTDOWN' : 'BALANCED' } })}}%%\nflowchart TB\nsubgraph G[Group]\nA[Alpha] ab@-->|next| B[Longer beta]\nA ac@--> C[Gamma]\nA ad@--> D[Delta]\nB --> E[End]\nC --> E\nD --> E\nA ae@--> E\nend`;
       return [[source, 'Alpha'], [source, 'ab@-->|next|', 'edge'], [source, 'ac@-->', 'edge'], [source, 'next', 'edge-label']];
