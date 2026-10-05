@@ -74,13 +74,13 @@ TRACE_TEST_BROWSER=firefox node --test --test-concurrency=1 dist/test/svg-activa
 
 These suites default to Chromium. Install the pinned Firefox runtime with `corepack pnpm exec playwright install firefox` if needed. On macOS, the launcher isolates test application data without changing your Firefox profile or OS permissions. Tests use the real clipboard; run browser suites sequentially to avoid competing clipboard writes. The dedicated journey font-face inspection still uses Chromium CDP; its live interaction checks use the selected browser. Other suites have not yet adopted this browser selector.
 
-On macOS with Safari 27's native automation interface, run the saved/live native-label acceptance check from `mermaid-trace-ts/`:
+On macOS with Safari 27's native automation interface, run the saved/live native-selection acceptance check from `mermaid-trace-ts/`:
 
 ```sh
 TRACE_TEST_SAFARI=1 node --test dist/test/safari-activation.test.js
 ```
 
-This opt-in check opens and closes its own Safari test tab and temporary previews. Across six families plus ELK, both formula layouts and repeated combining/emoji labels, it verifies trusted pointer/keyboard events, exact source ranges, reverse highlighting, instance isolation and saved-artifact disposal. Live checks also verify scrolling and actual location copying; focus and reverse selection leave the clipboard unchanged. It writes to the system clipboard, so run it separately from other browser suites. It is skipped by default. Full typography/configuration and other visual-element acceptance remain open.
+This opt-in check opens and closes its own Safari test tab and temporary previews. Across six families plus ELK, both formula layouts and repeated combining/emoji labels, it verifies trusted pointer/keyboard events, exact source ranges, reverse highlighting, instance isolation and saved-artifact disposal. Live checks also verify scrolling and actual location copying; focus and reverse selection leave the clipboard unchanged. It writes to the system clipboard, so run it separately from other browser suites. It is skipped by default. Cases include node bodies, connectors, repeated sequence actors, journey actor groups and state note/attachment groups with one keyboard stop. Full typography/configuration acceptance remains open.
 
 To deliberately regenerate baselines after reviewing fixture or rendering changes:
 
