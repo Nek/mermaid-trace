@@ -10,6 +10,9 @@ import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 
 async function clickExposedTarget(target: Locator) {
+  // Nested formula SVGs can inflate Firefox's group bounds; use the actual hit surface.
+  const hitRect = target.locator(':scope > rect[aria-hidden="true"]');
+  if (await hitRect.count() === 1) target = hitRect;
   await target.scrollIntoViewIfNeeded();
   const position = await target.evaluate(element => {
     const box = element.getBoundingClientRect();
@@ -823,7 +826,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     for (const [index, [controlKey, text, role = 'control', expectedStart]] of controls.entries()) {
       const target = controlKey === "state:note:first" ? page.locator("path.note-edge").first() : controlKey === "state:note:last" ? page.locator("path.note-edge").last() : controlKey === "state:region:last" ? page.locator("g:has(> g > rect.divider)").last() : page.locator(`[data-mt-key="${controlKey}"][data-mt-role="${role}"], [data-mt-key="${controlKey}"] [data-mt-role="${role}"]`).first();
       if (role.endsWith('-label')) {
-        await target.click();
+        await clickExposedTarget(target);
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), markdownSelection(text));
       }
       if (controlKey.startsWith('state:note:')) {

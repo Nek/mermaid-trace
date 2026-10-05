@@ -369,3 +369,42 @@ for (const nested of [false, true]) test(`FONT-CONTROL: ${nested ? 'nested' : 'd
     assert.equal(await page.evaluate(() => { (window as any).handle.dispose(); return document.querySelector('svg')!.outerHTML === (window as any).original; }), true);
   } finally { await browser.close(); }
 });
+
+test('ACT-NESTED-VIEWPORT: nested SVG labels remain selectable and follow clipping', async () => {
+  const svg = await readFile('test/fixtures/glyph-label.svg', 'utf8');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(svg);
+    const span = await page.evaluate(async activation => {
+      const { activateSvg } = await import(activation);
+      const root = document.querySelector('svg')!;
+      const label = root.querySelector('[data-mt-role=node-label]')!;
+      root.append(label); label.removeAttribute('transform');
+      label.innerHTML = '<svg x="38" y="28" width="16" height="16" viewBox="0 0 1 1"><path d="M0 0H1V1H0Z"/></svg>';
+      const original = root.outerHTML;
+      const events: unknown[] = [];
+      Object.assign(window, { original, events, handle: activateSvg(root, { onSelect: (event: unknown) => events.push(event) }) });
+      return { start: Number(label.getAttribute('data-mt-start')), end: Number(label.getAttribute('data-mt-end')) };
+    }, activation);
+    const label = page.locator('[data-mt-role=node-label]');
+    assert.equal(await label.getAttribute('tabindex'), '0', 'a painted nested viewport must remain selectable');
+    await label.locator('path').click();
+    for (const key of ['Enter', 'Space']) {
+      assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+      await label.press(key);
+    }
+    assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+    assert.equal(await page.evaluate(() => (window as any).events.filter((event: any) => event.trigger === 'activation').length), 3);
+    await label.evaluate(element => { (element as SVGElement).style.transform = 'translateX(1000px)'; });
+    await page.waitForFunction(() => !document.querySelector('[data-mt-role=node-label]')!.hasAttribute('tabindex'));
+    assert.equal(await label.getAttribute('data-mt-selected'), null);
+    await label.evaluate(element => element.removeAttribute('style'));
+    await page.waitForFunction(() => document.querySelector('[data-mt-role=node-label]')!.getAttribute('tabindex') === '0');
+    await page.evaluate(span => (window as any).handle.highlight([span]), span);
+    assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+    assert.equal(await page.evaluate(() => { (window as any).handle.dispose(); return document.querySelector('svg')!.outerHTML === (window as any).original; }), true);
+  } finally { await browser.close(); }
+});

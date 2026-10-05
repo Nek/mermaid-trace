@@ -43,15 +43,16 @@ test('SAFARI: saved native labels retain trusted gestures, source ownership and 
     tab = JSON.parse(await call('create_tab', { url: 'data:text/html,<title>Mermaid Trace Safari acceptance</title>' })).handle;
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    for (const source of [
-      'flowchart LR\nA[Alpha] --> B[Beta]', 'flowchart-elk LR\nA[Alpha] --> B[Beta]',
-      'sequenceDiagram\nA->>B: Alpha',
-      'gantt\ndateFormat YYYY-MM-DD\nAlpha :a, 2026-10-01, 2d',
-      'journey\nsection Work\nAlpha: 5: Alice',
-      'kanban\n  todo[Todo]\n    task[Alpha]', 'stateDiagram-v2\nstate "Alpha" as A',
-    ]) await t.test(source.split('\n')[0]!, async () => {
+    for (const [source, label] of [
+      ['flowchart LR\nA[Alpha] --> B[Beta]', 'Alpha'], ['flowchart-elk LR\nA[Alpha] --> B[Beta]', 'Alpha'],
+      ['sequenceDiagram\nA->>B: Alpha', 'Alpha'],
+      ['gantt\ndateFormat YYYY-MM-DD\nAlpha :a, 2026-10-01, 2d', 'Alpha'],
+      ['journey\nsection Work\nAlpha: 5: Alice', 'Alpha'],
+      ['kanban\n  todo[Todo]\n    task[Alpha]', 'Alpha'], ['stateDiagram-v2\nstate "Alpha" as A', 'Alpha'],
+      ...['flowchart LR', 'flowchart-elk LR'].map(header => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
+    ] as [string, string][]) await t.test(source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]!, async () => {
       const { svg } = await producer.render('safari-native', source);
-      const span = { start: source.indexOf('Alpha'), end: source.indexOf('Alpha') + 5 };
+      const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
         document.body.innerHTML=${JSON.stringify(svg + svg)};
         await document.fonts.ready;

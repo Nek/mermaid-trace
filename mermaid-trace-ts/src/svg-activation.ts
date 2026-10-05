@@ -69,9 +69,15 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const next = new Set(elements.filter(element => {
       if (!measurable || !painted(element)) return false;
       if (!clipped) return true;
-      const bounds = element.getBoundingClientRect();
-      return bounds.right >= viewport.left && bounds.left <= viewport.right
-        && bounds.bottom >= viewport.top && bounds.top <= viewport.bottom;
+      // Firefox misreports group client rectangles containing scaled nested SVGs.
+      const graphic = element as SVGGraphicsElement;
+      const matrix = graphic.getScreenCTM();
+      if (!matrix) return false;
+      const bounds = graphic.getBBox();
+      const corners = [bounds.x, bounds.x + bounds.width].flatMap(x =>
+        [bounds.y, bounds.y + bounds.height].map(y => new DOMPoint(x, y).matrixTransform(matrix)));
+      return Math.max(...corners.map(p => p.x)) >= viewport.left && Math.min(...corners.map(p => p.x)) <= viewport.right
+        && Math.max(...corners.map(p => p.y)) >= viewport.top && Math.min(...corners.map(p => p.y)) <= viewport.bottom;
     }));
     if (next.size === exposed.size && [...next].every(element => exposed.has(element))) return false;
     exposed = next;
