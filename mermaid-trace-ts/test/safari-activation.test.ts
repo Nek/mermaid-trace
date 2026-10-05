@@ -62,6 +62,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].flatMap((layout): [string, string, string?][] => {
+      const source = `%% MAX-EDGES ${layout}\n%%{init: ${JSON.stringify({ layout, maxEdges: 0 })}}%%\nflowchart LR\nA[Alpha] ab@-->|next| B[Beta]`;
+      return [[source, 'Alpha'], [source, 'ab@-->|next|', 'edge'], [source, 'next', 'edge-label']];
+    }));
     cases.push(...['default', 'legacy', 'modelOrder', 'depthFirst'].map((preset): [string, string] => [
       `%% ELK preset ${preset}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset } })}}%%\nflowchart LR\nsubgraph Outer\nsubgraph G[Group]\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\nC --> A\nend\nend\nA --> D[Delta]\nB --> D`, 'Alpha',
     ]));
@@ -182,7 +186,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
-    for (const [source, label, role, groupSize = 1] of cases) await t.test((source.startsWith('%% ELK ') ? source.split('\n')[0]! + ' ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
+    for (const [source, label, role, groupSize = 1] of cases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
       const fence = '\n\n```mermaid\n' + source + '\n```\n';
       const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
       await writeFile(filename, markdown);

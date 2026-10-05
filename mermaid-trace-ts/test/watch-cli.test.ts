@@ -15,6 +15,34 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
 const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
+test('FLOW-2-MAX-EDGES: rejected edits retain the last good Markdown and recover', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-edge-limit-'));
+  const filename = join(directory, 'limits.md');
+  const errors: string[] = [];
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  const browser = await launchBrowser();
+  try {
+    const valid = '# Valid\n\n```mermaid\nflowchart LR\nA[Alpha] --> B[Beta]\n```\n';
+    await writeFile(filename, valid);
+    preview = await watchPreview(filename, { port: 0, sourceView: true, onError: error => errors.push(String(error)) });
+    const page = await browser.newPage();
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    const saved = await page.locator('article').innerHTML();
+    for (const layout of ['dagre', 'elk']) {
+      await writeFile(filename, '# Invalid\n\n```mermaid\n---\nconfig: ' + JSON.stringify({ layout, maxEdges: 1000 }) + '\n---\nflowchart LR\n' + 'A --> B\n'.repeat(501) + '```\n');
+      await assertEventually(() => errors.length === (layout === 'dagre' ? 1 : 2));
+      assert.match(errors.at(-1)!, /maxEdges.*500/);
+      assert.equal(await page.locator('article').innerHTML(), saved);
+      assert.equal(await page.frameLocator('#source-frame').locator('#source').textContent(), valid);
+      assert.equal(await page.locator('vite-error-overlay').count(), 0);
+    }
+    await writeFile(filename, valid.replace('# Valid', '# Recovered'));
+    await page.getByRole('heading', { name: 'Recovered', exact: true }).waitFor();
+    await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await page.locator('[data-mt-role=edge]').count(), 1);
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('GANTT-2-ROOT-SIZING: live Markdown keeps fixed width and responsive selection', { timeout: 90_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-gantt-root-'));
   const filename = join(directory, 'root.md');

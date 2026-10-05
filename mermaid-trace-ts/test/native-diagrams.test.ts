@@ -911,6 +911,13 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('FLOW-2-MAX-EDGES: secure source overrides preserve saved and live selection', { timeout: 60_000 }, async () => {
+  for (const layout of ['dagre', 'elk']) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, maxEdges: 0 })}\n---\nflowchart LR\nA[Alpha] ab@-->|next| B[Beta]`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [['edge:ab', 'ab@-->|next|', 'edge'], ['edge:ab', 'next', 'edge-label']]);
+  }
+});
+
 test('GANTT PLAN-AC2/3: saved native SVG and live Markdown selection, clipboard, source and saves', { timeout: 60_000 }, async () => {
   await verifyNative(gantt, 'gantt:task:a', 'Same 😀 :a, 2026-01-01, 2d', 'Same 😀', [['gantt:section:Build', 'section Build'], ['gantt:title', 'title Plan']]);
 });
