@@ -1,15 +1,22 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { spawn, execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
+import { watchPreview } from '../src/watch.js';
+import { formatLocation } from '../src/markdown-source.js';
 
-test('SAFARI: saved native labels retain trusted gestures, source ownership and disposal', {
-  skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 120_000,
+test('SAFARI: saved and live native labels retain gestures, source ownership and clipboard', {
+  skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 240_000,
 }, async t => {
   assert.equal(process.platform, 'darwin', 'Safari acceptance requires macOS and the installed Safari driver');
   const producer = await createMermanProducer();
+  const directory = await mkdtemp(join(tmpdir(), 'trace-safari-'));
+  const filename = join(directory, 'diagrams.md');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
   const driver = spawn('/usr/bin/safaridriver', ['--mcp'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = createInterface({ input: driver.stdout });
   let sequence = 0;
@@ -43,14 +50,15 @@ test('SAFARI: saved native labels retain trusted gestures, source ownership and 
     tab = JSON.parse(await call('create_tab', { url: 'data:text/html,<title>Mermaid Trace Safari acceptance</title>' })).handle;
     const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
     const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
-    for (const [source, label] of [
+    const cases: [string, string][] = [
       ['flowchart LR\nA[Alpha] --> B[Beta]', 'Alpha'], ['flowchart-elk LR\nA[Alpha] --> B[Beta]', 'Alpha'],
       ['sequenceDiagram\nA->>B: Alpha', 'Alpha'],
       ['gantt\ndateFormat YYYY-MM-DD\nAlpha :a, 2026-10-01, 2d', 'Alpha'],
       ['journey\nsection Work\nAlpha: 5: Alice', 'Alpha'],
       ['kanban\n  todo[Todo]\n    task[Alpha]', 'Alpha'], ['stateDiagram-v2\nstate "Alpha" as A', 'Alpha'],
-      ...['flowchart LR', 'flowchart-elk LR'].map(header => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
-    ] as [string, string][]) await t.test(source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]!, async () => {
+      ...['flowchart LR', 'flowchart-elk LR'].map((header): [string, string] => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
+    ];
+    for (const [source, label] of cases) await t.test(source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]!, async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
@@ -89,8 +97,71 @@ test('SAFARI: saved native labels retain trusted gestures, source ownership and 
       assert.equal(await evaluate(`window.handles[0].highlight([{start:${span.start + 1},end:${span.start + 2}}]);return window.label.getAttribute('data-mt-selected');`), 'true');
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
+    await call('set_viewport_size', { width: 1280, height: 900 });
+    for (const [source, label] of cases) await t.test('live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('$$') ? ' formula' : ''), async () => {
+      const fence = '\n\n```mermaid\n' + source + '\n```\n';
+      const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
+      await writeFile(filename, markdown);
+      preview = await watchPreview(filename, { port: 0, sourceView: true });
+      try {
+        await call('navigate_to_url', { tab_uuid: tab, url: preview.url });
+        const aria = await evaluate(`return (async()=>{
+          for(let i=0;i<200 && document.body.dataset.ready!=='true';i++)await new Promise(r=>setTimeout(r,25));
+          if(document.body.dataset.ready!=='true')throw Error('Preview did not become ready');
+          await document.fonts.ready;
+          window.roots=[...document.querySelectorAll('svg[data-mt-map]')];
+          window.label=window.roots[1].querySelector('[data-mt-start="${source.indexOf(label)}"][data-mt-end="${source.indexOf(label) + label.length}"]');
+          window.label.id='safari-live-target';
+          window.trusted=[];
+          document.addEventListener('click',e=>window.trusted.push({type:e.type,trusted:e.isTrusted}));
+          document.addEventListener('keydown',e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted}));
+          return window.label.getAttribute('aria-label');
+        })();`);
+        const content = JSON.parse(await call('get_page_content', { format: 'textTree', nodeIds: 'allContainers', region: 'entire_page' })).content as string;
+        const row = content.split('\n').filter(line => line.includes(`label='${aria}'`)).at(-1);
+        const uid = row?.match(/uid=(\d+)/)?.[1];
+        assert.ok(uid, `Safari must expose the live label: ${content}`);
+        const start = markdown.lastIndexOf(label);
+        const span = { start, end: start + label.length };
+        const sentinel = 'Mermaid Trace clipboard unchanged';
+        execFileSync('/usr/bin/pbcopy', { input: sentinel });
+        await evaluate('window.label.focus(); return true;');
+        assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'focus must not copy');
+        for (const interaction of [
+          { type: 'click', node: uid, scrollToVisible: true, purpose: 'Select the second diagram label after scrolling' },
+          { type: 'keyPress', value: 'Enter', purpose: 'Copy the selected label location with Enter' },
+          { type: 'keyPress', value: ' ', purpose: 'Copy the selected label location with Space' },
+        ]) {
+          execFileSync('/usr/bin/pbcopy', { input: sentinel });
+          await call('page_interactions', { interactions: [interaction] });
+          const result = await evaluate(`const doc=document.querySelector('#source-frame').contentDocument;
+            const range=doc.getSelection().getRangeAt(0);
+            return {start:range.startOffset,end:range.endOffset,text:range.cloneContents().textContent,
+              scroll:doc.querySelector('#source').scrollTop,focused:document.activeElement===window.label,
+              trusted:window.trusted.at(-1),other:window.roots[0].querySelectorAll('[data-mt-selected]').length};`);
+          assert.deepEqual({ start: result.start, end: result.end }, span);
+          assert.equal(result.text, label); assert.ok(result.scroll > 0, 'source selection must scroll into view');
+          assert.equal(result.focused, true); assert.equal(result.other, 0);
+          assert.equal(result.trusted.trusted, true);
+          assert.equal(result.trusted.type, interaction.type === 'click' ? 'click' : 'keydown');
+          if (interaction.type === 'keyPress') assert.equal(result.trusted.key, interaction.value);
+          assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation({ id: filename, source: markdown }, span));
+        }
+        execFileSync('/usr/bin/pbcopy', { input: sentinel });
+        const firstStart = markdown.indexOf(label);
+        assert.equal(await evaluate(`return (async()=>{
+          const doc=document.querySelector('#source-frame').contentDocument, range=doc.createRange();
+          range.setStart(doc.querySelector('#source').firstChild,${firstStart});range.setEnd(doc.querySelector('#source').firstChild,${firstStart + label.length});
+          doc.getSelection().removeAllRanges();doc.getSelection().addRange(range);
+          for(let i=0;i<100 && window.roots[0].querySelector('[data-mt-selected]')===null;i++)await new Promise(r=>setTimeout(r,25));
+          return window.roots[0].querySelector('[data-mt-selected]')?.getAttribute('data-mt-role');
+        })();`), /^(sequenceDiagram)/.test(source) ? 'edge-label' : 'node-label');
+        assert.equal(await evaluate("return window.roots[1].querySelectorAll('[data-mt-selected]').length;"), 0);
+        assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
+      } finally { await preview.close(); preview = undefined; }
+    });
   } finally {
     try { if (tab) await call('close_tab', { handle: tab }); }
-    finally { lines.close(); driver.kill(); await producer.close(); }
+    finally { lines.close(); driver.kill(); await preview?.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
   }
 });
