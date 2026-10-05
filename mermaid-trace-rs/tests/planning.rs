@@ -897,7 +897,7 @@ fn gantt_2_title_occurrences_preserve_visible_owner_and_nonvisual_replacements()
             .descendants()
             .find(|node| node.attribute("class") == Some("titleText"))
             .unwrap();
-        assert_eq!(title.text().unwrap_or_default(), visible);
+        assert_eq!(support::text_content(title), visible);
         let native: Vec<Value> = serde_json::from_str(
             svg.descendants()
                 .find_map(|node| node.attribute("data-mt-native"))
@@ -1038,8 +1038,7 @@ fn gantt_2_cross_line_title_and_section_keep_one_original_construct_each() {
                 document
                     .descendants()
                     .any(|node| node.attribute("data-mt-key") == Some(key)
-                        && node.descendants().any(|child| child.is_text()
-                            && child.text().is_some_and(|text| text.contains(label))))
+                        && support::text_content(node).contains(label))
             );
         }
         assert!(pieces.iter().any(|item| item["domId"] == "gantt:task:a"));
@@ -2134,7 +2133,7 @@ fn kanban_plan_ac1_2_columns_cards_metadata_and_relations_have_exact_spans() {
             .descendants()
             .any(|n| n.attribute("data-mt-key") == Some("kanban:card:1")
                 && n.attribute("data-mt-role") == Some("node-label")
-                && n.descendants().any(|child| child.text() == Some("Same 😀"))),
+                && support::text_content(n) == "Same 😀"),
         "Kanban labels must survive the production SVG pipeline"
     );
     let pieces = result["mapping"]["pieces"].as_array().unwrap();

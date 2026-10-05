@@ -366,7 +366,10 @@ fn journey_2_fonts_keep_native_values_visible_text_and_exact_ownership() {
                     }
                     let title = svg
                         .descendants()
-                        .find(|node| node.has_tag_name("text") && node.text() == Some("Font title"))
+                        .find(|node| {
+                            node.has_tag_name("text")
+                                && support::text_content(*node) == "Font title"
+                        })
                         .unwrap();
                     assert_eq!(title.attribute("font-size"), Some("22"));
                     assert_eq!(title.attribute("font-family"), Some("Verdana"));
@@ -660,14 +663,7 @@ fn journey_2_legend_preserves_narrow_wrapping_and_actor_ownership() {
                     .collect::<Vec<_>>();
                 assert_eq!(labels.len(), expected.len());
                 for (label, text) in labels.iter().zip(&expected) {
-                    assert_eq!(
-                        label
-                            .descendants()
-                            .find(|n| n.has_tag_name("tspan"))
-                            .unwrap()
-                            .text(),
-                        Some(*text)
-                    );
+                    assert_eq!(support::text_content(*label), *text);
                     assert_eq!(
                         label.attribute("data-mt-key"),
                         Some(format!("journey:actor:{actor}").as_str())

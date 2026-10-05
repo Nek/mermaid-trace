@@ -1,3 +1,12 @@
+/// Text content across font/style runs, without assuming one XML text node per label.
+#[allow(dead_code)]
+pub fn text_content(node: roxmltree::Node<'_, '_>) -> String {
+    node.descendants()
+        .filter(|child| child.is_text())
+        .filter_map(|child| child.text())
+        .collect()
+}
+
 pub fn strip_trace(svg: &str) -> String {
     let document = roxmltree::Document::parse(svg).unwrap();
     let mut ranges = Vec::new();

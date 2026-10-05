@@ -243,7 +243,7 @@ fn seq_title_preserves_body_occurrences_and_frontmatter_fallback() {
             .descendants()
             .find(|n| n.attribute("data-mt-key") == Some("sequence:title"))
             .unwrap();
-        assert_eq!(text.text(), Some(expected));
+        assert_eq!(support::text_content(text), expected);
         assert_eq!(
             text.attribute("data-mt-start")
                 .unwrap()
