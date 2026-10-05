@@ -30,9 +30,12 @@ async function clickExposedTarget(target: Locator) {
 async function connectorPoint(target: Locator) {
   await target.scrollIntoViewIfNeeded();
   return target.evaluate(element => {
-    const path = element as SVGGeometryElement;
-    for (let fraction = 0.05; fraction < 1; fraction += 0.05) {
-      const screen = path.getPointAtLength(path.getTotalLength() * fraction).matrixTransform(path.getScreenCTM()!);
+    const path = element as SVGGeometryElement, matrix = path.getScreenCTM()!;
+    const length = path.getTotalLength();
+    // Merged routes can expose only a short terminal; sample rendered pixels, not path percentages.
+    const step = 1 / Math.max(Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d));
+    for (let distance = 0; distance <= length; distance += step) {
+      const screen = path.getPointAtLength(distance).matrixTransform(matrix);
       const point = { x: Math.round(screen.x), y: Math.round(screen.y) };
       const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
       if (hit === element || (hit === element.previousElementSibling && hit?.getAttribute('aria-hidden') === 'true')) return { x: point.x, y: point.y };
@@ -2610,6 +2613,22 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
       ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
       ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group', 'control-label'],
     ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
+  }
+});
+
+test('FLOW AC5/6: ELK merging and placement keep connectors independently selectable', { timeout: 240_000 }, async t => {
+  const variants = [
+    ...['SIMPLE', 'NETWORK_SIMPLEX', 'LINEAR_SEGMENTS', 'BRANDES_KOEPF'].flatMap(nodePlacementStrategy => [false, true].flatMap(mergeEdges => ['TB', 'LR'].map(direction => ({ direction, elk: { nodePlacementStrategy, mergeEdges } })))),
+    ...['NONE', 'LEFTUP', 'LEFTDOWN', 'RIGHTUP', 'RIGHTDOWN', 'BALANCED'].map(nodePlacementAlignment => ({ direction: 'TB', elk: { nodePlacementStrategy: 'BRANDES_KOEPF', nodePlacementAlignment, mergeEdges: true } })),
+  ];
+  for (const { direction, elk } of variants) {
+    const group = 'subgraph G[Group]\nA[Alpha] ab@-->|next| B[Longer beta]\nA ac@--> C[Gamma]\nA ad@--> D[Delta]\nB --> E[End]\nC --> E\nD --> E\nA ae@--> E\nend';
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', ...elk } })}\n---\nflowchart ${direction}\n${group}`;
+    await t.test(JSON.stringify({ direction, ...elk }), () => verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:ab', 'ab@-->|next|', 'edge'], ['edge:ab', 'next', 'edge-label'],
+      ['edge:ac', 'ac@-->', 'edge'], ['edge:ad', 'ad@-->', 'edge'], ['edge:ae', 'ae@-->', 'edge'],
+      ['flowchart:subgraph:G', group],
+    ]));
   }
 });
 
