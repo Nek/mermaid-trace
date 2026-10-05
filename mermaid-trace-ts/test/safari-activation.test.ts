@@ -211,6 +211,34 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
       } finally { await preview.close(); preview = undefined; }
     });
+    await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', async () => {
+      const source = '---\nconfig:\n  fontFamily: Arial\n---\nstateDiagram-v2\nstate "Alpha 😀 中文" as A';
+      const { svg } = await producer.render('font-css', source);
+      await call('navigate_to_url', { tab_uuid: tab, url: 'data:text/html,<title>Mermaid Trace font CSS</title>' });
+      const result = await evaluate(`return (async()=>{
+        document.body.innerHTML=${JSON.stringify(svg)};
+        await document.fonts.ready;
+        const label=[...document.querySelectorAll('.text-inner-tspan')].find(e=>e.textContent==='Alpha 😀 中文');
+        const before={fill:getComputedStyle(label).fill,text:label.textContent,children:label.children.length};
+        const style=document.createElement('style');document.head.append(style);
+        const sizes=[];
+        for(const size of [22,11]){
+          style.textContent='.text-inner-tspan:has(> tspan){fill:red!important}.text-inner-tspan{font-size:'+size+'px!important}';
+          await document.fonts.ready;
+          sizes.push({fill:getComputedStyle(label).fill,text:label.textContent,size:getComputedStyle(label).fontSize,width:label.getComputedTextLength()});
+        }
+        return {before,sizes};
+      })();`);
+      assert.equal(result.before.children, 0, 'font transport must preserve the text-only owner');
+      for (const [index, size] of [22, 11].entries()) {
+        assert.equal(result.sizes[index].fill, result.before.fill);
+        assert.equal(result.sizes[index].text, result.before.text);
+        assert.equal(result.sizes[index].size, `${size}px`);
+        assert.ok(result.sizes[index].width > 0, 'resizing must not hide the label');
+      }
+      assert.ok(Math.abs(result.sizes[0].width / 2 - result.sizes[1].width) < 0.1,
+        'mixed-font text must scale with authored CSS size');
+    });
     await t.test('WATCH-SAFARI: saves, invalid edits and atomic replacement preserve current mappings', async () => {
       const sources = cases.slice(0, 7).map(([source]) => source);
       const markdown = '# Watch 🐟\r\n\r\n' + sources.map(source => '```mermaid\r\n' + source.replaceAll('\n', '\r\n') + '\r\n```\r\n').join('\r\n');
