@@ -911,6 +911,16 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-TEMPLATES: filtered node edge and group labels keep saved and live ownership', { timeout: 120_000 }, async () => {
+  const label = 'Alpha 😀 ${secret}', edge = 'Next ${secret}', group = 'Group ${secret}';
+  for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_TEMPLATES: true } })}\n---\nflowchart LR\nsubgraph G["${group}"]\nA["${label}"] ab@-->|"${edge}"| B[Beta]\nend`;
+    await verifyNative(source, 'node:A', `A["${label}"]`, label, [
+      ['edge:ab', `ab@-->|"${edge}"|`, 'edge'], ['edge:ab', edge, 'edge-label'], ['flowchart:subgraph:G', group, 'control-label'],
+    ]);
+  }
+});
+
 test('SHARED-SANITIZER: filtered labels retain saved and live source ownership', { timeout: 120_000 }, async () => {
   const label = '<div>Hidden <b>nested</b></div>Alpha 😀';
   for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const option of ['FORBID_CONTENTS', 'ADD_FORBID_CONTENTS']) {

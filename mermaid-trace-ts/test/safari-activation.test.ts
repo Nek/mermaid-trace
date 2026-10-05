@@ -62,6 +62,11 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => {
+      const label = 'Alpha 😀 ${secret}', edge = 'Next ${secret}', group = 'Group ${secret}';
+      const source = `%% TEMPLATES ${layout} ${htmlLabels}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_TEMPLATES: true } })}}%%\nflowchart LR\nsubgraph G["${group}"]\nA["${label}"] ab@-->|"${edge}"| B[Beta]\nend`;
+      return [[source, label], [source, edge, 'edge-label'], [source, group, 'control-label']] as [string, string, string?][];
+    })));
     cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => ['FORBID_CONTENTS', 'ADD_FORBID_CONTENTS'].map((option): [string, string] => {
       const label = '<div>Hidden <b>nested</b></div>Alpha 😀';
       return [`%% SANITIZER ${layout} ${htmlLabels} ${option}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { FORBID_TAGS: ['div'], [option]: ['DIV'] } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
