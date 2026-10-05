@@ -32,7 +32,8 @@ async function connectorPoint(target: Locator) {
   return target.evaluate(element => {
     const path = element as SVGGeometryElement;
     for (let fraction = 0.05; fraction < 1; fraction += 0.05) {
-      const point = path.getPointAtLength(path.getTotalLength() * fraction).matrixTransform(path.getScreenCTM()!);
+      const screen = path.getPointAtLength(path.getTotalLength() * fraction).matrixTransform(path.getScreenCTM()!);
+      const point = { x: Math.round(screen.x), y: Math.round(screen.y) };
       const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
       if (hit === element || (hit === element.previousElementSibling && hit?.getAttribute('aria-hidden') === 'true')) return { x: point.x, y: point.y };
     }
@@ -313,7 +314,7 @@ test('FLOW-2-NONBREAKING-LABELS: saved and live HTML labels retain exact source 
         for (const [key, role, text] of cases) {
           const label = page.locator(`[data-mt-key="${key}"][data-mt-role="${role}"]`);
           await clickExposedTarget(label);
-          assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.toString()), text);
+          assert.equal(await originalSource.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent), text);
           const start = key === 'node:A' ? markdown.indexOf('A["&nbsp;"]') + 3
             : key === 'node:B' ? markdown.indexOf('B["X&nbsp;"]') + 3
               : key.startsWith('edge:') ? markdown.indexOf('-->|&nbsp;|') + 4
