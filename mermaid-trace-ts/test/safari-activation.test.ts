@@ -69,6 +69,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% ELK layering ${layeringStrategy}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { layeringStrategy, layeringLayerBound: 1 } })}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\nC --> A\nend\nA --> D[Delta]\nD f@-->|last| E[End]`;
       return [[source, 'Alpha'], [source, 'f@-->|last|', 'edge'], [source, 'last', 'edge-label']];
     }));
+    cases.push(...[false, 'arc', 'gap'].flatMap((lineHops): [string, string, string?][] => {
+      const source = `%% ELK hops ${lineHops}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { lineHops } })}}%%\nflowchart TB\nsubgraph G[Crossings]\nA[Alpha] --> D\nA --> E\nA e@-->|crossing| F\nB --> D\nB --> E\nB --> F\nC --> D\nC --> E\nC --> F\nend\ne@{curve: basis}`;
+      return [[source, 'Alpha'], [source, 'e@-->|crossing|', 'edge'], [source, 'crossing', 'edge-label']];
+    }));
     cases.push(
       ...['flowchart LR', 'flowchart-elk LR'].flatMap((header): [string, string, string?, number?][] => [
         [`${header}\nA[Alpha] --> B[Beta]`, 'A[Alpha]', 'node'],

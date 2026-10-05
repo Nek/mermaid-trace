@@ -2613,6 +2613,38 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
+test('FLOW AC5: ELK hop paint fits the static SVG viewport', async () => {
+  const producer = await createMermanProducer();
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const lineHops of ['arc', 'gap']) for (const direction of ['TB', 'BT', 'LR', 'RL']) {
+      const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { lineHops } })}\n---\nflowchart ${direction}\nsubgraph G\nA --> D\nA --> E\nA e@--> F\nB --> D\nB --> E\nB --> F\nC --> D\nC --> E\nC --> F\nend`;
+      await page.setContent((await producer.render('hop-bounds', source)).svg);
+      const paths = await page.locator('path.flowchart-link').evaluateAll(elements => elements.map(element => {
+        const path = element as SVGPathElement, root = path.ownerSVGElement!;
+        const box = path.getBBox(), matrix = root.getScreenCTM()!.inverse().multiply(path.getScreenCTM()!);
+        const corners = [[box.x, box.y], [box.x + box.width, box.y + box.height]].map(([x, y]) => new DOMPoint(x, y).matrixTransform(matrix));
+        const view = root.viewBox.baseVal;
+        return { d: path.getAttribute('d')!, inside: corners.every(p => p.x >= view.x && p.y >= view.y && p.x <= view.x + view.width && p.y <= view.y + view.height) };
+      }));
+      assert.ok(paths.some(({ d }) => lineHops === 'arc' ? d.includes('A') : d.split('M').length > 2), `${direction}/${lineHops} paints actual hops`);
+      assert.ok(paths.every(p => p.inside), `${direction}/${lineHops} fits the static viewport`);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
+test('FLOW AC5/6: ELK crossing hops preserve saved/live connector selection', { timeout: 180_000 }, async () => {
+  for (const lineHops of [false, 'arc', 'gap']) for (const direction of ['TB', 'LR']) for (const look of ['classic', 'neo', 'handDrawn']) {
+    const group = 'subgraph G[Crossings]\nA[Alpha] --> D\nA --> E\nA e@-->|crossing| F\nB --> D\nB --> E\nB --> F\nC --> D\nC --> E\nC --> F\nend';
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', look, elk: { lineHops } })}\n---\nflowchart ${direction}\n${group}\ne@{curve: basis}`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|crossing|', 'edge'], ['edge:e', 'crossing', 'edge-label'],
+      ['edge:L_C_D_0', '-->', 'edge'], ['flowchart:subgraph:G', group],
+    ]);
+  }
+});
+
 test('FLOW AC5/6: ELK layering preserves saved/live selection across cycles and nested scopes', { timeout: 240_000 }, async () => {
   for (const layeringStrategy of ['NETWORK_SIMPLEX', 'LONGEST_PATH', 'LONGEST_PATH_SOURCE', 'COFFMAN_GRAHAM', 'MIN_WIDTH', 'STRETCH_WIDTH', 'INTERACTIVE']) for (const direction of ['TB', 'BT', 'LR', 'RL']) {
     const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nB --> C[Gamma]\nC --> A\nA s@--> A\nend';
