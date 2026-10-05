@@ -2613,6 +2613,18 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
+test('FLOW AC5/6: ELK presets preserve nested saved/live selection and overrides', { timeout: 120_000 }, async () => {
+  for (const preset of ['default', 'legacy', 'modelOrder', 'depthFirst']) for (const override of [false, true]) {
+    const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nB --> C[Gamma]\nC --> A\nend';
+    const elk = { preset, ...(override ? { nodePlacementStrategy: 'SIMPLE', nodePlacementAlignment: 'NONE', cycleBreakingStrategy: 'GREEDY' } : {}) };
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk })}\n---\nflowchart LR\nsubgraph Outer\n${group}\nend\nA --> D[Delta]\nB --> D\n`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group', 'control-label'],
+    ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
+  }
+});
+
 test('FLOW AC5/6: authored ID settings preserve saved/live selection and instance isolation', { timeout: 120_000 }, async () => {
   for (const layout of ['dagre', 'elk']) for (const deterministicIds of [false, true]) for (const deterministicIDSeed of ['', '作者 🐟']) {
     const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
