@@ -2602,6 +2602,17 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
+test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector selection', { timeout: 120_000 }, async () => {
+  for (const layout of ['dagre', 'elk']) for (const handDrawnSeed of [undefined, 0, 42, 43]) {
+    const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
+    const source = `---\nconfig: ${JSON.stringify({ layout, look: 'handDrawn', handDrawnSeed })}\n---\nflowchart LR\n${group}\n`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group', 'control-label'],
+    ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
+  }
+});
+
 test('FLOW AC5/6: wrapping boundaries preserve saved/live node, group and connector selection', { timeout: 240_000 }, async () => {
   for (const header of ['flowchart TB', 'flowchart-elk TB']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) for (const wrappingWidth of [0, 60]) {
     const group = 'subgraph G[Group]\nA["`Alpha beta 😀`"] e@-->|next| B[Finish]\nend';
