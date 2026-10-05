@@ -911,6 +911,20 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-MAX-TEXT: secure source limits preserve all-family saved and live selection', { timeout: 120_000 }, async () => {
+  for (const [body, key, expected] of [
+    ['flowchart LR\nA[Alpha 😀] --> B', 'node:A', 'A[Alpha 😀]'],
+    ['flowchart-elk LR\nA[Alpha 😀] --> B', 'node:A', 'A[Alpha 😀]'],
+    ['sequenceDiagram\nparticipant A as Alpha 😀\nA->>B: hello', 'actor:A', 'participant A as Alpha 😀'],
+    ['gantt\ndateFormat YYYY-MM-DD\nAlpha 😀 :a, 2026-01-01, 1d', 'gantt:task:a', 'Alpha 😀 :a, 2026-01-01, 1d'],
+    ['journey\nsection Work\nAlpha 😀: 5: A', 'journey:task:0', 'Alpha 😀: 5: A'],
+    ['kanban\n  todo[Todo]\n    a[Alpha 😀]', 'kanban:card:1', 'a[Alpha 😀]'],
+    ['stateDiagram-v2\nstate "Alpha 😀" as A', 'state:node:A', 'state "Alpha 😀" as A'],
+  ] as const) {
+    await verifyNative('---\nconfig: {maxTextSize: 0}\n---\n%% Original 😀\n' + body, key, expected, 'Alpha 😀');
+  }
+});
+
 test('FLOW-2-MAX-EDGES: secure source overrides preserve saved and live selection', { timeout: 60_000 }, async () => {
   for (const layout of ['dagre', 'elk']) {
     const source = `---\nconfig: ${JSON.stringify({ layout, maxEdges: 0 })}\n---\nflowchart LR\nA[Alpha] ab@-->|next| B[Beta]`;

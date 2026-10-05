@@ -62,6 +62,9 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
+      `%% MAX-TEXT ${source.split('\n')[0]}\n%%{init: {maxTextSize: 0}}%%\n${source.replace('Alpha', 'Alpha 😀')}`, 'Alpha 😀',
+    ]));
     cases.push(...['dagre', 'elk'].flatMap((layout): [string, string, string?][] => {
       const source = `%% MAX-EDGES ${layout}\n%%{init: ${JSON.stringify({ layout, maxEdges: 0 })}}%%\nflowchart LR\nA[Alpha] ab@-->|next| B[Beta]`;
       return [[source, 'Alpha'], [source, 'ab@-->|next|', 'edge'], [source, 'next', 'edge-label']];
