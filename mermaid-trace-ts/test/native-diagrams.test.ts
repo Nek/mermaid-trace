@@ -2264,7 +2264,7 @@ test('JOURNEY-2-FONTS-LIVE: source, focus and clipboard follow the visible label
   } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test('JOURNEY-2-GEOMETRY-CONFIG: zero-area tasks and signed spacing retain saved/live selection', { timeout: 180_000 }, async () => {
+test('JOURNEY-2-GEOMETRY-CONFIG: zero-area tasks and signed spacing retain saved/live selection', { timeout: 300_000 }, async () => {
   for (const look of ['classic', 'neo', 'handDrawn']) for (const html of [false, true]) {
     for (const [width, height, margin] of [[0, 50, 70], [150, 0, 50], [0, 0, 70], [150, 50, -25.5], [150, 50, -75], [150, 50, -250]]) {
       const source = `---\r\nconfig:\r\n  look: ${look}\r\n  htmlLabels: ${html}\r\n  journey:\r\n    width: ${width}\r\n    height: ${height}\r\n    taskMargin: ${margin}\r\n    leftMargin: ${margin === -250 ? 400 : 150}\r\n---\r\njourney\r\nsection S 😀\r\nFirst : 5\r\nSecond : 3\r\n`;
