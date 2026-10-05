@@ -1934,6 +1934,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdc27185603bab37df6a9aad9c59d728feb8d6acf72f9c94a2e25d7f8f3bdaea"
 dependencies = [
  "font-types",
+ "indexmap",
+ "kurbo",
  "log",
  "read-fonts",
 ]
