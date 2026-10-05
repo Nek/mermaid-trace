@@ -3139,6 +3139,110 @@ fn flow_ac5_hand_drawn_seeds_preserve_determinism_geometry_and_source() {
 }
 
 #[test]
+fn flow_ac5_explicit_ids_survive_source_and_site_id_settings() {
+    use serde_json::json;
+    use std::collections::HashSet;
+    let configs = [None, Some(false), Some(true)]
+        .into_iter()
+        .flat_map(|enabled| {
+            [None, Some(""), Some("author"), Some("作者 🐟")].map(move |seed| {
+                let mut config = json!({});
+                if let Some(enabled) = enabled {
+                    config["deterministicIds"] = json!(enabled);
+                }
+                if let Some(seed) = seed {
+                    config["deterministicIDSeed"] = json!(seed);
+                }
+                config
+            })
+        });
+    for config in configs {
+        for header in ["flowchart LR", "flowchart-elk LR"] {
+            for source_config in [false, true] {
+                let mut site = json!({"traceSource": true, "htmlLabels": false});
+                if source_config {
+                    site["deterministicIds"] =
+                        json!(!config["deterministicIds"].as_bool().unwrap_or(false));
+                    site["deterministicIDSeed"] = json!("host-seed");
+                } else {
+                    site.as_object_mut()
+                        .unwrap()
+                        .extend(config.as_object().unwrap().clone());
+                }
+                let renderer = merman::Renderer::new().with_engine(
+                    merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(site)),
+                );
+                let frontmatter = if source_config {
+                    format!("---\nconfig: {config}\n---\n")
+                } else {
+                    String::new()
+                };
+                let source = format!(
+                    "{frontmatter}{header}\nsubgraph G[Group]\nA[Alpha] e@<-->|next| B[Beta]\nB o--o C\nC x--x D\nend"
+                );
+                let first = mermaid_trace_rs::render_with(&renderer, "first", &source).unwrap();
+                let second = mermaid_trace_rs::render_with(&renderer, "second", &source).unwrap();
+                assert_eq!(
+                    first,
+                    mermaid_trace_rs::render_with(&renderer, "first", &source).unwrap(),
+                    "interleaved requests must preserve output"
+                );
+                assert_eq!(
+                    first["mapping"], second["mapping"],
+                    "caller IDs must not change source ownership"
+                );
+                let mut first_ids = HashSet::new();
+                for (id, result) in [("first", &first), ("second", &second)] {
+                    assert_eq!(result["source"], source);
+                    let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    assert_eq!(doc.root_element().attribute("id"), Some(id));
+                    let all_ids: Vec<_> = doc
+                        .descendants()
+                        .filter_map(|n| n.attribute("id"))
+                        .collect();
+                    let ids: HashSet<_> = all_ids.iter().copied().collect();
+                    assert_eq!(all_ids.len(), ids.len(), "each SVG ID must be unique");
+                    assert!(
+                        ids.iter().all(|value| value.starts_with(id)),
+                        "every generated ID uses the caller namespace"
+                    );
+                    let references: Vec<_> = doc
+                        .descendants()
+                        .flat_map(|n| {
+                            n.attributes()
+                                .map(|a| a.value())
+                                .chain(n.is_text().then(|| n.text().unwrap()))
+                        })
+                        .flat_map(|value| {
+                            value
+                                .split("url(#")
+                                .skip(1)
+                                .map(|tail| tail.split(')').next().unwrap())
+                        })
+                        .collect();
+                    assert!(
+                        references.len() >= 6,
+                        "all three double-ended marker kinds must be referenced"
+                    );
+                    assert!(
+                        references.iter().all(|target| ids.contains(target)),
+                        "references must resolve within their own SVG"
+                    );
+                    if id == "first" {
+                        first_ids.extend(ids.into_iter().map(str::to_owned));
+                    } else {
+                        assert!(
+                            ids.iter().all(|value| !first_ids.contains(*value)),
+                            "different caller IDs must not collide"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn flow_ac5_layout_and_drawing_share_padding_and_wrapping_boundaries() {
     let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(
         merman::MermaidConfig::from_value(serde_json::json!({
