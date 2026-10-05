@@ -2613,6 +2613,17 @@ test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector
   }
 });
 
+test('FLOW AC5/6: ELK terminal straightening preserves saved/live source selection', { timeout: 240_000 }, async () => {
+  for (const straightenEdges of [false, true]) for (const lineHops of [false, 'arc', 'gap']) for (const direction of ['TB', 'LR']) {
+    const group = 'subgraph G[Routes]\nA[Alpha] --> D\nA --> E\nA --> F\nB --> D\nB --> E\nB --> F\nC e@-->|route| D\nC --> E\nC --> F\nend';
+    const source = `---\nconfig: ${JSON.stringify({ layout: 'elk', elk: { straightenEdges, lineHops } })}\n---\nflowchart ${direction}\n${group}`;
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|route|', 'edge'], ['edge:e', 'route', 'edge-label'],
+      ['edge:L_B_E_0', '-->', 'edge'], ['flowchart:subgraph:G', group],
+    ]);
+  }
+});
+
 test('FLOW AC5: ELK hop paint fits the static SVG viewport', async () => {
   const producer = await createMermanProducer();
   const browser = await launchBrowser();
