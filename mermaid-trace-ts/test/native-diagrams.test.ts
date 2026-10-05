@@ -911,6 +911,14 @@ async function verifyNative(source: string, key: string, expected: string, label
   } finally { await browser.close(); await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 }
 
+test('SHARED-RCDATA: literal markup text retains saved and live source ownership', { timeout: 120_000 }, async () => {
+  const label = '<textarea><b>Alpha</b> &amp; Ω</textarea>';
+  for (const layout of ['dagre', 'elk']) {
+    const source = `---\nconfig: ${JSON.stringify({ layout, htmlLabels: true })}\n---\nflowchart LR\nA["${label}"] --> B[Beta]`;
+    await verifyNative(source, 'node:A', `A["${label}"]`, label);
+  }
+});
+
 test('SHARED-XML: XML attribute filtering retains saved and live source ownership', { timeout: 180_000 }, async () => {
   const label = "<span style='color:red;/* --> */'>Alpha 😀</span>";
   for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) for (const safe of [false, true]) {

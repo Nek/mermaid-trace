@@ -62,6 +62,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...['dagre', 'elk'].map((layout): [string, string] => {
+      const label = '<textarea><b>Alpha</b> &amp; Ω</textarea>';
+      return [`%% RCDATA ${layout}\n%%{init: ${JSON.stringify({ layout, htmlLabels: true })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
+    }));
     cases.push(...['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels => [false, true].map((safe): [string, string] => {
       const label = "<span style='color:red;/* --> */'>Alpha 😀</span>";
       return [`%% XML ${layout} ${htmlLabels} ${safe}\n%%{init: ${JSON.stringify({ layout, htmlLabels, dompurifyConfig: { SAFE_FOR_XML: safe } })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
