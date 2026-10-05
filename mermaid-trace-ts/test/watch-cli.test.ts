@@ -467,3 +467,31 @@ test('WATCH-STARTUP: initial file notifications wait for the native renderer', {
     }
   } finally { await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('WATCH-DIAGNOSTICS: report warnings once per published revision', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-watch-warning-'));
+  const filename = join(directory, 'diagram.mmd');
+  const source = 'pie\n"Alpha" : 1\n';
+  const warning = t.mock.method(console, 'warn', () => {});
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0 });
+    assert.equal(warning.mock.callCount(), 1, 'one initial diagram-only warning');
+    await writeFile(filename, source);
+    await new Promise(resolve => setTimeout(resolve, 750));
+    assert.equal(warning.mock.callCount(), 1, 'an unchanged save must not repeat a published warning');
+    for (const [index, next] of [source.replace('Alpha', 'Beta'), source].entries()) {
+      await writeFile(filename, next);
+      await assertEventually(() => warning.mock.callCount() >= index + 2);
+      assert.equal(warning.mock.callCount(), index + 2, 'each newly published revision reports its warning');
+      const html: string = await (await fetch(preview.url)).text();
+      const payload = html.match(/<script id="trace-data" type="application\/json">(.*?)<\/script>/s)!;
+      assert.equal(JSON.parse(payload[1]!).document.source, next);
+    }
+    for (const call of warning.mock.calls) {
+      assert.ok(String(call.arguments[0]).includes(filename));
+      assert.match(String(call.arguments[0]), /whole-diagram selection only/);
+    }
+  } finally { await preview?.close(); await rm(directory, { recursive: true, force: true }); }
+});
