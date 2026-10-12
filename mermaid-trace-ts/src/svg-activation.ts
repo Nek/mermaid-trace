@@ -24,7 +24,7 @@ export function activateSvg(svg: SVGSVGElement, options: {
     const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
     if (style && (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0)) return false;
     const shapes = 'rect,path,line,polygon,circle,ellipse,foreignObject,image,use';
-    if (!element.matches(shapes) && !element.querySelector(shapes)) {
+    if (!element.matches(shapes) && ![...element.querySelectorAll(shapes)].some(shape => !hitTargets.has(shape))) {
       const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
       if (!text.length || text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
     }

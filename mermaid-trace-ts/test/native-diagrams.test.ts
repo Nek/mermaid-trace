@@ -1230,6 +1230,92 @@ test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', {
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await launchBrowser();
+  const directory = await mkdtemp(join(tmpdir(), 'trace-flow-zero-font-'));
+  const filename = join(directory, 'flow.md');
+  const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
+  const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const context = await browser.newContext({ permissions: clipboardPermissions });
+    const page = await context.newPage(); page.setDefaultTimeout(5_000);
+    const labelSelector = '[data-mt-key="node:A"][data-mt-role=node-label]';
+    const ownerSelector = '[data-mt-key="node:A"][data-mt-role=node]';
+    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) {
+      for (const html of [false, true]) for (const styled of [false, true]) {
+        const config = { layout, look, htmlLabels: html, themeVariables: { fontSize: styled ? 16 : 0 } };
+        const source = `%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA[Alpha] --> B[Beta]\n${styled ? 'style A font-size:0pt\n' : ''}`;
+        const span = { start: source.indexOf('Alpha'), end: source.indexOf('Alpha') + 5 };
+        const markdown = '# Fonts\n\n```mermaid\n' + source + '```\n';
+        const { svg } = await producer.render('flow-zero-font', source);
+        for (const live of [false, true]) {
+          if (live) {
+            await writeFile(filename, markdown);
+            preview = await watchPreview(filename, { port: 0, sourceView: true });
+            await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+          } else {
+            await page.setContent(svg);
+            await page.evaluate(async activation => {
+              const { activateSvg } = await import(activation);
+              const events: unknown[] = [];
+              Object.assign(window, { events, handle: activateSvg(document.querySelector('svg')!, { onSelect: (event: unknown) => events.push(event) }) });
+            }, activation);
+          }
+          const label = page.locator(labelSelector), owner = page.locator(ownerSelector);
+          const text = label.locator('text').first();
+          assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), '0px', source);
+          assert.equal(await label.getAttribute('tabindex'), null);
+          assert.equal(await owner.getAttribute('tabindex'), '0');
+          const reverse = async () => {
+            if (!live) await page.evaluate(span => (window as any).handle.highlight([span]), span);
+            else await page.frameLocator('#source-frame').locator('#source').evaluate((element, span) => {
+              const range = element.ownerDocument.createRange();
+              range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
+              const selection = element.ownerDocument.getSelection()!;
+              selection.removeAllRanges(); selection.addRange(range);
+            }, { start: markdown.indexOf('Alpha'), end: markdown.indexOf('Alpha') + 5 });
+            await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('data-mt-selected') === 'true', ownerSelector);
+            assert.equal(await label.getAttribute('data-mt-selected'), null);
+          };
+          await reverse();
+          await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '11px', 'important'); });
+          await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('tabindex') === '0', labelSelector);
+          const eleven = await text.boundingBox();
+          assert.ok(eleven && eleven.width > 0 && eleven.height > 0);
+          await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '22px', 'important'); });
+          const twentyTwo = await text.boundingBox();
+          assert.ok(twentyTwo && twentyTwo.width > eleven.width * 1.8 && twentyTwo.width < eleven.width * 2.2);
+          await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '11px', 'important'); });
+          for (const pointer of [true, false]) {
+            if (pointer) await clickExposedTarget(label);
+            else { await label.focus(); await label.press('Enter'); }
+            assert.equal(await label.getAttribute('data-mt-selected'), 'true');
+            assert.equal(await owner.getAttribute('data-mt-selected'), null);
+            if (live) {
+              const original = page.frameLocator('#source-frame').locator('#source');
+              assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'Alpha');
+              const start = markdown.indexOf('Alpha');
+              await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+                formatLocation({ id: filename, source: markdown }, { start, end: start + 5 }));
+            } else assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
+          }
+          await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '0px', 'important'); });
+          await page.waitForFunction(selector => !document.querySelector(selector)?.hasAttribute('tabindex'), labelSelector);
+          assert.equal(await label.getAttribute('data-mt-selected'), null);
+          assert.equal(await label.locator('[aria-hidden=true]').count(), 0, 'hidden labels have no generated click helper');
+          await reverse();
+          if (!live) {
+            await page.evaluate(() => (window as any).handle.dispose());
+            assert.equal(await page.locator('[tabindex], [data-mt-selected]').count(), 0);
+          } else { await preview!.close(); preview = undefined; }
+        }
+      }
+    }
+  } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('ACT-VISIBILITY-TRANSITIONS: Gantt text label follows font visibility', { timeout: 30_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await launchBrowser();

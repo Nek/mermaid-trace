@@ -308,6 +308,71 @@ fn absolute_font_units_match_equivalent_pixel_geometry() {
 }
 
 #[test]
+fn zero_font_configuration_preserves_unpainted_source_text() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for styled in [false, true] {
+                for html in [false, true] {
+                    for size in [json!(0), json!("0px"), json!("0pt")] {
+                        let config = json!({
+                            "layout": layout, "htmlLabels": html, "look": look,
+                            "themeVariables": {"fontSize": if styled { json!(16) } else { size.clone() }}
+                        });
+                        let mut source =
+                            format!("%%{{init: {config}}}%%\nflowchart LR\nA[Alpha] --> B[Beta]");
+                        if styled {
+                            source.push_str(&format!(
+                                "\nstyle A font-size:{}",
+                                size.as_str()
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| size.to_string())
+                            ));
+                        }
+                        let output = mermaid_trace_rs::render("zero-font", &source).unwrap();
+                        let svg = output["svg"].as_str().unwrap();
+                        assert!(
+                            svg.replace("font-size: ", "font-size:")
+                                .contains(if styled {
+                                    "font-size:0"
+                                } else {
+                                    "font-size:0px"
+                                }),
+                            "{layout}/{html}/{size}: zero size was coerced"
+                        );
+                        let doc = roxmltree::Document::parse(svg).unwrap();
+                        let label = doc
+                            .descendants()
+                            .find(|n| {
+                                n.attribute("data-mt-key") == Some("node:A")
+                                    && n.attribute("data-mt-role") == Some("node-label")
+                            })
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{layout}/{html}/{size}: hidden label keeps its source identity"
+                                )
+                            });
+                        assert!(
+                            label.descendants().any(|n| n.has_tag_name("text")),
+                            "hidden text must remain editable by CSS"
+                        );
+                        assert_eq!(support::text_content(label), "Alpha");
+                        let start: usize =
+                            label.attribute("data-mt-start").unwrap().parse().unwrap();
+                        let end: usize = label.attribute("data-mt-end").unwrap().parse().unwrap();
+                        assert_eq!(&source[start..end], "Alpha");
+                        assert!(
+                            svg.contains("@font-face"),
+                            "hidden text retains portable fonts"
+                        );
+                        assert_eq!(output["mapping"]["source"], source);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn existing_family_font_requests_have_no_silent_approximate_fallback() {
     let fonts = Arc::new(NativeFontContext::system().unwrap());
     for html in [false, true] {
