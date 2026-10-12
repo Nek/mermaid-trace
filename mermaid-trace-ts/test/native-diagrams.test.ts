@@ -2801,17 +2801,18 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
-for (const suite of ['absolute', 'theme', 'authored']) test(`FLOW AC5/6: ${suite === 'authored' ? 'relative authored' : suite === 'theme' ? 'relative theme' : 'absolute and fractional'} fonts retain painted size, containment and selection`, { timeout: 600_000 }, async () => {
-  const relative = suite !== 'absolute', authored = suite === 'authored';
+for (const suite of ['absolute', 'theme', 'authored', 'numeric']) test(`FLOW AC5/6: ${suite === 'numeric' ? 'numeric theme' : suite === 'authored' ? 'relative authored' : suite === 'theme' ? 'relative theme' : 'absolute and fractional'} fonts retain painted size, containment and selection`, { timeout: 600_000 }, async () => {
+  const relative = suite !== 'absolute', authored = suite === 'authored', numeric = suite === 'numeric';
   const producer = await createMermanProducer();
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
-    const sizes = relative ? ['1.5em', '1.5rem', '150%'].map(size => ({ size, styled: authored })) : [{ size: '24.5px', styled: false }, ...['18pt', '1.5pc', '0.25in', '0.635cm', '6.35mm', '25.4Q', '18PT'].flatMap(size => [false, true].map(styled => ({ size, styled })))];
+    const sizes = numeric ? [{ size: '24.5px', styled: false }, ...['1.5em', '1.5rem', '150%'].map(size => ({ size, styled: true }))] : relative ? ['1.5em', '1.5rem', '150%'].map(size => ({ size, styled: authored })) : [{ size: '24.5px', styled: false }, ...['18pt', '1.5pc', '0.25in', '0.635cm', '6.35mm', '25.4Q', '18PT'].flatMap(size => [false, true].map(styled => ({ size, styled })))];
     for (const { size, styled } of sizes) for (const cascade of (authored ? ['inline', 'class', 'override'] : ['inline'])) for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+      const allStyled = authored || (numeric && styled);
       const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';
-      const config = { layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', ...(authored ? { themeVariables: { fontSize: '20px' } } : !styled ? { themeVariables: { fontSize: size } } : {}) };
-      const styles = authored ? (cascade === 'class' ? `classDef last font-size:${size}\nclass A,G,e last` :
+      const config = { layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', ...(numeric ? { themeVariables: { fontSize: styled ? 20 : 24.5 } } : authored ? { themeVariables: { fontSize: '20px' } } : !styled ? { themeVariables: { fontSize: size } } : {}) };
+      const styles = allStyled ? (cascade === 'class' ? `classDef last font-size:${size}\nclass A,G,e last` :
         (cascade === 'override' ? 'classDef first font-size:2em\nclass A,G first\nlinkStyle default font-size:2em\n' : '') +
         `style A font-size:${size}\nstyle G font-size:${size}\nlinkStyle 0 font-size:${size}`) : styled ? `style A font-size:${size}` : '';
       const source = `%% 😀\r\n%%{init: ${JSON.stringify(config)}}%%\r\nflowchart LR\r\n${group}\r\n${styles}`;
@@ -2829,9 +2830,9 @@ for (const suite of ['absolute', 'theme', 'authored']) test(`FLOW AC5/6: ${suite
         const texts = authored ? ['node:A', 'edge:e', 'flowchart:subgraph:G'].flatMap(key => [...document.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"]`)!.querySelectorAll('text, tspan')]) : [...(styled ? labelElement : document).querySelectorAll(styled ? 'text, tspan' : '[data-mt-role$="-label"] text, [data-mt-role$="-label"] tspan')];
         return { sizes: texts.map(text => getComputedStyle(text).fontSize),
           contained: label.left >= shape.left - 3 && label.right <= shape.right + 3 && label.top >= shape.top - 3 && label.bottom <= shape.bottom + 3 };
-      }, { variant: `${size}/${cascade}/${styled}/${layout}/${look}/${htmlLabels}`, styled, authored });
+      }, { variant: `${size}/${cascade}/${styled}/${layout}/${look}/${htmlLabels}`, styled, authored: allStyled });
       assert.ok(geometry.sizes.length > 0);
-      assert.ok(geometry.sizes.every(value => size === '24.5px' ? value === '24.5px' : Math.abs(parseFloat(value) - (authored ? 30 : 24)) < .001), `${size}/${styled}/${layout}/${look}/${htmlLabels}: ${geometry.sizes}`);
+      assert.ok(geometry.sizes.every(value => size === '24.5px' ? value === '24.5px' : Math.abs(parseFloat(value) - (allStyled ? 30 : 24)) < .001), `${size}/${styled}/${layout}/${look}/${htmlLabels}: ${geometry.sizes}`);
       assert.ok(geometry.contained, `${size}/${styled}/${layout}/${look}/${htmlLabels}: measured label must fit its shape`);
       if (relative || size === '24.5px' || (look === 'classic' && !htmlLabels)) await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
         ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],

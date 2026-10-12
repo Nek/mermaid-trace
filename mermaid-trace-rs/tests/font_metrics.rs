@@ -308,6 +308,58 @@ fn absolute_font_units_match_equivalent_pixel_geometry() {
 }
 
 #[test]
+fn numeric_theme_fonts_match_pixel_strings_in_production() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for size in [0.0, 0.5, 24.0, 24.5] {
+                    for authored in ["", "1.5em", "1.5rem", "150%"] {
+                        let draw = |font_size: serde_json::Value| {
+                            let config = json!({"layout": layout, "look": look, "htmlLabels": html,
+                                "handDrawnSeed": 42, "themeVariables": {"fontSize": font_size}});
+                            let styles = if authored.is_empty() {
+                                String::new()
+                            } else {
+                                format!(
+                                    "\nstyle A font-size:{authored}\nstyle G font-size:{authored}\nlinkStyle 0 font-size:{authored}"
+                                )
+                            };
+                            let source = format!(
+                                "%%{{init: {config}}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] -->|Next| B[Beta]\nend{styles}"
+                            );
+                            let output = mermaid_trace_rs::render("numeric-font", &source).unwrap();
+                            let svg = output["svg"].as_str().unwrap();
+                            let doc = roxmltree::Document::parse(svg).unwrap();
+                            for (role, text) in [
+                                ("node-label", "Alpha"),
+                                ("edge-label", "Next"),
+                                ("control-label", "Group"),
+                            ] {
+                                let target = doc
+                                    .descendants()
+                                    .find(|n| n.attribute("data-mt-role") == Some(role))
+                                    .unwrap();
+                                let start: usize =
+                                    target.attribute("data-mt-start").unwrap().parse().unwrap();
+                                let end: usize =
+                                    target.attribute("data-mt-end").unwrap().parse().unwrap();
+                                assert_eq!(&source[start..end], text);
+                            }
+                            assert_eq!(output["mapping"]["source"], source);
+                            support::strip_trace(svg)
+                        };
+                        assert!(
+                            draw(json!(size)) == draw(json!(format!("{size}px"))),
+                            "{layout}/{look}/{html}/{size}/{authored}: numeric font differs from pixel string"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn relative_authored_font_styles_resolve_once_for_owned_labels() {
     for layout in ["dagre", "elk"] {
         for html in [false, true] {
