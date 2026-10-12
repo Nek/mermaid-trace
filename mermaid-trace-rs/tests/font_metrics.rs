@@ -111,6 +111,82 @@ fn native_font_metrics_reach_node_geometry_in_both_layouts() {
 }
 
 #[test]
+fn explicit_default_theme_font_wins_over_legacy_root_font() {
+    let theme_font = r#""trebuchet ms", verdana, arial, sans-serif"#;
+    let body = "flowchart LR\r\nsubgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend";
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for layer in ["site", "directive", "frontmatter"] {
+                    let draw = |root_font: &str, explicit_theme: Option<&str>| {
+                        let mut config = json!({"layout": layout, "look": look, "handDrawnSeed": 42, "htmlLabels": html,
+                        "fontFamily": root_font});
+                        if let Some(font) = explicit_theme {
+                            config["themeVariables"] = json!({"fontFamily": font});
+                        }
+                        let source = match layer {
+                            "site" => body.to_owned(),
+                            "frontmatter" => {
+                                format!("---\r\nconfig: {config}\r\n---\r\n%% 😀\r\n{body}")
+                            }
+                            _ => format!("%% 😀\r\n%%{{init: {config}}}%%\r\n{body}"),
+                        };
+                        let renderer = if layer == "site" {
+                            let mut config = config;
+                            config["traceSource"] = json!(true);
+                            Renderer::new().with_engine(
+                                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                            )
+                        } else {
+                            mermaid_trace_rs::renderer()
+                        };
+                        let output =
+                            mermaid_trace_rs::render_with(&renderer, "font-precedence", &source)
+                                .unwrap();
+                        assert_eq!(output["mapping"]["source"], source);
+                        let svg = output["svg"].as_str().unwrap();
+                        let doc = roxmltree::Document::parse(svg).unwrap();
+                        // Compare rendered object geometry and text/font attributes, not configuration metadata.
+                        let utf16: Vec<_> = source.encode_utf16().collect();
+                        for (role, label) in [
+                            ("node-label", "Alpha WWWiii"),
+                            ("edge-label", "Next WWWiii"),
+                            ("control-label", "Group WWWiii"),
+                        ] {
+                            let target = doc
+                                .descendants()
+                                .find(|n| n.attribute("data-mt-role") == Some(role))
+                                .unwrap();
+                            let start: usize =
+                                target.attribute("data-mt-start").unwrap().parse().unwrap();
+                            let end: usize =
+                                target.attribute("data-mt-end").unwrap().parse().unwrap();
+                            assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), label);
+                        }
+                        ["node:A", "edge:e", "flowchart:subgraph:G"].map(|key| {
+                            doc.descendants()
+                                .filter(|n| n.attribute("data-mt-key") == Some(key))
+                                .map(|object| support::strip_trace(&svg[object.range()]))
+                                .collect::<Vec<_>>()
+                        })
+                    };
+                    assert_eq!(
+                        draw("Arial", Some(theme_font)),
+                        draw(theme_font, Some(theme_font)),
+                        "{layout}/{look}, html={html}, layer={layer}: explicit theme font must win even when it equals the default"
+                    );
+                    assert_eq!(
+                        draw("Arial", None),
+                        draw("Arial", Some("Arial")),
+                        "root-only font must still be normalized"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn existing_family_font_requests_have_no_silent_approximate_fallback() {
     let fonts = Arc::new(NativeFontContext::system().unwrap());
     for html in [false, true] {

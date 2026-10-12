@@ -2715,6 +2715,17 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
+test('FLOW AC5/6: explicit default theme font preserves saved/live source ownership', { timeout: 180_000 }, async () => {
+  for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+    const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';
+    const source = `%% 😀\r\n%%{init: ${JSON.stringify({ layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', themeVariables: { fontFamily: '"trebuchet ms", verdana, arial, sans-serif' } })}}%%\r\nflowchart LR\r\n${group}\r\n`;
+    await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
+      ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group WWWiii', 'control-label'],
+    ]);
+  }
+});
+
 test('FLOW AC5/6: hand-drawn seeds preserve saved/live node, group and connector selection', { timeout: 120_000 }, async () => {
   for (const layout of ['dagre', 'elk']) for (const handDrawnSeed of [undefined, 0, 42, 43]) {
     const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
