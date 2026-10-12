@@ -308,6 +308,54 @@ fn absolute_font_units_match_equivalent_pixel_geometry() {
 }
 
 #[test]
+fn relative_theme_fonts_match_pixel_geometry_and_source() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let draw = |size: &str| {
+                    let config = json!({"layout": layout, "look": look, "htmlLabels": html,
+                        "handDrawnSeed": 42, "themeVariables": {"fontSize": size}});
+                    let source = format!(
+                        "%%{{init: {config}}}%%\nflowchart LR\nA[Alpha WWWiii] -->|Next| B[Beta]"
+                    );
+                    let output = mermaid_trace_rs::render("relative-font", &source).unwrap();
+                    let svg = output["svg"].as_str().unwrap();
+                    let document = roxmltree::Document::parse(svg).unwrap();
+                    for (role, expected) in [("node-label", "Alpha WWWiii"), ("edge-label", "Next")]
+                    {
+                        let label = document
+                            .descendants()
+                            .find(|n| n.attribute("data-mt-role") == Some(role))
+                            .unwrap();
+                        let start: usize =
+                            label.attribute("data-mt-start").unwrap().parse().unwrap();
+                        let end: usize = label.attribute("data-mt-end").unwrap().parse().unwrap();
+                        assert_eq!(&source[start..end], expected);
+                    }
+                    assert_eq!(output["mapping"]["source"], source);
+                    // The complete painted artifact must equal the pixel control, apart from source metadata.
+                    support::strip_trace(svg)
+                };
+                for (pixel, relatives) in [
+                    ("24px", ["1.5em", "1.5rem", "150%"]),
+                    ("8px", ["0.5em", "0.5rem", "50%"]),
+                    ("0px", ["0em", "0rem", "0%"]),
+                ] {
+                    let expected = draw(pixel);
+                    for relative in relatives {
+                        assert_eq!(
+                            draw(relative),
+                            expected,
+                            "{layout}/{look}/{html}/{relative}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn zero_font_configuration_preserves_unpainted_source_text() {
     for layout in ["dagre", "elk"] {
         for look in ["classic", "neo", "handDrawn"] {
