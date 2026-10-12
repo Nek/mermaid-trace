@@ -308,6 +308,102 @@ fn absolute_font_units_match_equivalent_pixel_geometry() {
 }
 
 #[test]
+fn relative_authored_font_styles_resolve_once_for_owned_labels() {
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            for base in [16.0, 20.5, 0.5, 0.0] {
+                for cascade in ["inline", "class", "override"] {
+                    let draw = |value: &str| {
+                        let config = json!({"layout": layout, "htmlLabels": html,
+                            "themeVariables": {"fontSize": format!("{base}px")}});
+                        let prior = if cascade == "override" {
+                            "classDef first font-size:2em\nclass A,G first\nlinkStyle default font-size:2em\n"
+                        } else {
+                            ""
+                        };
+                        let styles = if cascade == "class" {
+                            format!("classDef last font-size:{value}\nclass A,G,e last")
+                        } else {
+                            format!(
+                                "style A font-size:{value}\nstyle G font-size:{value}\nlinkStyle 0 font-size:{value}"
+                            )
+                        };
+                        let source = format!(
+                            "%%{{init: {config}}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\n{prior}{styles}"
+                        );
+                        let output = mermaid_trace_rs::render("relative-style", &source).unwrap();
+                        let doc =
+                            roxmltree::Document::parse(output["svg"].as_str().unwrap()).unwrap();
+                        let mut bounds = Vec::new();
+                        for (key, role, label_text) in [
+                            ("node:A", "node-label", "Alpha"),
+                            ("edge:e", "edge-label", "Next"),
+                            ("flowchart:subgraph:G", "control-label", "Group"),
+                        ] {
+                            let label = doc
+                                .descendants()
+                                .find(|n| {
+                                    n.attribute("data-mt-key") == Some(key)
+                                        && n.attribute("data-mt-role") == Some(role)
+                                })
+                                .unwrap();
+                            let start: usize =
+                                label.attribute("data-mt-start").unwrap().parse().unwrap();
+                            let end: usize =
+                                label.attribute("data-mt-end").unwrap().parse().unwrap();
+                            assert_eq!(&source[start..end], label_text);
+                            if html {
+                                let text = label
+                                    .descendants()
+                                    .find(|n| n.has_tag_name("text"))
+                                    .unwrap();
+                                let size = text
+                                    .attribute("style")
+                                    .unwrap()
+                                    .split(';')
+                                    .find_map(|decl| decl.strip_prefix("font-size:"))
+                                    .unwrap()
+                                    .trim_end_matches("px")
+                                    .parse::<f64>()
+                                    .unwrap();
+                                assert!(
+                                    (size - base * 1.5).abs() < 1e-6,
+                                    "{layout}/{html}/{base}/{cascade}/{value}/{role}: exported {size}px"
+                                );
+                            }
+                        }
+                        for key in ["node:A", "flowchart:subgraph:G"] {
+                            let owner = doc
+                                .descendants()
+                                .find(|n| {
+                                    n.attribute("data-mt-key") == Some(key)
+                                        && !n.has_attribute("data-mt-label")
+                                })
+                                .unwrap();
+                            let shape = owner.children().find(|n| n.has_tag_name("rect")).unwrap();
+                            for attr in ["width", "height"] {
+                                bounds.push(shape.attribute(attr).unwrap().parse::<f64>().unwrap());
+                            }
+                        }
+                        bounds
+                    };
+                    let expected = draw(&format!("{}px", base * 1.5));
+                    for value in ["1.5em", "150%", "1.5rem"] {
+                        let actual = draw(value);
+                        for (actual, expected) in actual.into_iter().zip(&expected) {
+                            assert!(
+                                (actual - expected).abs() < 1e-6,
+                                "{layout}/{html}/{base}/{cascade}/{value}: {actual} != {expected}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn relative_theme_fonts_match_pixel_geometry_and_source() {
     for layout in ["dagre", "elk"] {
         for look in ["classic", "neo", "handDrawn"] {
