@@ -63,6 +63,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       })),
     ];
     cases.push(...['dagre', 'elk'].map((layout): [string, string] => {
+      const label = '<title>Hidden</title>Alpha Ω';
+      return [`%% STRUCTURE ${layout}\n%%{init: ${JSON.stringify({ layout, htmlLabels: true })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
+    }));
+    cases.push(...['dagre', 'elk'].map((layout): [string, string] => {
       const label = '<textarea><b>Alpha</b> &amp; Ω</textarea>';
       return [`%% RCDATA ${layout}\n%%{init: ${JSON.stringify({ layout, htmlLabels: true })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
     }));
@@ -165,7 +169,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         throw Error('Mapped body or stroke has no exposed pointer target');`);
       return { point };
     };
-    for (const [source, label, role, groupSize = 1] of cases) await t.test(source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : ''), async () => {
+    const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
+    const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
+    assert.ok(selectedCases.length, 'Safari source filter must select at least one case');
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test(source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : ''), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
@@ -214,7 +221,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
-    for (const [source, label, role, groupSize = 1] of cases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
       const fence = '\n\n```mermaid\n' + source + '\n```\n';
       const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
       await writeFile(filename, markdown);
@@ -275,7 +282,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
       } finally { await preview.close(); preview = undefined; }
     });
-    await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', async () => {
+    await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', { skip: !!sourceFilter }, async () => {
       const source = '---\nconfig:\n  fontFamily: Arial\n---\nstateDiagram-v2\nstate "Alpha 😀 中文" as A';
       const { svg } = await producer.render('font-css', source);
       await call('navigate_to_url', { tab_uuid: tab, url: 'data:text/html,<title>Mermaid Trace font CSS</title>' });
@@ -303,7 +310,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.ok(Math.abs(result.sizes[0].width / 2 - result.sizes[1].width) < 0.1,
         'mixed-font text must scale with authored CSS size');
     });
-    await t.test('WATCH-SAFARI: saves, invalid edits and atomic replacement preserve current mappings', async () => {
+    await t.test('WATCH-SAFARI: saves, invalid edits and atomic replacement preserve current mappings', { skip: !!sourceFilter }, async () => {
       const sources = cases.slice(0, 7).map(([source]) => source);
       const markdown = '# Watch 🐟\r\n\r\n' + sources.map(source => '```mermaid\r\n' + source.replaceAll('\n', '\r\n') + '\r\n```\r\n').join('\r\n');
       const errors: string[] = [];

@@ -208,7 +208,7 @@ fn attribute_policies_preserve_actual_label_text_and_exact_source() {
                             let identity = if named {
                                 r#"id="user-content-item" name="user-content-tag""#
                             } else {
-                                "id='item' name='tag'"
+                                r#"id="item" name="tag""#
                             };
                             let attributes = if allow {
                                 r#" title="left/>right" style="color:red;/* /> */""#
@@ -358,58 +358,67 @@ fn narrow_svg_labels_do_not_split_encoded_characters() {
 }
 
 #[test]
-fn rcdata_label_text_remains_literal_in_svg_with_original_source_ranges() {
-    let label = "<textarea><b>Alpha</b> &amp; Ω</textarea>";
-    for layout in ["dagre", "elk"] {
-        for level in ["strict", "loose"] {
-            for from_source in [false, true] {
-                let config = json!({"layout":layout,"securityLevel":level,"htmlLabels":true});
-                let body = format!("%% Original 😀\r\nflowchart LR\r\nA[\"{label}\"] --> B[Beta]");
-                let source = if from_source {
-                    format!("---\r\nconfig: {config}\r\n---\r\n{body}")
-                } else {
-                    body
-                };
-                let render = |trace| {
-                    let mut site = if from_source {
-                        json!({})
+fn structural_and_rcdata_labels_keep_rendered_content_and_original_source_ranges() {
+    for (label, expected) in [
+        (
+            "<textarea><b>Alpha</b> &amp; Ω</textarea>",
+            "<b>Alpha</b> & Ω",
+        ),
+        ("<title>Hidden</title>Alpha Ω", "Alpha Ω"),
+    ] {
+        for layout in ["dagre", "elk"] {
+            for level in ["strict", "loose"] {
+                for from_source in [false, true] {
+                    let config = json!({"layout":layout,"securityLevel":level,"htmlLabels":true});
+                    let body =
+                        format!("%% Original 😀\r\nflowchart LR\r\nA[\"{label}\"] --> B[Beta]");
+                    let source = if from_source {
+                        format!("---\r\nconfig: {config}\r\n---\r\n{body}")
                     } else {
-                        config.clone()
+                        body
                     };
-                    site["traceSource"] = json!(trace);
-                    let renderer = merman::Renderer::new().with_engine(
-                        merman::Engine::new()
-                            .with_site_config(merman::MermaidConfig::from_value(site)),
+                    let render = |trace| {
+                        let mut site = if from_source {
+                            json!({})
+                        } else {
+                            config.clone()
+                        };
+                        site["traceSource"] = json!(trace);
+                        let renderer = merman::Renderer::new().with_engine(
+                            merman::Engine::new()
+                                .with_site_config(merman::MermaidConfig::from_value(site)),
+                        );
+                        mermaid_trace_rs::render_with(&renderer, "rcdata-label", &source).unwrap()
+                    };
+                    let mapped = render(true);
+                    let plain = render(false);
+                    let svg = mapped["svg"].as_str().unwrap();
+                    let doc = roxmltree::Document::parse(svg).unwrap();
+                    let text: String = doc
+                        .descendants()
+                        .filter(|n| n.has_tag_name("text"))
+                        .map(support::text_content)
+                        .collect();
+                    assert!(
+                        text.contains(expected),
+                        "{layout} {level} {from_source}: {text}"
                     );
-                    mermaid_trace_rs::render_with(&renderer, "rcdata-label", &source).unwrap()
-                };
-                let mapped = render(true);
-                let plain = render(false);
-                let svg = mapped["svg"].as_str().unwrap();
-                let doc = roxmltree::Document::parse(svg).unwrap();
-                let text: String = doc
-                    .descendants()
-                    .filter(|n| n.has_tag_name("text"))
-                    .map(support::text_content)
-                    .collect();
-                assert!(
-                    text.contains("<b>Alpha</b> & Ω"),
-                    "{layout} {level} {from_source}: {text}"
-                );
-                assert_eq!(mapped["mapping"]["source"], source);
-                let start = source[..source.find(label).unwrap()].encode_utf16().count();
-                let span = json!({"start":start,"end":start+label.encode_utf16().count()});
-                assert!(
-                    mapped["mapping"]["pieces"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|piece| piece["labelSpan"] == span)
-                );
-                assert_eq!(
-                    support::strip_trace(svg),
-                    support::strip_trace(plain["svg"].as_str().unwrap())
-                );
+                    assert!(!text.contains("Hidden"), "{text}");
+                    assert_eq!(mapped["mapping"]["source"], source);
+                    let start = source[..source.find(label).unwrap()].encode_utf16().count();
+                    let span = json!({"start":start,"end":start+label.encode_utf16().count()});
+                    assert!(
+                        mapped["mapping"]["pieces"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|piece| piece["labelSpan"] == span)
+                    );
+                    assert_eq!(
+                        support::strip_trace(svg),
+                        support::strip_trace(plain["svg"].as_str().unwrap())
+                    );
+                }
             }
         }
     }
