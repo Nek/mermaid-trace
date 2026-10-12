@@ -66,6 +66,13 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
       `---\nconfig: {fontFamily: Apple Color Emoji}\n---\n${source.replaceAll('Alpha', 'Alpha 🧑‍💻')}`, 'Alpha 🧑‍💻',
     ]));
+    for (const layout of ['dagre', 'elk']) for (const handDrawnSeed of [undefined, 0, 42, 43]) {
+      const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
+      const source = `%% SEED ${layout}/${handDrawnSeed ?? 'omitted'}\n%%{init: ${JSON.stringify({ layout, look: 'handDrawn', handDrawnSeed })}}%%\nflowchart LR\n${group}\n`;
+      cases.push([source, 'A[Alpha]', 'node'], [source, 'Alpha', 'node-label'],
+        [source, 'e@-->|next|', 'edge'], [source, 'next', 'edge-label'],
+        [source, group, 'control'], [source, 'Group', 'control-label']);
+    }
     cases.push(...['dagre', 'elk'].map((layout): [string, string] => {
       const label = '<title>Hidden</title>Alpha Ω';
       return [`%% STRUCTURE ${layout}\n%%{init: ${JSON.stringify({ layout, htmlLabels: true })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
