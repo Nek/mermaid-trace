@@ -230,6 +230,84 @@ fn fractional_pixel_font_sizes_survive_production_export() {
 }
 
 #[test]
+fn absolute_font_units_match_equivalent_pixel_geometry() {
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            for styled in [false, true] {
+                let draw = |size: &str| {
+                    let mut config =
+                        json!({"layout": layout, "htmlLabels": html, "fontFamily": "Arial"});
+                    if !styled {
+                        config["themeVariables"] = json!({"fontSize": size});
+                    }
+                    let source = format!(
+                        "%% 😀\r\n%%{{init: {config}}}%%\r\nflowchart LR\r\nA[Alpha WWWiii] --> B[Beta]\r\n{}",
+                        if styled {
+                            format!("style A font-size:{size}")
+                        } else {
+                            String::new()
+                        }
+                    );
+                    let output = mermaid_trace_rs::render("absolute-font", &source).unwrap();
+                    let doc = roxmltree::Document::parse(output["svg"].as_str().unwrap()).unwrap();
+                    let owner = doc
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some("node:A")
+                                && n.attribute("data-mt-role") == Some("node")
+                        })
+                        .unwrap();
+                    let rect = owner.children().find(|n| n.has_tag_name("rect")).unwrap();
+                    let label = doc
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some("node:A")
+                                && n.attribute("data-mt-role") == Some("node-label")
+                        })
+                        .unwrap();
+                    if styled && html {
+                        let text = label
+                            .descendants()
+                            .find(|n| n.has_tag_name("text"))
+                            .unwrap();
+                        let style = text.attribute("style").unwrap();
+                        let pixels: f64 = style
+                            .split(';')
+                            .find_map(|decl| decl.strip_prefix("font-size:"))
+                            .unwrap()
+                            .trim_end_matches("px")
+                            .parse()
+                            .unwrap();
+                        assert!((pixels - 24.0).abs() < 1e-6, "exported {size}: {pixels}");
+                    }
+                    let start: usize = label.attribute("data-mt-start").unwrap().parse().unwrap();
+                    let end: usize = label.attribute("data-mt-end").unwrap().parse().unwrap();
+                    assert_eq!(
+                        String::from_utf16(&source.encode_utf16().collect::<Vec<_>>()[start..end])
+                            .unwrap(),
+                        "Alpha WWWiii"
+                    );
+                    ["width", "height"]
+                        .map(|name| rect.attribute(name).unwrap().parse::<f64>().unwrap())
+                };
+                let expected = draw("24px");
+                for size in [
+                    "18pt", "1.5pc", "0.25in", "0.635cm", "6.35mm", "25.4Q", "18PT",
+                ] {
+                    let actual = draw(size);
+                    for (actual, expected) in actual.into_iter().zip(expected) {
+                        assert!(
+                            (actual - expected).abs() < 1e-6,
+                            "{layout}/html={html}/styled={styled}/{size}: {actual} != {expected}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn existing_family_font_requests_have_no_silent_approximate_fallback() {
     let fonts = Arc::new(NativeFontContext::system().unwrap());
     for html in [false, true] {
