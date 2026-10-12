@@ -2715,6 +2715,40 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
+test('FLOW AC5/6: fractional pixel fonts retain painted size, containment and selection', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+      const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';
+      const source = `%% 😀\r\n%%{init: ${JSON.stringify({ layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', themeVariables: { fontSize: '24.5px' } })}}%%\r\nflowchart LR\r\n${group}\r\n`;
+      const { svg } = await producer.render('fractional-font', source);
+      await page.setContent(svg);
+      await page.evaluate(() => document.fonts.ready);
+      const geometry = await page.evaluate(variant => {
+        const owner = document.querySelector('[data-mt-key="node:A"][data-mt-role=node]')!;
+        const shapeElement = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path');
+        if (!shapeElement) throw new Error(`Missing shape: ${variant}: ${owner.outerHTML.slice(0, 500)}`);
+        const shape = shapeElement.getBoundingClientRect();
+        const labelElement = document.querySelector('[data-mt-key="node:A"][data-mt-role=node-label]');
+        if (!labelElement) throw new Error(`Missing label: ${variant}`);
+        const label = labelElement.getBoundingClientRect();
+        const texts = [...document.querySelectorAll('[data-mt-role$="-label"] text, [data-mt-role$="-label"] tspan')];
+        return { sizes: texts.map(text => getComputedStyle(text).fontSize),
+          contained: label.left >= shape.left - 3 && label.right <= shape.right + 3 && label.top >= shape.top - 3 && label.bottom <= shape.bottom + 3 };
+      }, `${layout}/${look}/${htmlLabels}`);
+      assert.ok(geometry.sizes.length > 0);
+      assert.ok(geometry.sizes.every(size => size === '24.5px'), `${layout}/${look}/${htmlLabels}: ${geometry.sizes}`);
+      assert.ok(geometry.contained, `${layout}/${look}/${htmlLabels}: measured label must fit its shape`);
+      await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
+        ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group WWWiii', 'control-label'],
+      ]);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
 test('FLOW AC5/6: explicit default theme font preserves saved/live source ownership', { timeout: 180_000 }, async () => {
   for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
     const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';

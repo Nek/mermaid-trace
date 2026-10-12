@@ -187,6 +187,49 @@ fn explicit_default_theme_font_wins_over_legacy_root_font() {
 }
 
 #[test]
+fn fractional_pixel_font_sizes_survive_production_export() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for size in [16.25, 24.5] {
+                    let config = json!({"layout": layout, "look": look, "handDrawnSeed": 42,
+                        "htmlLabels": html, "fontFamily": "Arial",
+                        "themeVariables": {"fontSize": format!("{size}px")}});
+                    let source = format!(
+                        "%% 😀\r\n%%{{init: {config}}}%%\r\nflowchart LR\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]"
+                    );
+                    let output = mermaid_trace_rs::render("fractional-font", &source).unwrap();
+                    let svg = output["svg"].as_str().unwrap();
+                    let doc = roxmltree::Document::parse(svg).unwrap();
+                    assert!(
+                        doc.descendants()
+                            .filter(|n| n.has_tag_name("style"))
+                            .any(|n| support::text_content(n)
+                                .contains(&format!("font-size:{size}px"))),
+                        "{layout}/{look}/html={html}: authored fractional font size was lost"
+                    );
+                    assert_eq!(output["mapping"]["source"], source);
+                    let utf16: Vec<_> = source.encode_utf16().collect();
+                    for (role, label) in [
+                        ("node-label", "Alpha WWWiii"),
+                        ("edge-label", "Next WWWiii"),
+                    ] {
+                        let target = doc
+                            .descendants()
+                            .find(|n| n.attribute("data-mt-role") == Some(role))
+                            .unwrap();
+                        let start: usize =
+                            target.attribute("data-mt-start").unwrap().parse().unwrap();
+                        let end: usize = target.attribute("data-mt-end").unwrap().parse().unwrap();
+                        assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), label);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn existing_family_font_requests_have_no_silent_approximate_fallback() {
     let fonts = Arc::new(NativeFontContext::system().unwrap());
     for html in [false, true] {
