@@ -36,6 +36,13 @@ All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs
 - Push completed, verified commits to this project's `origin` periodically, including after a coherent implementation milestone. Check the remote and branch before pushing; do not force-push. Native changes belong in the `Nek/merman` fork: push verified native commits there, then update the exact revision in `mermaid-trace-rs/bootstrap.sh` in the same Trace change as dependent tests/docs. Keep `Latias94/merman` as the separate upstream remote; never push it as part of routine delivery.
 - Use Conventional Commits and Semantic Versioning as defined in [Commit and release conventions](docs/SDD-DELIVERY.md#commit-and-release-conventions). Routine origin pushes follow the rule above; publishing or creating a release requires separate authorization.
 
+## Rust build-cache hygiene
+
+- Check available disk space and project-owned Cargo target sizes before substantial Rust builds and at delivery checkpoints. Reuse compatible build directories; do not accumulate a separate target directory for every verification snapshot.
+- After verification, remove obsolete Rust compilation caches from completed temporary checkouts and superseded build directories. Verify each resolved path, ownership and lack of active builds or consumers first; never traverse a directory symlink when deleting a cache.
+- Preserve source, Git state, test evidence, current reusable caches and binaries required by the running preview. Do not use broad filesystem cleanup or delete Cargo registry/download caches as routine hygiene. If ownership or usage is uncertain, report the path and size rather than delete it.
+- Report reclaimed space and any large caches retained with their reason. If free space cannot accommodate the next build safely, resolve cache pressure before starting it.
+
 ## SDD Routing
 
 This project uses Spec-Driven Development. The files below are instructions to read when their conditions apply, not merely background references. Paths are relative to this file.
