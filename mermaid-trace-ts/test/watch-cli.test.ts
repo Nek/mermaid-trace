@@ -554,3 +554,26 @@ test('WATCH-DIAGNOSTICS: report warnings once per published revision', async t =
     }
   } finally { await preview?.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('FONT-MISSING: watch reports measured replacements without rejecting Markdown', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-font-warning-'));
+  const filename = join(directory, 'missing.md');
+  const warning = t.mock.method(console, 'warn', () => {});
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  try {
+    const source = '# Title\n\n```mermaid\nflowchart LR\nA["Before \u{10ffff} and \u{10fffe} after"]\n```\n';
+    await writeFile(filename, source);
+    preview = await watchPreview(filename, { port: 0 });
+    assert.equal(warning.mock.callCount(), 2, JSON.stringify(warning.mock.calls.map(call => call.arguments)));
+    await writeFile(filename, source);
+    await new Promise(resolve => setTimeout(resolve, 750));
+    assert.equal(warning.mock.callCount(), 2, 'an unchanged file must not repeat missing-character warnings');
+    for (const call of warning.mock.calls) {
+      assert.ok(String(call.arguments[0]).includes(filename));
+      assert.match(String(call.arguments[0]), /U\+10FFF[EF].*U\+FFFD/);
+    }
+    const response = await fetch(preview.url);
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /data-mt-map=/);
+  } finally { await preview?.close(); await rm(directory, { recursive: true, force: true }); }
+});

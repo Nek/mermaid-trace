@@ -88,6 +88,8 @@ Use Merman's existing text-measurement interface. A width-only callback is insuf
 
 User decision, 2026-10-05: if no installed font can draw an authored character, render a correctly measured replacement symbol and report a diagnostic instead of rejecting the entire diagram. Measurement and drawing must use the same replacement geometry; retain the original authored text and exact source ownership. Existing CSS font-size changes, including revealing zero-size labels, remain required by the migration contract. Portable font assets must not be confused with immutable authored font sizes.
 
+User decision, 2026-10-12: fonts whose shaping cannot be preserved in portable SVG may use a browser-compatible fallback with a diagnostic. Resolve that fallback before measurement and use the same resolved fonts in the embedded artifact. Preserve source text, selection and CSS size changes; do not silently substitute an explicitly requested font.
+
 Chromium, Safari and Firefox are supported targets using the same standard SVG/DOM activation implementation. Verify pointer/keyboard selection, reverse-source highlighting, scrolling and clipboard behavior in all three; current Chromium evidence does not establish Safari or Firefox acceptance. This decision does not reduce diagram-family or syntax/configuration coverage.
 
 ## Required diagram coverage

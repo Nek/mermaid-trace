@@ -1,4 +1,4 @@
-import { createMermanProducer } from './merman.js';
+import { createMermanProducer, type RenderDiagnostic } from './merman.js';
 
 export async function createPreviewProducer() {
   const native = await createMermanProducer();
@@ -12,12 +12,14 @@ export async function createPreviewProducer() {
       }
       const svgs: Record<string, string> = {};
       const diagramOnly: string[] = [];
+      const diagnostics: (RenderDiagnostic & { readonly id: string })[] = [];
       for (const input of inputs) {
         const result = await native.render(`baseline-${input.id}`, input.source);
         svgs[input.id] = result.svg;
+        diagnostics.push(...(result.diagnostics ?? []).map(diagnostic => ({ ...diagnostic, id: input.id })));
         if (!result.mapping.pieces.length) diagramOnly.push(input.id);
       }
-      return { svgs, diagramOnly };
+      return { svgs, diagramOnly, diagnostics };
     },
     close: native.close,
   };

@@ -1,8 +1,10 @@
 use merman::{
-    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, MermaidConfig, OperationControl, RenderOutput, RenderTarget, Renderer, SvgRequest,
 };
+use merman_export::text::NativeFontContext;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 
 pub fn renderer() -> Renderer {
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":true,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))))
@@ -23,19 +25,108 @@ pub fn render_with(renderer: &Renderer, id: &str, source: &str) -> Result<Value,
     if source.is_empty() || source.encode_utf16().count() > 50_000 {
         return Err("Invalid Mermaid source length".into());
     }
+    let control = OperationControl::new();
+    let semantic = renderer
+        .prepare_semantic(source, control.clone())
+        .map_err(|e| e.to_string())?
+        .ok_or("No Mermaid diagram")?;
+    let fonts = if matches!(
+        semantic.semantic_kind(),
+        "flowchart" | "sequence" | "state" | "gantt" | "journey" | "kanban"
+    ) {
+        static FONTS: OnceLock<Result<Arc<NativeFontContext>, String>> = OnceLock::new();
+        Some(
+            FONTS
+                .get_or_init(|| {
+                    let mut database = merman_export::text::FontDatabase::new();
+                    database.load_font_data(
+                        include_bytes!("../assets/fonts/NotoColorEmoji-sbix.ttf").to_vec(),
+                    );
+                    database.load_system_fonts();
+                    let category_boxes: Vec<_> = database
+                        .faces()
+                        .filter(|face| face.post_script_name == "LastResort")
+                        .map(|face| face.id)
+                        .collect();
+                    for id in category_boxes {
+                        database.remove_face(id);
+                    }
+                    NativeFontContext::from_portable_database(database).map(Arc::new)
+                })
+                .as_ref()
+                .map_err(Clone::clone)?,
+        )
+    } else {
+        None
+    };
+    let policy =
+        merman::svg::RenderResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE);
     let mut options = SvgRequest::default();
     options.options.diagram_id = Some(id.into());
     options.pipeline = Some(merman::svg::SvgPipeline::resvg_safe());
-    options.environment = merman::SvgEnvironment::deterministic().with_resource_policy(
-        merman::svg::RenderResourcePolicy::for_profile(merman::svg::CLI_DEFAULT_RESOURCE_PROFILE),
-    );
-    let output = renderer
-        .render(RenderRequest::svg(source, OperationControl::new(), options))
+    options.environment = merman::SvgEnvironment::deterministic().with_resource_policy(policy);
+    if let Some(fonts) = fonts {
+        options.environment = options
+            .environment
+            .with_text_measurement_policy(Arc::clone(fonts).measurement_policy());
+    }
+    let output = semantic
+        .render(RenderTarget::Svg(options))
         .map_err(|e| e.to_string())?;
     let RenderOutput::Svg(Some(output)) = output else {
         return Err("No Mermaid diagram".into());
     };
-    annotate(output.svg(), source)
+    let mut result = annotate(output.svg(), source)?;
+    if let Some(fonts) = fonts {
+        if let Some(entry) = output
+            .evidence()
+            .measurement()
+            .entries()
+            .iter()
+            .find(|entry| {
+                entry.provenance().source != merman::svg::TextMeasurementSource::Host
+                    || entry.provenance().fallback_reason.is_some()
+            })
+        {
+            return Err(format!(
+                "Font-accurate rendering rejected approximate fallback: {:?}",
+                entry.provenance()
+            ));
+        }
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_in_context(
+                output.evidence().operation_context().clone(),
+                control.clone(),
+            );
+        let pipeline = merman::svg::SvgPipeline::resvg_safe();
+        let sealed = pipeline
+            .process_resvg_compatible(result["svg"].as_str().unwrap(), &session)
+            .map_err(|e| e.to_string())?;
+        control.checkpoint().map_err(|e| e.to_string())?;
+        let font_budget = policy
+            .value(merman_render::ResourceLimitId::MaxSvgBytes)
+            .ok_or("Portable fonts require a bounded SVG resource policy")?
+            .saturating_sub(sealed.as_str().len())
+            / 4
+            * 3;
+        let portable = fonts.embed_fonts(&sealed, font_budget)?;
+        control.checkpoint().map_err(|e| e.to_string())?;
+        let final_svg = pipeline
+            .process_resvg_compatible(&portable.svg, &session)
+            .map_err(|e| e.to_string())?;
+        result["svg"] = json!(final_svg.as_str());
+        let mut diagnostics: Vec<_> = portable.missing_characters.iter().map(|character| json!({
+            "code": "missing-character", "character": character.to_string(), "replacement": "\u{fffd}",
+            "message": format!("No drawable installed glyph for U+{:04X}; rendered measured U+FFFD replacement", *character as u32)
+        })).collect();
+        diagnostics.extend(portable.font_substitutions.iter().map(|(font, replacement)| json!({
+            "code": "font-fallback", "font": font, "replacement": replacement,
+            "message": format!("Font {font} requires nonportable shaping; used {replacement} and portable glyph fallbacks for measurement and rendering")
+        })));
+        result["diagnostics"] = json!(diagnostics);
+    }
+    Ok(result)
 }
 
 fn annotate(svg: &str, source: &str) -> Result<Value, String> {

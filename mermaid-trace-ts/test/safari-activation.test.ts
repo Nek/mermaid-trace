@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { createServer } from 'node:http';
 import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
@@ -57,11 +58,14 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       ['journey\nsection Work\nAlpha: 5: Alice', 'Alpha'],
       ['kanban\n  todo[Todo]\n    task[Alpha]', 'Alpha'], ['stateDiagram-v2\nstate "Alpha" as A', 'Alpha'],
       ...['flowchart LR', 'flowchart-elk LR'].map((header): [string, string] => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
-      ...['A\u20dd A 😀', '🧑\u200d💻 123 ABC'].flatMap(unit => ['dagre', 'elk'].map((layout): [string, string] => {
+      ...[['A\u20dd A 😀', 'Arial'], ['🧑\u200d💻 123 ABC', 'Arial'], ['🧑\u200d💻 123 ABC', 'Apple Color Emoji']].flatMap(([unit, fontFamily]) => ['dagre', 'elk'].map((layout): [string, string] => {
         const label = Array(12).fill(unit).join(' ');
-        return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily: 'Arial' })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
+        return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
+    cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
+      `---\nconfig: {fontFamily: Apple Color Emoji}\n---\n${source.replaceAll('Alpha', 'Alpha 🧑‍💻')}`, 'Alpha 🧑‍💻',
+    ]));
     cases.push(...['dagre', 'elk'].map((layout): [string, string] => {
       const label = '<title>Hidden</title>Alpha Ω';
       return [`%% STRUCTURE ${layout}\n%%{init: ${JSON.stringify({ layout, htmlLabels: true })}}%%\nflowchart LR\nA["${label}"] --> B[Beta]`, label];
@@ -130,6 +134,8 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% ELK placement ${nodePlacementStrategy}\n%%{init: ${JSON.stringify({ layout: 'elk', elk: { preset: 'legacy', nodePlacementStrategy, mergeEdges: true, nodePlacementAlignment: nodePlacementStrategy === 'BRANDES_KOEPF' ? 'RIGHTDOWN' : 'BALANCED' } })}}%%\nflowchart TB\nsubgraph G[Group]\nA[Alpha] ab@-->|next| B[Longer beta]\nA ac@--> C[Gamma]\nA ad@--> D[Delta]\nB --> E[End]\nC --> E\nD --> E\nA ae@--> E\nend`;
       return [[source, 'Alpha'], [source, 'ab@-->|next|', 'edge'], [source, 'ac@-->', 'edge'], [source, 'next', 'edge-label']];
     }));
+    const missingLabel = 'Before e\u0301 😀 漢 العربية \u{10ffff} and \u{10fffe} after';
+    cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [source.replaceAll('Alpha', missingLabel), missingLabel]));
     cases.push(
       ...['flowchart LR', 'flowchart-elk LR'].flatMap((header): [string, string, string?, number?][] => [
         [`${header}\nA[Alpha] --> B[Beta]`, 'A[Alpha]', 'node'],
@@ -171,8 +177,9 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     };
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
-    assert.ok(selectedCases.length, 'Safari source filter must select at least one case');
-    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test(source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : ''), async () => {
+    const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');
+    assert.ok(selectedCases.length || fontCss, 'Safari source filter must select at least one case');
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
@@ -189,6 +196,12 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         window.group=[...window.label.closest('svg[data-mt-map]').querySelectorAll('[data-mt-start="'+window.label.dataset.mtStart+'"][data-mt-end="'+window.label.dataset.mtEnd+'"]')];
         return window.label.getAttribute('aria-label');
       })();`);
+      if (label === missingLabel) {
+        const drawn = await evaluate('return window.label.textContent;');
+        // SVG row boundaries omit separator spaces; source selection below stays exact.
+        assert.equal(drawn.match(/\ufffd/g)?.length, 2);
+        assert.doesNotMatch(drawn, /[\u{10ffff}\u{10fffe}]/u);
+      }
       if (source.includes('markdownAutoWrap')) {
         const geometry = await evaluate(`const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
           return {label:box(window.label),shape:box(window.roots[0].querySelector('[data-mt-role=node] > rect')),scale:window.roots[0].getScreenCTM().a,text:window.label.textContent};`);
@@ -221,7 +234,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
-    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + (label === missingLabel ? 'missing characters ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
       const fence = '\n\n```mermaid\n' + source + '\n```\n';
       const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
       await writeFile(filename, markdown);
@@ -240,6 +253,12 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           document.addEventListener('keydown',e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted}));
           return window.label.getAttribute('aria-label');
         })();`);
+        if (label === missingLabel) {
+          const drawn = await evaluate('return window.label.textContent;');
+          // SVG row boundaries omit separator spaces; source selection below stays exact.
+          assert.equal(drawn.match(/\ufffd/g)?.length, 2);
+          assert.doesNotMatch(drawn, /[\u{10ffff}\u{10fffe}]/u);
+        }
         const start = markdown.lastIndexOf(source) + source.indexOf(label);
         const span = { start, end: start + label.length };
         const sentinel = 'Mermaid Trace clipboard unchanged';
@@ -282,7 +301,55 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
       } finally { await preview.close(); preview = undefined; }
     });
-    await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', { skip: !!sourceFilter }, async () => {
+    await t.test('MARKERS-SAFARI: portable arrow, circle and cross markers survive HTML base URLs', { skip: !!sourceFilter }, async () => {
+      let html = '';
+      const server = createServer((_, response) => { response.setHeader('Content-Type', 'text/html'); response.end(html); });
+      await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+      const address = server.address();
+      assert.ok(address && typeof address !== 'string');
+      const url = `http://127.0.0.1:${address.port}/document`;
+      const screenshot = async () => {
+        const path = join(directory, 'markers.png');
+        assert.equal(await evaluate('return document.visibilityState;'), 'visible', 'Safari pixel acceptance requires a visible test tab');
+        await evaluate('return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));');
+        await call('screenshot', { savePath: path });
+        return readFile(path);
+      };
+      try {
+        await call('switch_tab', { handle: tab });
+        for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const absolute of [false, true]) {
+          const source = `---\nconfig: ${JSON.stringify({ layout, look, handDrawnSeed: 42, arrowMarkerAbsolute: absolute })}\n---\nflowchart LR\nA[Alpha 😀]\nB[Beta]\nA e@<-->|Go| B\nB o--o C\nC x--x D\n`;
+          const { svg } = await producer.render('marker-portability', source);
+          let baseline: Buffer | undefined;
+          for (const base of ['', url.replace('/document', '/other/'), 'https://elsewhere.invalid/']) {
+            html = `<!doctype html><head>${base ? `<base href="${base}">` : ''}</head><body>${svg}</body>`;
+            await call('navigate_to_url', { tab_uuid: tab, url });
+            const refs = await evaluate(`return (async()=>{
+              await document.fonts.ready;
+              return [...document.querySelectorAll('[marker-start],[marker-end]')].flatMap(element=>['marker-start','marker-end'].flatMap(name=>{
+                const value=element.getAttribute(name);if(!value)return [];
+                const id=/^url\\(#([^)]*)\\)$/.exec(value)?.[1];
+                return [{value,exists:!!id&&document.getElementById(id)?.localName==='marker'}];
+              }));
+            })();`);
+            assert.equal(refs.length, 6, 'all three double-ended marker kinds must exist');
+            assert.ok(refs.every((ref: { exists: boolean }) => ref.exists), 'marker references resolve inside the saved artifact');
+            const pixels = await screenshot();
+            if (baseline) assert.ok(pixels.equals(baseline), `${layout}/${look}/${absolute}/${base}: base must not change marker pixels`);
+            else baseline = pixels;
+            for (const kind of ['point', 'circle', 'cross']) {
+              await evaluate(`const elements=document.querySelectorAll('[marker-start*="-${kind}Start"]');
+                if(elements.length!==1)throw Error('Expected one connector for ${kind}');
+                window.markerEdge=elements[0];window.markers=['marker-start','marker-end'].map(name=>window.markerEdge.getAttribute(name));
+                window.markerEdge.removeAttribute('marker-start');window.markerEdge.removeAttribute('marker-end');return true;`);
+              assert.ok(!(await screenshot()).equals(baseline), `${layout}/${look}/${kind}: marker removal must change visible pixels`);
+              await evaluate(`['marker-start','marker-end'].forEach((name,i)=>window.markerEdge.setAttribute(name,window.markers[i]));return true;`);
+            }
+          }
+        }
+      } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+    });
+    await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', { skip: !fontCss }, async () => {
       const source = '---\nconfig:\n  fontFamily: Arial\n---\nstateDiagram-v2\nstate "Alpha 😀 中文" as A';
       const { svg } = await producer.render('font-css', source);
       await call('navigate_to_url', { tab_uuid: tab, url: 'data:text/html,<title>Mermaid Trace font CSS</title>' });

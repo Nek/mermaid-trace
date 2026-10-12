@@ -51,8 +51,25 @@ test('MERMAN-AC2/3: preview uses native sequence SVG and maps sequence pieces wi
     assert.equal(mapping.pieces.filter((piece: { kind: string }) => piece.kind === 'edge').length, 2);
     assert.deepEqual(result.diagramOnly, []);
     assert.match(result.svgs.flowchart!, /data-mt-role="edge-label"/);
-    assert.deepEqual(await preview.render([]), { svgs: {}, diagramOnly: [] });
+    assert.deepEqual(await preview.render([]), { svgs: {}, diagramOnly: [], diagnostics: [] });
     await assert.rejects(preview.render([{ id: 'same', source: sequence }, { id: 'same', source: sequence }]), /duplicate/i);
     await assert.rejects(preview.render([{ id: 'unsafe"', source: sequence }]), /ID/i);
   } finally { await preview.close(); await native.close(); }
+});
+
+test('FONT-MISSING: preview reports replacements without losing authored source', async () => {
+  const { createPreviewProducer } = await import('../src/producer/preview.js');
+  const preview = await createPreviewProducer();
+  const source = 'flowchart LR\nA["Before \u{10ffff} and \u{10fffe} after"]';
+  try {
+    const result = await preview.render([{ id: 'missing', source }]);
+    assert.ok('diagnostics' in result, 'preview must surface native missing-character diagnostics');
+    const diagnostics = result.diagnostics as { id: string; character: string; replacement: string; message: string }[];
+    assert.deepEqual(diagnostics.map(d => [d.id, d.character, d.replacement]), [
+      ['missing', '\u{10fffe}', '\ufffd'], ['missing', '\u{10ffff}', '\ufffd'],
+    ]);
+    assert.ok(diagnostics.every(d => d.message.includes('U+FFFD')));
+    const mapping = JSON.parse(decodeURIComponent(result.svgs.missing!.match(/ data-mt-map="([^"]*)"/)![1]!));
+    assert.equal(mapping.source, source);
+  } finally { await preview.close(); }
 });

@@ -15,6 +15,8 @@ Connect Mermaid source, its AST, and diagram elements so a visual selection can 
 
 These are logical boundaries in one project, not a requirement for four packages. Rust supplies native core/rendering capabilities using the same artifact contract; the JavaScript interactivity library must accept compatible SVG from either implementation.
 
+The six mapped families use resolved font metrics and embed font subsets in their static SVGs, preserving editable CSS text sizes. Nonportable fonts and missing characters use measured fallbacks with diagnostics; see [font behavior and remaining limits](docs/font-assets.md).
+
 Markdown integration is part of initial delivery: markdown-it fence provenance and a unified mdast/hast document view, with VS Code preview hooks investigated early. Other targets include JavaScript applications and native Rust hosts. Multiuser editing is a later possibility, not part of the initial release.
 
 ## Repository layout

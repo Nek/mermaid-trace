@@ -3980,3 +3980,145 @@ fn flow_ac5_html_label_precedence_reaches_node_edge_and_group_output() {
         }
     }
 }
+
+#[test]
+fn flow_ac5_markdown_auto_wrap_controls_measurement_and_drawing() {
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            let render = |wrap: bool| {
+                let source = format!(
+                    "---\r\nconfig: {{layout: {layout}, htmlLabels: {html}, markdownAutoWrap: {wrap}, flowchart: {{wrappingWidth: 80}}}}\r\n---\r\nflowchart TB\r\nA[\"`Alpha **bold** beta gamma delta epsilon 😀`\"] e@-->|\"`Edge alpha beta gamma delta epsilon zeta eta theta`\"| B[Beta]\r\nP[Plain alpha beta gamma delta epsilon]\r\n"
+                );
+                let result = mermaid_trace_rs::render("auto-wrap", &source).unwrap();
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline = mermaid_trace_rs::render_with(&plain, "auto-wrap", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                for root_wrap in [false, true] {
+                    let other =
+                        source.replacen("config: {", &format!("config: {{wrap: {root_wrap}, "), 1);
+                    let other = mermaid_trace_rs::render("auto-wrap", &other).unwrap();
+                    assert_eq!(
+                        strip_trace(result["svg"].as_str().unwrap()),
+                        strip_trace(other["svg"].as_str().unwrap()),
+                        "root wrap must not override flowchart Markdown wrapping"
+                    );
+                }
+                let units: Vec<_> = source.encode_utf16().collect();
+                for (key, expected) in [
+                    ("node:A", "Alpha **bold** beta gamma delta epsilon 😀"),
+                    (
+                        "edge:e",
+                        "Edge alpha beta gamma delta epsilon zeta eta theta",
+                    ),
+                ] {
+                    let piece = result["mapping"]["pieces"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|p| p["domId"] == key && p["labelSpan"].is_object())
+                        .unwrap();
+                    let span = &piece["labelSpan"];
+                    assert_eq!(
+                        String::from_utf16(
+                            &units[span["start"].as_u64().unwrap() as usize
+                                ..span["end"].as_u64().unwrap() as usize]
+                        )
+                        .unwrap(),
+                        expected
+                    );
+                }
+                result
+            };
+            let wrapped = render(true);
+            let unwrapped = render(false);
+            let width = |result: &Value, key: &str| {
+                let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                xml.descendants()
+                    .find(|n| {
+                        n.attribute("data-mt-key") == Some(key)
+                            && n.attribute("data-mt-role") == Some("node")
+                    })
+                    .unwrap()
+                    .children()
+                    .find(|n| n.has_tag_name("rect"))
+                    .unwrap()
+                    .attribute("width")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            };
+            assert!(
+                width(&unwrapped, "node:A") > width(&wrapped, "node:A") * 2.0,
+                "{layout}/{html}: unwrapped text must be measured before sizing its node"
+            );
+            assert_eq!(
+                width(&unwrapped, "node:P"),
+                width(&wrapped, "node:P"),
+                "plain labels must retain their wrapping"
+            );
+            if !html {
+                let edge_background_width = |result: &Value| {
+                    let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let label = xml
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some("edge:e")
+                                && n.attribute("data-mt-role") == Some("edge-label")
+                        })
+                        .unwrap();
+                    label
+                        .descendants()
+                        .find(|n| n.attribute("class") == Some("background"))
+                        .unwrap()
+                        .attribute("width")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                };
+                assert!(
+                    edge_background_width(&unwrapped) > edge_background_width(&wrapped) * 1.5,
+                    "{layout}: edge layout must reserve the unwrapped text width"
+                );
+            }
+            for key in ["node:A", "edge:e"] {
+                let rows = |result: &Value| {
+                    let xml = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    let label = xml
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(key)
+                                && n.attribute("data-mt-label") == Some("true")
+                                && n.descendants().any(|child| child.has_tag_name("text"))
+                        })
+                        .unwrap();
+                    if html {
+                        label
+                            .descendants()
+                            .filter(|n| n.has_tag_name("text"))
+                            .count()
+                    } else {
+                        label
+                            .descendants()
+                            .filter(|n| {
+                                n.attribute("class")
+                                    .is_some_and(|c| c.contains("text-outer-tspan"))
+                            })
+                            .count()
+                    }
+                };
+                assert_eq!(
+                    rows(&unwrapped),
+                    1,
+                    "{layout}/{html}/{key}: no automatic line breaks"
+                );
+                assert!(
+                    rows(&wrapped) > 1,
+                    "{layout}/{html}/{key}: enabled wrapping remains effective"
+                );
+            }
+        }
+    }
+}

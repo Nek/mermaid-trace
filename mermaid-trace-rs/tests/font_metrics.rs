@@ -216,3 +216,109 @@ fn measured_existing_family_labels_outline_without_losing_native_ownership() {
         }
     }
 }
+
+#[test]
+#[cfg(target_os = "macos")]
+fn portable_font_fallback_reports_authored_aat_choice_without_changing_source() {
+    let source = "---\nconfig: {fontFamily: Apple Color Emoji}\n---\nflowchart LR\nA[\"🧑‍💻 ABC\"]";
+    let result = mermaid_trace_rs::render("portable-fallback", source).unwrap();
+    assert_eq!(result["source"], source);
+    assert_eq!(result["mapping"]["source"], source);
+    let diagnostics = result["diagnostics"].as_array().unwrap();
+    let fallback = diagnostics
+        .iter()
+        .find(|d| d["code"] == "font-fallback")
+        .expect("an authored nonportable font must report its substitution");
+    assert_eq!(fallback["font"], "AppleColorEmoji");
+    assert!(!fallback["replacement"].as_str().unwrap().is_empty());
+    assert_ne!(fallback["replacement"], fallback["font"]);
+    let ordinary = mermaid_trace_rs::render("ordinary-font", "flowchart LR\nA[Hello]").unwrap();
+    assert!(ordinary["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn production_existing_families_embed_fonts_with_source_ownership() {
+    for source in [
+        "flowchart LR\nA[Alpha] -->|next| B[Beta]",
+        "flowchart-elk LR\nA[Alpha] -->|next| B[Beta]",
+        "sequenceDiagram\nparticipant A as Alpha\nA->>B: Hello\nNote right of A: Review",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Build\nAlpha :a, 2026-10-01, 2d",
+        "journey\ntitle Build\nsection Work\nAlpha: 5: Alice, Bob",
+        "kanban\n  todo[Todo]\n    task[Alpha]",
+        "stateDiagram-v2\nstate \"Alpha\" as A: Repeated\nA : Repeated\nA --> B: next\nnote right of B: Review",
+    ] {
+        let result = mermaid_trace_rs::render("production-fonts", source).unwrap();
+        let svg = result["svg"].as_str().unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        assert!(
+            svg.contains("@font-face") && svg.contains("src:url(data:font/"),
+            "production output lacks embedded fonts: {source}"
+        );
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|n| {
+                n.has_attribute("data-mt-role") && n.descendants().any(|c| c.has_tag_name("text"))
+            })
+            .collect();
+        assert!(
+            !labels.is_empty(),
+            "portable labels lost source ownership: {source}"
+        );
+        for label in labels {
+            assert!(label.has_attribute("data-mt-start"));
+            assert!(label.has_attribute("data-mt-end"));
+        }
+    }
+}
+
+#[test]
+fn missing_characters_preserve_existing_family_source_and_emit_diagnostics() {
+    let label = "Before \u{10ffff} and \u{10fffe} after";
+    for source in [
+        format!("flowchart LR\nA[\"{label}\"]"),
+        format!("flowchart-elk LR\nA[\"{label}\"]"),
+        format!("sequenceDiagram\nA->>B: {label}"),
+        format!("gantt\ndateFormat YYYY-MM-DD\n{label} :a, 2026-10-01, 2d"),
+        format!("journey\nsection Work\n{label}: 5: Alice"),
+        format!("kanban\n  todo[Todo]\n    task[{label}]"),
+        format!("stateDiagram-v2\nstate \"{label}\" as A"),
+    ] {
+        let result = mermaid_trace_rs::render("missing-characters", &source).unwrap();
+        assert_eq!(result["source"], source);
+        assert_eq!(result["mapping"]["source"], source);
+        let diagnostics = result["diagnostics"].as_array().unwrap();
+        assert_eq!(diagnostics.len(), 2, "{source}");
+        for (diagnostic, character) in diagnostics.iter().zip(['\u{10fffe}', '\u{10ffff}']) {
+            assert_eq!(diagnostic["code"], "missing-character");
+            assert_eq!(diagnostic["character"], character.to_string());
+            assert_eq!(diagnostic["replacement"], "\u{fffd}");
+        }
+        let document = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+        // Gantt owns the authored space before its task metadata separator.
+        let authored_label = if source.starts_with("gantt") {
+            format!("{label} ")
+        } else {
+            label.to_owned()
+        };
+        let text = document
+            .descendants()
+            .find(|n| {
+                n.has_tag_name("text") && n.attribute("aria-label") == Some(authored_label.as_str())
+            })
+            .unwrap_or_else(|| panic!("missing accessible original text: {source}"));
+        assert_eq!(
+            support::text_content(text),
+            label.replace(['\u{10ffff}', '\u{10fffe}'], "\u{fffd}")
+        );
+        let target = text
+            .ancestors()
+            .find(|n| n.has_attribute("data-mt-start"))
+            .unwrap();
+        let start: usize = target.attribute("data-mt-start").unwrap().parse().unwrap();
+        let end: usize = target.attribute("data-mt-end").unwrap().parse().unwrap();
+        let selected =
+            String::from_utf16(&source.encode_utf16().collect::<Vec<_>>()[start..end]).unwrap();
+        assert!(selected.contains(label), "source range changed: {selected}");
+        assert!(target.descendants().any(|n| n.has_tag_name("text")));
+    }
+}

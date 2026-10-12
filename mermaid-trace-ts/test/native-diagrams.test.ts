@@ -787,6 +787,7 @@ async function verifyNative(source: string, key: string, expected: string, label
     if (expectedTextColour !== undefined) {
       const labelGroup = page.locator(labelSelector).first();
       for (const line of await labelGroup.locator('text').all()) {
+        assert.equal(await line.evaluate(element => getComputedStyle(element).fill), expectedTextColour);
         await line.click();
         assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), markdownSelection(label));
         await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected), formatLocation({ id: filename, source: markdown }, { start: toMarkdown(labelSpan.start), end: toMarkdownEnd(labelSpan.end) }));
@@ -1258,6 +1259,13 @@ test('ACT-VISIBILITY-TRANSITIONS: Gantt text label follows font visibility', { t
     assert.equal(await label.getAttribute('data-mt-selected'), null);
     await label.evaluate(element => { (element as SVGTextElement).style.fontSize = '11px'; });
     await page.waitForFunction(() => document.querySelector('[data-mt-key="gantt:task:a"][data-mt-role=node-label]')?.getAttribute('tabindex') === '0', undefined, { timeout: 2_000 });
+    const eleven = await label.boundingBox();
+    assert.ok(eleven && eleven.width > 0 && eleven.height > 0, 'revealed label must have real painted geometry');
+    await label.evaluate(element => { (element as SVGElement).style.fontSize = '22px'; });
+    const twentyTwo = await label.boundingBox();
+    assert.ok(twentyTwo && twentyTwo.width > eleven.width * 1.8 && twentyTwo.width < eleven.width * 2.2,
+      'font-size edits must resize lettering, not only toggle an activation flag');
+    await label.evaluate(element => { (element as SVGElement).style.fontSize = '11px'; });
     assert.equal(await label.getAttribute('data-mt-selected'), 'true');
     assert.equal(await task.getAttribute('data-mt-selected'), null);
     await label.focus(); await label.press('Enter');
@@ -2247,29 +2255,55 @@ test('JOURNEY-2-FONTS: invisible labels resolve to their owner while CSS-sized l
   const producer = await createMermanProducer();
   const reader = 'data:text/javascript;base64,' + (await readFile('dist/src/svg-mapping.js')).toString('base64');
   const activation = 'data:text/javascript;base64,' + Buffer.from((await readFile('dist/src/svg-activation.js', 'utf8')).replace("'./svg-mapping.js'", JSON.stringify(reader))).toString('base64');
+  // Actual font-face inspection uses Chromium CDP; other interaction checks use the selected browser.
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     page.setDefaultTimeout(3_000);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
     for (const [font, computed] of [['0', '0px'], ['0.5', '0.5px'], ['24', '24px'], ["'24'", '24px'], ["'24px'", '24px'], ["'1em'", '16px'], ["'120%'", '19.2px'], ['-1', '16px'], ["'garbage'", '16px']] as const) for (const mode of ['tspan', 'fo', 'old']) {
       const invisible = font === '0' && mode !== 'old';
       const expectedSize = mode === 'old' ? '16px' : computed;
       const source = '---\nconfig:\n  fontFamily: Georgia\n  journey:\n    taskFontSize: ' + font + '\n    taskFontFamily: Courier\n    textPlacement: ' + mode + '\n---\njourney\nsection Day\nTask<br>Line : 5 : Alice\n';
-      const { svg, mapping } = await producer.render('journey-font-select', source);
+      const { svg, mapping, diagnostics } = await producer.render('journey-font-select', source);
       await page.setContent(svg);
+      const first = page.locator('svg');
+      const task = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node]');
+      const label = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node-label]');
+      const text = mode === 'old' ? label : label.locator('text.task').first();
+      assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), expectedSize);
+      // Font aliases are transport details; verify the actual painted face, including
+      // zero-size assets by briefly revealing them before activation assertions.
+      const styles = await text.evaluate(element => [element, ...element.querySelectorAll('*')].map(node => {
+        const style = node.getAttribute('style');
+        (node as SVGElement).style.setProperty('font-size', '16px', 'important');
+        return style;
+      }));
+      await text.evaluate(element => element.getBoundingClientRect());
+      await page.evaluate(() => document.fonts.ready);
+      const { root } = await cdp.send('DOM.getDocument');
+      const selector = '[data-mt-key="journey:task:0"][data-mt-role=node-label]' + (mode === 'old' ? '' : ' text.task');
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+      const painted = fonts.filter(font => font.glyphCount > 0);
+      assert.ok(painted.length, `${font}/${mode}: task text must paint with its resolved font`);
+      const substitution = diagnostics?.find(d => d.code === 'font-fallback' && d.font === (mode === 'old' ? 'Georgia' : 'Courier'));
+      for (const face of painted) {
+        if (substitution) assert.equal(face.postScriptName, substitution.replacement, 'paint must match the reported portable fallback, even when revealed from zero size');
+        else assert.match(face.familyName, mode === 'old' ? /Georgia/ : /Courier/, `${font}/${mode}: ${face.postScriptName}`);
+        assert.equal(face.isCustomFont, true, 'task font must come from the portable SVG');
+      }
+      await text.evaluate((element, styles) => [element, ...element.querySelectorAll('*')].forEach((node, i) => {
+        if (styles[i] === null) node.removeAttribute('style'); else node.setAttribute('style', styles[i]!);
+      }), styles);
       await page.evaluate(async activation => {
         const { activateSvg } = await import(activation);
         const events: unknown[] = [];
         const root = document.querySelector('svg') as SVGSVGElement;
         Object.assign(window, { events, handle: activateSvg(root, { onSelect: (event: unknown) => events.push(event) }) });
       }, activation);
-      const first = page.locator('svg');
-      const task = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node]');
-      const label = first.locator('[data-mt-key="journey:task:0"][data-mt-role=node-label]');
-      const text = mode === 'old' ? label : label.locator('text.task').first();
-      assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), expectedSize);
-      assert.match(await text.evaluate(element => getComputedStyle(element).fontFamily), mode === 'old' ? /Georgia/ : /Courier/);
-      assert.equal(await label.getAttribute('tabindex'), invisible ? null : '0');
+      assert.equal(await label.getAttribute('tabindex'), invisible ? null : '0', `${font}/${mode}: task label`);
       const labelStart = source.indexOf('Task<br>Line');
       const selected = await page.evaluate(span => (window as any).handle.highlight([span]), { start: labelStart, end: labelStart + 4 });
       assert.ok(selected.length, 'the authored label still resolves to its owning source object');
@@ -2282,7 +2316,7 @@ test('JOURNEY-2-FONTS: invisible labels resolve to their owner while CSS-sized l
       }
       const section = first.locator('[data-mt-key="journey:section:0"][data-mt-role=control]');
       const sectionLabel = first.locator('[data-mt-key="journey:section:0"][data-mt-role=control-label]');
-      assert.equal(await sectionLabel.getAttribute('tabindex'), invisible ? null : '0');
+      assert.equal(await sectionLabel.getAttribute('tabindex'), invisible ? null : '0', `${font}/${mode}: section label`);
       const sectionStart = source.indexOf('section Day') + 'section '.length;
       await page.evaluate(span => (window as any).handle.highlight([span]), { start: sectionStart, end: sectionStart + 3 });
       assert.equal(await section.getAttribute('data-mt-selected'), invisible ? 'true' : null);
@@ -2966,6 +3000,66 @@ C x--x D
           ['edge:e', 'e@<-->|Go|', 'edge'], ['edge:e', 'Go', 'edge-label'],
         ], 'e@<-->|Go|', [], 'edge:e');
       }
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
+
+test('FLOW AC5/6: disabled Markdown wrapping fits labels and preserves saved/live ownership', { timeout: 240_000 }, async t => {
+  const producer = await createMermanProducer();
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+      const title = 'Group **bold** alpha beta gamma delta epsilon';
+      const label = 'Alpha **bold** beta gamma delta epsilon 😀';
+      const edge = 'Edge alpha beta gamma delta epsilon zeta eta theta';
+      const group = `subgraph G["\`${title}\`"]
+A["\`${label}\`"] e@-->|"\`${edge}\`"| B[Beta]
+M["\`First **bold** line<br/>Second *italic* line\`"]
+end`;
+      const source = `---
+config: ${JSON.stringify({ layout, look, htmlLabels, handDrawnSeed: 42, markdownAutoWrap: false, flowchart: { wrappingWidth: 80 } })}
+---
+flowchart TB
+${group}
+`;
+      await t.test(`${layout}/${look}/${htmlLabels}: geometry`, async () => {
+        const { svg } = await producer.render('nowrap-geometry', source);
+        await page.setContent(svg);
+        await page.evaluate(() => document.fonts.ready);
+        const geometry = await page.evaluate(() => {
+          const bounds = (e: Element) => { const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+          return ['node:A', 'node:M', 'flowchart:subgraph:G'].map(key => {
+            const group = key.startsWith('flowchart:');
+            const role = group ? 'control' : 'node';
+            const owner = document.querySelector(`[data-mt-key="${key}"][data-mt-role="${role}"]`)!;
+            const shape = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path')!;
+            const label = document.querySelector(`[data-mt-key="${key}"][data-mt-role="${role}-label"]`)!;
+            return { key, shape: bounds(shape), label: bounds(label), scale: document.querySelector('svg')!.getScreenCTM()!.a };
+          });
+        });
+        for (const { key, shape, label, scale } of geometry) assert.ok(label.left >= shape.left - 3 * scale && label.right <= shape.right + 3 * scale && label.top >= shape.top - 3 * scale && label.bottom <= shape.bottom + 3 * scale, `${layout}/${look}/${htmlLabels}/${key}: label must fit its shape`);
+        const multiline = page.locator('[data-mt-key="node:M"][data-mt-role=node-label]');
+        const rows = await multiline.evaluate(label => {
+          const baselines: number[] = [];
+          const texts = label instanceof SVGTextElement ? [label] : label.querySelectorAll('text');
+          for (const text of texts) {
+            for (let i = 0; i < text.getNumberOfChars(); i++) {
+              if (text.getExtentOfChar(i).height <= 0) continue;
+              // Character em boxes can overlap across separate lines; count actual baselines.
+              const y = text.getStartPositionOfChar(i).matrixTransform(text.getScreenCTM()!).y;
+              if (!baselines.some(previous => Math.abs(previous - y) < 0.001)) baselines.push(y);
+            }
+          }
+          return baselines.length;
+        });
+        assert.equal(rows, 2, 'explicit breaks produce exactly two rendered text rows');
+      });
+      await t.test(`${layout}/${look}/${htmlLabels}: saved/live selection`, () => verifyNative(source, 'node:A', `A["\`${label}\`"]`, label, [
+        ['edge:e', `e@-->|"\`${edge}\`"|`, 'edge'], ['edge:e', edge, 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', title, 'control-label'],
+      ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true));
     }
   } finally { await browser.close(); await producer.close(); }
 });

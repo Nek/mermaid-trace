@@ -21,10 +21,11 @@ async function renderFile(filename: string, producer: Awaited<ReturnType<typeof 
   const blocks: readonly MarkdownBlock[] = standalone
     ? [{ id: 'preview-0', source, span, document, origins: [{ logical: span, original: span }] }]
     : prepareMarkdown(document, 'preview').blocks;
-  const { svgs, diagramOnly = [] } = blocks.length ? await producer.render(blocks) : { svgs: {} as Record<string, string> };
+  const { svgs, diagramOnly = [], diagnostics = [] } = blocks.length ? await producer.render(blocks) : { svgs: {} as Record<string, string> };
   const view = standalone ? { html: `<div data-mt-block="preview-0">${svgs['preview-0']}</div>`, targets: [], texts: [] }
     : renderMarkdownView(document, blocks, new Map(Object.entries(svgs)));
   const warnings = diagramOnly.map(id => `${filename}: ${id} supports whole-diagram selection only (no element source map).`);
+  warnings.push(...diagnostics.map(diagnostic => `${filename}: ${diagnostic.id}: ${diagnostic.message}`));
   const payload = JSON.stringify({ document, blocks, targets: view.targets, texts: view.texts }).replace(/</g, '\\u003c');
   const font = await readFile(new URL('../../node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2', import.meta.url));
   const sourcePage = sourceView ? escape(`<!doctype html><html lang="en"><head><meta charset="utf-8"><style>

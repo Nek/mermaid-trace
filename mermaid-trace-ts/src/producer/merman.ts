@@ -4,6 +4,11 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { SourceMapping } from '../source-mapping.js';
 
+export type RenderDiagnostic = Readonly<
+  { code: 'missing-character'; character: string; replacement: string; message: string } |
+  { code: 'font-fallback'; font: string; replacement: string; message: string }
+>;
+
 /** One native Rust process owns the Merman engine across preview revisions. */
 export async function createMermanProducer() {
   const binary = fileURLToPath(new URL('../../../../mermaid-trace-rs/target/debug/mermaid-trace-rs', import.meta.url));
@@ -52,7 +57,7 @@ export async function createMermanProducer() {
     async render(id: string, source: string) {
       if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new Error('Diagram ID must be safe for SVG');
       if (!source.length || source.length > 50_000) throw new Error('Invalid Mermaid source length');
-      return await request({ id, source }) as { readonly source: string; readonly semantic: unknown; readonly svg: string; readonly mapping: SourceMapping };
+      return await request({ id, source }) as { readonly source: string; readonly semantic: unknown; readonly svg: string; readonly mapping: SourceMapping; readonly diagnostics?: readonly RenderDiagnostic[] };
     },
     close() {
       if (!closing) {
