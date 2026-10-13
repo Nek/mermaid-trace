@@ -834,3 +834,71 @@ fn missing_characters_preserve_existing_family_source_and_emit_diagnostics() {
         assert!(target.descendants().any(|n| n.has_tag_name("text")));
     }
 }
+
+#[test]
+fn trusted_layered_css_preserves_exported_font_and_source() {
+    let source = "flowchart LR\n%% 😀\nA[Alpha WWWiii]\n";
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for (name, css, expected) in [
+                ("flat", ".nodeLabel{font-size:32px!important}", 32),
+                (
+                    "layer",
+                    "@layer theme{.nodeLabel{font-size:32px!important}}",
+                    32,
+                ),
+                (
+                    "rollback",
+                    "@layer base,theme;@layer base{.nodeLabel{font-size:24px}}@layer theme{.nodeLabel{font-size:revert-layer!important}}",
+                    24,
+                ),
+            ] {
+                let draw = |traced| {
+                    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                        "traceSource":traced, "htmlLabels":true, "layout":layout, "look":look,
+                        "handDrawnSeed":42, "themeCSS":css, "deterministicIds":true, "deterministicIDSeed":"layers"
+                    }))));
+                    mermaid_trace_rs::render_with(&renderer, "layers", source).unwrap()
+                };
+                let result = draw(true);
+                let svg = result["svg"].as_str().unwrap();
+                let doc = roxmltree::Document::parse(svg).unwrap();
+                let label = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-mt-role") == Some("node-label"))
+                    .unwrap();
+                let text = label
+                    .descendants()
+                    .find(|n| n.has_tag_name("text"))
+                    .unwrap();
+                assert!(
+                    text.attribute("style")
+                        .unwrap()
+                        .contains(&format!("font-size:{expected}px;")),
+                    "{layout}/{look}/{name}: {:?}",
+                    text.attribute("style")
+                );
+                let start: usize = label.attribute("data-mt-start").unwrap().parse().unwrap();
+                let end: usize = label.attribute("data-mt-end").unwrap().parse().unwrap();
+                let utf16: Vec<_> = source.encode_utf16().collect();
+                assert_eq!(
+                    String::from_utf16(&utf16[start..end]).unwrap(),
+                    "Alpha WWWiii"
+                );
+                assert_eq!(result["mapping"]["source"], source);
+                assert_eq!(
+                    support::strip_trace(svg),
+                    support::strip_trace(draw(false)["svg"].as_str().unwrap())
+                );
+                if let Ok(directory) = std::env::var("TRACE_CSS_LAYER_ARTIFACTS") {
+                    std::fs::write(
+                        std::path::Path::new(&directory)
+                            .join(format!("{layout}-{look}-{name}.json")),
+                        serde_json::to_vec(&result).unwrap(),
+                    )
+                    .unwrap();
+                }
+            }
+        }
+    }
+}
