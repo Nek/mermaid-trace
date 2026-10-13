@@ -12,7 +12,8 @@ import { formatLocation } from '../src/markdown-source.js';
 import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
-  skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 600_000,
+  // The full matrix has hundreds of saved/live cases; each driver request still times out at 15s.
+  skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 7_200_000,
 }, async t => {
   assert.equal(process.platform, 'darwin', 'Safari acceptance requires macOS and the installed Safari driver');
   const producer = await createMermanProducer();
@@ -217,32 +218,39 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% FLOW-MULTI-MATH ${layout}/${legacyMathML}/${forceLegacyMathML}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["${label}"] e@-->|"${edge}"| B[Beta]`;
       cases.push([source, label], [source, edge, 'edge-label']);
     }
-    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const styled of [false, true]) {
+    for (const target of ['node', 'edge', 'group'] as const) for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const styled of [false, true]) {
       const config = { layout, look, htmlLabels: true, themeVariables: { fontSize: styled ? 16 : 0 } };
-      cases.push([`%% FLOW-ZERO-MATH ${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["$$x^2$$"] --> B[Beta]\n${styled ? 'style A font-size:0pt' : ''}`, '$$x^2$$']);
+      const diagram = target === 'node' ? 'A["$$x^2$$"] --> B[Beta]' : `subgraph G["${target === 'group' ? '$$x^2$$' : 'Group'}"]\nA[One] e@-->|"${target === 'edge' ? '$$x^2$$' : 'Link'}"| B[Two]\nend`;
+      const style = { node: 'style A', edge: 'linkStyle 0', group: 'style G' }[target];
+      cases.push([`%% FLOW-ZERO-MATH ${target}/${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${diagram}\n${styled ? style + ' font-size:0pt' : ''}`, '$$x^2$$', target === 'edge' ? 'edge-label' : target === 'group' ? 'control-label' : 'node-label']);
     }
     const revealMath = async (source: string) => {
       if (!source.includes('FLOW-ZERO-MATH')) return;
       const result = await evaluate(`return (async()=>{
-        window.formulaStyles=window.roots.map(root=>{const owner=root.querySelector('[data-mt-role=node-label]'),formula=owner.querySelector('svg');return {owner,formula,style:formula.getAttribute('style')};});
-        const hidden=window.formulaStyles.every(({owner,formula})=>!owner.hasAttribute('tabindex')&&getComputedStyle(formula).fontSize==='0px');
+        window.formulaStyles=window.roots.map(root=>{
+          const owner=root.querySelector('[data-mt-start="'+window.label.dataset.mtStart+'"][data-mt-end="'+window.label.dataset.mtEnd+'"]'),formula=owner.querySelector('svg');
+          const backgroundVisible=[...owner.querySelectorAll('rect:not([aria-hidden])')].some(rect=>{const box=rect.getBoundingClientRect(),style=getComputedStyle(rect);return box.width>0&&box.height>0&&style.fill!=='none'&&Number(style.fillOpacity)>0;});
+          return {owner,formula,backgroundVisible,style:formula.getAttribute('style')};
+        });
+        const initialExposure=window.formulaStyles.every(({owner,formula,backgroundVisible})=>owner.hasAttribute('tabindex')===backgroundVisible&&getComputedStyle(formula).fontSize==='0px');
         const widths=[];
         for(const size of [11,22,11]){
           window.formulaStyles.forEach(({formula})=>formula.style.setProperty('font-size',size+'px','important'));
           for(let i=0;i<100&&!window.formulaStyles.every(({owner})=>owner.tabIndex===0);i++)await new Promise(r=>setTimeout(r,25));
           widths.push(window.formulaStyles[0].formula.getBoundingClientRect().width);
         }
-        return {hidden,widths,exposed:window.formulaStyles.every(({owner})=>owner.tabIndex===0)};
+        return {initialExposure,widths,backgrounds:window.formulaStyles.map(({backgroundVisible})=>backgroundVisible),exposed:window.formulaStyles.every(({owner})=>owner.tabIndex===0)};
       })();`);
-      assert.equal(result.hidden, true); assert.equal(result.exposed, true);
+      assert.deepEqual(result.backgrounds, [0,1].map(()=>source.startsWith('%% FLOW-ZERO-MATH edge/')));
+      assert.equal(result.initialExposure, true); assert.equal(result.exposed, true);
       assert.ok(result.widths[0]>0 && Math.abs(result.widths[1]/result.widths[0]-2)<0.01);
     };
     const hideMath = async (source: string) => {
       if (!source.includes('FLOW-ZERO-MATH')) return;
       assert.equal(await evaluate(`return (async()=>{
         window.formulaStyles.forEach(({formula,style})=>formula.setAttribute('style',style));
-        for(let i=0;i<100&&window.formulaStyles.some(({owner})=>owner.hasAttribute('tabindex'));i++)await new Promise(r=>setTimeout(r,25));
-        return window.formulaStyles.every(({owner})=>!owner.hasAttribute('tabindex')&&!owner.hasAttribute('data-mt-selected')&&!owner.querySelector('[aria-hidden=true]'));
+        for(let i=0;i<100&&window.formulaStyles.some(({owner,backgroundVisible})=>owner.hasAttribute('tabindex')!==backgroundVisible);i++)await new Promise(r=>setTimeout(r,25));
+        return window.formulaStyles.every(({owner,backgroundVisible})=>owner.hasAttribute('tabindex')===backgroundVisible&&(backgroundVisible||(!owner.hasAttribute('data-mt-selected')&&!owner.querySelector('[aria-hidden=true]'))));
       })();`), true);
     };
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;

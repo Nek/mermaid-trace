@@ -212,3 +212,70 @@ fn formula_layout_tracks_zero_and_fractional_css_sizes() {
         }
     }
 }
+
+#[test]
+fn connector_and_subgraph_formula_sizes_preserve_source_and_static_parity() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for size in [0.0, 0.5, 16.0] {
+                for styled in [false, true] {
+                    let config = json!({"layout":layout,"look":look,"htmlLabels":true,"handDrawnSeed":42,"themeVariables":{"fontSize":if styled {16.0} else {size}}});
+                    let source = format!(
+                        "---\r\nconfig: {config}\r\n---\r\nflowchart LR\r\n%% 😀\r\nsubgraph G[\"$$g^2$$\"]\r\nA[One] e@-->|\"$$x^2$$\"| B[Two]\r\nend\r\n{}",
+                        if styled {
+                            format!(
+                                "style G font-size:{size}px\r\nlinkStyle 0 font-size:{size}px\r\n"
+                            )
+                        } else {
+                            String::new()
+                        }
+                    );
+                    let result = mermaid_trace_rs::render("math-owners", &source).unwrap();
+                    let svg = result["svg"].as_str().unwrap();
+                    let doc = roxmltree::Document::parse(svg).unwrap();
+                    for (role, label) in [("edge-label", "$$x^2$$"), ("control-label", "$$g^2$$")] {
+                        let owner = doc
+                            .descendants()
+                            .find(|n| n.attribute("data-mt-role") == Some(role))
+                            .unwrap();
+                        let formula = owner.descendants().find(|n| n.has_tag_name("svg")).unwrap();
+                        assert_eq!(
+                            formula.attribute("style"),
+                            Some(format!("font-size:{size}px").as_str())
+                        );
+                        for axis in ["width", "height"] {
+                            assert!(
+                                formula
+                                    .attribute(axis)
+                                    .unwrap()
+                                    .strip_suffix("em")
+                                    .unwrap()
+                                    .parse::<f64>()
+                                    .unwrap()
+                                    > 0.0,
+                                "retain formula geometry even at zero CSS size"
+                            );
+                        }
+                        let start = source[..source.find(label).unwrap()].encode_utf16().count();
+                        assert_eq!(
+                            owner.attribute("data-mt-start"),
+                            Some(start.to_string().as_str())
+                        );
+                        assert_eq!(
+                            owner.attribute("data-mt-end"),
+                            Some((start + label.len()).to_string().as_str())
+                        );
+                    }
+                    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                    let plain =
+                        mermaid_trace_rs::render_with(&renderer, "math-owners", &source).unwrap();
+                    assert!(
+                        support::strip_trace(svg)
+                            == support::strip_trace(plain["svg"].as_str().unwrap()),
+                        "{layout}/{look}/{size}/{styled}: mapped/plain parity"
+                    );
+                }
+            }
+        }
+    }
+}

@@ -1230,7 +1230,11 @@ test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', {
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection: ${labelText}`, { timeout: 180_000 }, async () => {
+for (const target of [
+  { name: 'node', key: 'node:A', role: 'node', style: 'style A font-size:0pt' },
+  { name: 'edge', key: 'edge:e', role: 'edge', style: 'linkStyle 0 font-size:0pt' },
+  { name: 'group', key: 'flowchart:subgraph:G', role: 'control', style: 'style G font-size:0pt' },
+]) for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection: ${target.name}/${labelText}`, { timeout: 180_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await launchBrowser();
   const directory = await mkdtemp(join(tmpdir(), 'trace-flow-zero-font-'));
@@ -1241,12 +1245,13 @@ for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels
   try {
     const context = await browser.newContext({ permissions: clipboardPermissions });
     const page = await context.newPage(); page.setDefaultTimeout(5_000);
-    const labelSelector = '[data-mt-key="node:A"][data-mt-role=node-label]';
-    const ownerSelector = '[data-mt-key="node:A"][data-mt-role=node]';
+    const labelSelector = `[data-mt-key="${target.key}"][data-mt-role=${target.role}-label]`;
+    const ownerSelector = `[data-mt-key="${target.key}"][data-mt-role=${target.role}]`;
     for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) {
       for (const html of (labelText.startsWith('$$') ? [true] : [false, true])) for (const styled of [false, true]) {
         const config = { layout, look, htmlLabels: html, themeVariables: { fontSize: styled ? 16 : 0 } };
-        const source = `%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["${labelText}"] --> B[Beta]\n${styled ? 'style A font-size:0pt\n' : ''}`;
+        const diagram = target.name === 'node' ? `A["${labelText}"] --> B[Beta]` : `subgraph G["${target.name === 'group' ? labelText : 'Group'}"]\nA[One] e@-->|"${target.name === 'edge' ? labelText : 'Link'}"| B[Two]\nend`;
+        const source = `%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${diagram}\n${styled ? target.style + '\n' : ''}`;
         const span = { start: source.indexOf(labelText), end: source.indexOf(labelText) + labelText.length };
         const markdown = '# Fonts\n\n```mermaid\n' + source + '```\n';
         const { svg } = await producer.render('flow-zero-font', source);
@@ -1266,7 +1271,12 @@ for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels
           const label = page.locator(labelSelector), owner = page.locator(ownerSelector);
           const text = label.locator('text,svg').first();
           assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), '0px', source);
-          assert.equal(await label.getAttribute('tabindex'), null);
+          const backgroundVisible = await label.locator('rect:not([aria-hidden])').evaluateAll(rects => rects.some(rect => {
+            const box = rect.getBoundingClientRect(), style = getComputedStyle(rect);
+            return box.width > 0 && box.height > 0 && style.fill !== 'none' && Number(style.fillOpacity) > 0;
+          }));
+          assert.equal(backgroundVisible, target.name === 'edge', 'retain connector backgrounds without adding backgrounds to hidden node/group labels');
+          assert.equal(await label.getAttribute('tabindex'), backgroundVisible ? '0' : null);
           assert.equal(await owner.getAttribute('tabindex'), '0');
           const reverse = async () => {
             if (!live) await page.evaluate(span => (window as any).handle.highlight([span]), span);
@@ -1276,8 +1286,8 @@ for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels
               const selection = element.ownerDocument.getSelection()!;
               selection.removeAllRanges(); selection.addRange(range);
             }, { start: markdown.indexOf(labelText), end: markdown.indexOf(labelText) + labelText.length });
-            await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('data-mt-selected') === 'true', ownerSelector);
-            assert.equal(await label.getAttribute('data-mt-selected'), null);
+            await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('data-mt-selected') === 'true', backgroundVisible ? labelSelector : ownerSelector);
+            assert.equal(await label.getAttribute('data-mt-selected'), backgroundVisible ? 'true' : null);
           };
           await reverse();
           await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '11px', 'important'); });
@@ -1302,9 +1312,9 @@ for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels
             } else assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
           }
           await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '0px', 'important'); });
-          await page.waitForFunction(selector => !document.querySelector(selector)?.hasAttribute('tabindex'), labelSelector);
-          assert.equal(await label.getAttribute('data-mt-selected'), null);
-          assert.equal(await label.locator('[aria-hidden=true]').count(), 0, 'hidden labels have no generated click helper');
+          await page.waitForFunction(({ selector, visible }) => document.querySelector(selector)?.hasAttribute('tabindex') === visible, { selector: labelSelector, visible: backgroundVisible });
+          assert.equal(await label.getAttribute('data-mt-selected'), backgroundVisible ? 'true' : null);
+          if (!backgroundVisible) assert.equal(await label.locator('[aria-hidden=true]').count(), 0, 'hidden labels have no generated click helper');
           await reverse();
           if (!live) {
             await page.evaluate(() => (window as any).handle.dispose());
