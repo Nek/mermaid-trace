@@ -161,6 +161,19 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         'note right of Published : Available to readers', role, 2,
       ]),
     );
+    const fontDefaults = new Map<string, number>();
+    for (const keyword of ['initial', 'inherit', 'unset']) for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) {
+      const config = { layout, htmlLabels, themeVariables: { fontSize: '24px' } };
+      const source = `%% FONT-DEFAULT ${keyword}/${layout}/${htmlLabels}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\nclassDef prior font-size:48px\nclass A,G prior\nlinkStyle default font-size:48px\nstyle A font-size:${keyword}\nstyle G font-size:${keyword}\nlinkStyle 0 font-size:${keyword}`;
+      fontDefaults.set(source, keyword === 'initial' ? 16 : 24);
+      cases.push([source, 'Alpha'], [source, 'Next', 'edge-label'], [source, 'Group', 'control-label']);
+    }
+    const checkFontDefault = async (source: string) => {
+      const expected = fontDefaults.get(source);
+      if (expected === undefined) return;
+      const sizes = await evaluate("return [...window.label.querySelectorAll('text,tspan')].map(e=>getComputedStyle(e).fontSize);");
+      assert.deepEqual(new Set(sizes), new Set([`${expected}px`]), source.split('\n')[0]);
+    };
     // Body and stroke hit areas have no separate text-tree UID; clicking the control's
     // centre can instead activate its independently editable label.
     const pointer = async (aria: string, role: string | undefined, last = false) => {
@@ -203,6 +216,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         window.group=[...window.label.closest('svg[data-mt-map]').querySelectorAll('[data-mt-start="'+window.label.dataset.mtStart+'"][data-mt-end="'+window.label.dataset.mtEnd+'"]')];
         return window.label.getAttribute('aria-label');
       })();`);
+      await checkFontDefault(source);
       if (label === missingLabel) {
         const drawn = await evaluate('return window.label.textContent;');
         // SVG row boundaries omit separator spaces; source selection below stays exact.
@@ -260,6 +274,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           document.addEventListener('keydown',e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted}));
           return window.label.getAttribute('aria-label');
         })();`);
+        await checkFontDefault(source);
         if (label === missingLabel) {
           const drawn = await evaluate('return window.label.textContent;');
           // SVG row boundaries omit separator spaces; source selection below stays exact.

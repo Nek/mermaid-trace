@@ -2801,13 +2801,13 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
-for (const [keyword, absolute] of [['xx-small', 9], ['x-small', 10], ['small', 13], ['medium', 16], ['large', 18], ['x-large', 24], ['xx-large', 32], ['xxx-large', 48], ['smaller', 0], ['larger', 0]] as const) test(`FLOW AC5/6: ${keyword} font keywords retain measured paint and saved/live ownership`, { timeout: 600_000 }, async () => {
+for (const [keyword, absolute] of [['xx-small', 9], ['x-small', 10], ['small', 13], ['medium', 16], ['large', 18], ['x-large', 24], ['xx-large', 32], ['xxx-large', 48], ['smaller', 0], ['larger', 0], ['initial', 16], ['inherit', 0], ['unset', 0]] as const) test(`FLOW AC5/6: ${keyword} font keywords retain measured paint and saved/live ownership`, { timeout: 600_000 }, async () => {
   const producer = await createMermanProducer(), browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     for (const origin of ['theme', 'inline', 'class']) {
       const base = origin === 'theme' ? 16 : 24;
-      const expected = keyword === 'smaller' ? base / 1.2 : keyword === 'larger' ? base * 1.2 : absolute;
+      const expected = keyword === 'inherit' || keyword === 'unset' ? base : keyword === 'smaller' ? base / 1.2 : keyword === 'larger' ? base * 1.2 : absolute;
       for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
         const group = 'subgraph G[Group WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend';
         const config = { layout, look, htmlLabels, handDrawnSeed: 42, fontFamily: 'Arial', themeVariables: { fontSize: origin === 'theme' ? keyword : '24px' } };

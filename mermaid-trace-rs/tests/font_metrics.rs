@@ -451,6 +451,9 @@ fn authored_font_styles_resolve_once_for_owned_labels() {
                         ("x-large", 24.0),
                         ("xx-large", 32.0),
                         ("xxx-large", 48.0),
+                        ("initial", 16.0),
+                        ("inherit", base),
+                        ("unset", base),
                         ("smaller", base / 1.2),
                         ("larger", base * 1.2),
                     ] {
@@ -521,6 +524,9 @@ fn relative_theme_fonts_match_pixel_geometry_and_source() {
                     ("x-large", 24.0),
                     ("xx-large", 32.0),
                     ("xxx-large", 48.0),
+                    ("initial", 16.0),
+                    ("inherit", 16.0),
+                    ("unset", 16.0),
                     ("smaller", 16.0 / 1.2),
                     ("larger", 16.0 * 1.2),
                 ] {
