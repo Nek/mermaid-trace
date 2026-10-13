@@ -3,6 +3,90 @@ use serde_json::Value;
 use support::strip_trace;
 
 #[test]
+fn flow_ac5_container_palette_preserves_declaration_order_and_ownership() {
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                let config = serde_json::json!({"layout":layout,"look":look,"htmlLabels":html,"handDrawnSeed":42,
+                    "theme":"redux-color","themeVariables":{"THEME_COLOR_LIMIT":1,
+                    "borderColorArray":["#a1b2c3","#d4e5f6","#123456"],"bkgColorArray":["#123abc","#456def"]}});
+                let source = format!(
+                    "---\r\nconfig: {config}\r\n---\r\nflowchart TB\r\n%% 😀\r\nsubgraph O[Outer]\r\nsubgraph I[Inner]\r\nA[Alpha]\r\nend\r\nend\r\nsubgraph S[Sibling]\r\nB[Beta]\r\nend\r\nsubgraph C[Collapsed]\r\nD[Delta]\r\nend\r\nC@{{view:collapsed}}\r\nsubgraph E[Empty]\r\nend\r\nO --> S --> C --> E\r\n"
+                );
+                let result = mermaid_trace_rs::render("palette", &source).unwrap();
+                let svg = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                for (id, slot, label) in [
+                    ("O", 0, "Outer"),
+                    ("I", 1, "Inner"),
+                    ("S", 2, "Sibling"),
+                    ("C", 0, "Collapsed"),
+                    ("E", 1, "Empty"),
+                ] {
+                    let key = format!("flowchart:subgraph:{id}");
+                    let group = svg
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(&key)
+                                && n.attribute("data-mt-role") == Some("control")
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        group.attribute("data-color-id"),
+                        Some(format!("color-{slot}").as_str()),
+                        "{layout}/{look}/{html}/{id}"
+                    );
+                    let title = svg
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(&key)
+                                && n.attribute("data-mt-role") == Some("control-label")
+                        })
+                        .unwrap();
+                    let utf16: Vec<_> = source.encode_utf16().collect();
+                    let start: usize = title.attribute("data-mt-start").unwrap().parse().unwrap();
+                    let end: usize = title.attribute("data-mt-end").unwrap().parse().unwrap();
+                    assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), label);
+                }
+                assert_eq!(
+                    svg.descendants()
+                        .filter(|n| n.attribute("data-color-id").is_some())
+                        .count(),
+                    5
+                );
+                let plain = merman::Renderer::new().with_engine(merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(serde_json::json!({"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let baseline = mermaid_trace_rs::render_with(&plain, "palette", &source).unwrap();
+                assert_eq!(
+                    strip_trace(result["svg"].as_str().unwrap()),
+                    strip_trace(baseline["svg"].as_str().unwrap())
+                );
+                let collapsed = mermaid_trace_rs::render(
+                    "palette",
+                    &format!("{source}O@{{view:collapsed}}\r\n"),
+                )
+                .unwrap();
+                let collapsed_svg =
+                    roxmltree::Document::parse(collapsed["svg"].as_str().unwrap()).unwrap();
+                for (id, slot) in [("O", 0), ("S", 2), ("C", 0), ("E", 1)] {
+                    let key = format!("flowchart:subgraph:{id}");
+                    let group = collapsed_svg
+                        .descendants()
+                        .find(|n| {
+                            n.attribute("data-mt-key") == Some(&key)
+                                && n.attribute("data-mt-role") == Some("control")
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        group.attribute("data-color-id"),
+                        Some(format!("color-{slot}").as_str()),
+                        "collapsing a parent retains its hidden children's slots"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn map_native_ac1_retains_flowchart_occurrences_and_original_ranges() {
     let source =
         "flowchart LR\r\n%% 😀 comment\r\nA[\"same\"] -->|same| B[\"same\"]\r\nA -->|same| B";

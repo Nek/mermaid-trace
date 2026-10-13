@@ -10,6 +10,35 @@ import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 import { styledCharacters, fontPrecedenceCases, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
+import { paletteCases, inspectContainerPaint, palettePaint } from './theme-fixtures.js';
+
+test('FLOW AC5/6: container palettes retain paint, overrides and saved/live ownership', { timeout: 180_000 }, async t => {
+  const producer = await createMermanProducer();
+  t.after(() => producer.close());
+  const browser = await launchBrowser();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  for (const { source, outer, inner, collapsed, empty } of paletteCases) {
+    const { svg } = await producer.render('palette', source);
+    await page.setContent(svg);
+    const painted = await page.locator('svg[data-mt-map]').evaluate(inspectContainerPaint);
+    for (const [id, slot, fill, stroke] of palettePaint) {
+      const item = painted.find(item => item.key === `flowchart:subgraph:${id}`);
+      assert.ok(item, JSON.stringify(painted));
+      assert.equal(item.slot, `color-${slot}`);
+      assert.ok(item.paint.some(p => p.fill === fill || p.stroke === fill), JSON.stringify(item));
+      assert.ok(item.paint.some(p => p.stroke === stroke), JSON.stringify(item));
+    }
+    assert.equal(painted.length, 5);
+    await verifyNative(source, 'node:A', 'A[Alpha]', 'Alpha', [
+      ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:O', outer], ['flowchart:subgraph:O', 'Outer', 'control-label'],
+      ['flowchart:subgraph:I', inner], ['flowchart:subgraph:I', 'Inner', 'control-label'],
+      ['flowchart:subgraph:C', collapsed], ['flowchart:subgraph:C', 'Collapsed', 'control-label'],
+      ['flowchart:subgraph:E', empty], ['flowchart:subgraph:E', 'Empty', 'control-label'],
+    ]);
+  }
+});
 
 async function clickExposedTarget(target: Locator) {
   // Nested formula SVGs can inflate Firefox's group bounds; use the actual hit surface.

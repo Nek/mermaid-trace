@@ -10,6 +10,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { withCssLayerPreview, styledCharacters, fontPrecedenceCases, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
+import { paletteCases, inspectContainerPaint, palettePaint } from './theme-fixtures.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
@@ -83,6 +84,11 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       cases.push([source, 'A[Alpha WWWiii]', 'node'], [source, 'Alpha WWWiii', 'node-label'],
         [source, 'e@-->|Next WWWiii|', 'edge'], [source, 'Next WWWiii', 'edge-label'],
         [source, group, 'control'], [source, 'Group WWWiii', 'control-label']);
+    }
+    for (const { source, outer, collapsed, empty } of paletteCases) {
+      cases.push([source, outer, 'control'], [source, 'Inner', 'control-label'],
+        [source, collapsed, 'control'], [source, 'Collapsed', 'control-label'],
+        [source, empty, 'control'], [source, 'Empty', 'control-label']);
     }
     for (const layout of ['dagre', 'elk']) for (const handDrawnSeed of [undefined, 0, 42, 43]) {
       const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
@@ -191,6 +197,18 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       if (expected === undefined) return;
       const sizes = await evaluate("return [...window.label.querySelectorAll('text,tspan')].map(e=>getComputedStyle(e).fontSize);");
       assert.deepEqual(new Set(sizes), new Set([`${expected}px`]), source.split('\n')[0]);
+    };
+    const checkPalette = async (source: string) => {
+      if (!source.includes('%% FLOW-PALETTE ')) return;
+      const painted = await evaluate(`return (${inspectContainerPaint.toString()})(window.roots[0]);`);
+      for (const [id, slot, fill, stroke] of palettePaint) {
+        const item = painted.find((item: any) => item.key === `flowchart:subgraph:${id}`);
+        assert.ok(item, JSON.stringify(painted));
+        assert.equal(item.slot, `color-${slot}`);
+        assert.ok(item.paint.some((p: any) => p.fill === fill || p.stroke === fill), JSON.stringify(item));
+        assert.ok(item.paint.some((p: any) => p.stroke === stroke), JSON.stringify(item));
+      }
+      assert.equal(painted.length, 5);
     };
     // Body and stroke hit areas have no separate text-tree UID; clicking the control's
     // centre can instead activate its independently editable label.
@@ -320,6 +338,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return window.label.getAttribute('aria-label');
       })();`);
       await checkFontDefault(source);
+      await checkPalette(source);
       await checkStyledMath(source);
       await revealMath(source);
       if (label === missingLabel) {
@@ -381,6 +400,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           return window.label.getAttribute('aria-label');
         })();`);
         await checkFontDefault(source);
+        await checkPalette(source);
         await checkStyledMath(source);
         await revealMath(source);
         if (label === missingLabel) {
