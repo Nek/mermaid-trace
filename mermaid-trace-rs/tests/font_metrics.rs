@@ -187,6 +187,77 @@ fn explicit_default_theme_font_wins_over_legacy_root_font() {
 }
 
 #[test]
+fn alternate_font_configuration_does_not_override_flowchart_fonts_or_ownership() {
+    let body = "flowchart LR\r\n%% 😀\r\nsubgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend";
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for html in [false, true] {
+                for layer in ["site", "directive", "frontmatter"] {
+                    let mut baseline = None;
+                    for font in [None, Some(""), Some("Courier New"), Some("Arial")] {
+                        let mut config = json!({"layout":layout,"look":look,"handDrawnSeed":42,"htmlLabels":html,"fontFamily":"Arial"});
+                        if let Some(font) = font {
+                            config["altFontFamily"] = json!(font);
+                        }
+                        let source = match layer {
+                            "site" => body.to_owned(),
+                            "directive" => format!("%%{{init: {config}}}%%\r\n{body}"),
+                            _ => format!("---\r\nconfig: {config}\r\n---\r\n{body}"),
+                        };
+                        let draw = |traced| {
+                            let mut site = if layer == "site" {
+                                config.clone()
+                            } else {
+                                json!({})
+                            };
+                            site["traceSource"] = json!(traced);
+                            site["deterministicIds"] = json!(true);
+                            site["deterministicIDSeed"] = json!("mermaid-trace");
+                            let renderer = Renderer::new().with_engine(
+                                Engine::new().with_site_config(MermaidConfig::from_value(site)),
+                            );
+                            mermaid_trace_rs::render_with(&renderer, "alt-font", &source).unwrap()
+                        };
+                        let result = draw(true);
+                        let svg = result["svg"].as_str().unwrap();
+                        let doc = roxmltree::Document::parse(svg).unwrap();
+                        let units: Vec<_> = source.encode_utf16().collect();
+                        for (role, text) in [
+                            ("node-label", "Alpha WWWiii"),
+                            ("edge-label", "Next WWWiii"),
+                            ("control-label", "Group WWWiii"),
+                        ] {
+                            let label = doc
+                                .descendants()
+                                .find(|n| n.attribute("data-mt-role") == Some(role))
+                                .unwrap();
+                            let start: usize =
+                                label.attribute("data-mt-start").unwrap().parse().unwrap();
+                            let end: usize =
+                                label.attribute("data-mt-end").unwrap().parse().unwrap();
+                            assert_eq!(String::from_utf16(&units[start..end]).unwrap(), text);
+                        }
+                        let painted = support::strip_trace(svg);
+                        assert_eq!(
+                            painted,
+                            support::strip_trace(draw(false)["svg"].as_str().unwrap())
+                        );
+                        if let Some(expected) = &baseline {
+                            assert_eq!(
+                                &painted, expected,
+                                "{layout}/{look}/{html}/{layer}/{font:?}"
+                            );
+                        } else {
+                            baseline = Some(painted);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn fractional_pixel_font_sizes_survive_production_export() {
     for layout in ["dagre", "elk"] {
         for look in ["classic", "neo", "handDrawn"] {

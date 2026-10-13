@@ -9,7 +9,7 @@ import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
+import { withCssLayerPreview, styledCharacters, altFontCases } from './css-layer-fixtures.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
@@ -227,6 +227,9 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     }
     for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases, ...paintMathCases, ...modeMathCases]) {
       cases.push([source, label, 'node-label'], [source, edge, 'edge-label'], [source, title, 'control-label']);
+    }
+    for (const { source } of altFontCases) {
+      cases.push([source, 'Alpha WWWiii', 'node-label'], [source, 'Next WWWiii', 'edge-label'], [source, 'Group WWWiii', 'control-label']);
     }
     const checkStyledMath = async (source: string) => {
       const mode = modeMathCases.find(fixture => fixture.source === source);

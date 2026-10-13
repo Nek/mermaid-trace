@@ -9,7 +9,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
-import { styledCharacters } from './css-layer-fixtures.js';
+import { styledCharacters, altFontCases } from './css-layer-fixtures.js';
 
 async function clickExposedTarget(target: Locator) {
   // Nested formula SVGs can inflate Firefox's group bounds; use the actual hit surface.
@@ -2578,6 +2578,15 @@ test('FLOW AC5/6: native ELK header and configuration retain saved and live sele
   }
 });
 
+
+test('FLOW-ALT-FONT: inert alternate-font configuration preserves saved/live selection', { timeout: 120_000 }, async () => {
+  for (const { source, group } of altFontCases) {
+    await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
+      ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group WWWiii', 'control-label'],
+    ]);
+  }
+});
 
 test('FLOW-MODE-MATH: HTML and SVG-text formula modes retain content and saved/live ownership', { timeout: 240_000 }, async () => {
   const producer = await createMermanProducer(), browser = await launchBrowser();

@@ -11,6 +11,13 @@ import type { Span } from '../src/source-mapping.js';
 
 type LayerArtifact = { name: string; svg: string; source: string; expected: string; label: string; runs?: string[][] };
 
+export const altFontCases = ['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels =>
+  ['', 'Courier New'].map(altFontFamily => {
+    const group = 'subgraph G[Group WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend';
+    const config = { layout, htmlLabels, fontFamily: 'Arial', altFontFamily };
+    return { source: `---\nconfig: ${JSON.stringify(config)}\n---\n%% FLOW-ALT-FONT ${layout}/${htmlLabels}/${altFontFamily}\nflowchart LR\n%% 😀\n${group}\n`, group };
+  })));
+
 export function styledCharacters(runs: readonly string[][]): string[][] {
   return runs.flatMap(([text, ...style]) => Array.from(text!, character => [character, ...style]));
 }
