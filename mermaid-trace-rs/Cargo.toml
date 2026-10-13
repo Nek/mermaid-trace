@@ -15,4 +15,4 @@ merman-export = { path = "vendor/merman/crates/merman-export", features = ["text
 
 # Cargo patches must be declared by the consuming workspace too.
 [patch.crates-io]
-usvg = { git = "https://github.com/Nek/resvg.git", rev = "cf6e6b61e952b9e42fd8d3aa11723c44edd15fcd" }
+usvg = { git = "https://github.com/Nek/resvg.git", rev = "69c1e13dfc441ef12a52fccd0a3b9160995c98f6" }

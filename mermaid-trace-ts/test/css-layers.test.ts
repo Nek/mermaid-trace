@@ -4,7 +4,7 @@ import { launchBrowser, clipboardPermissions } from './browser.js';
 import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
 import { formatLocation } from '../src/markdown-source.js';
 
-test('FLOW CSS layers: trusted host styles retain saved/live label selection', { timeout: 120_000 }, async () => {
+test('FLOW CSS layers: trusted host styles retain saved/live label selection', { timeout: 240_000 }, async () => {
   const browser = await launchBrowser();
   try { await withCssLayerPreview(async ({ url, artifacts, show }) => {
     const context = await browser.newContext({ permissions: clipboardPermissions });
@@ -14,15 +14,15 @@ test('FLOW CSS layers: trusted host styles retain saved/live label selection', {
         const { sourceDocument, span } = show(artifact, live);
         await page.goto(url); await page.waitForSelector('body[data-ready=true]');
         await page.evaluate(() => document.fonts.ready);
-        const label = page.locator('[data-mt-role=node-label]').first();
+        const label = page.locator(`[data-mt-role="${artifact.role}"]`).first();
         if (artifact.runs) {
           const runs = await label.locator('tspan').evaluateAll(elements => elements.map(element => {
             const style = getComputedStyle(element);
             return [element.textContent!, style.fontSize, style.fontWeight, style.fontStyle];
           }));
           assert.deepEqual(styledCharacters(runs), styledCharacters(artifact.runs), artifact.name);
-        } else assert.equal(await label.locator('text').evaluate(element => getComputedStyle(element).fontSize), artifact.expected, artifact.name);
-        assert.ok(await label.evaluate(element => {
+        } else assert.equal(await label.evaluate(element => getComputedStyle(element.matches('text,tspan') ? element : element.querySelector('text')!).fontSize), artifact.expected, artifact.name);
+        if (artifact.role === 'node-label') assert.ok(await label.evaluate(element => {
           const owner = element.closest('svg')!.querySelector('[data-mt-key="node:A"][data-mt-role=node]')!;
           const shape = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path')!.getBoundingClientRect();
           return [...element.querySelectorAll('text')].every(row => {
@@ -31,6 +31,18 @@ test('FLOW CSS layers: trusted host styles retain saved/live label selection', {
               && text.top >= shape.top - 3 && text.bottom <= shape.bottom + 3;
           });
         }), `${artifact.name}: CSS-sized text must fit its allocated node`);
+        if (artifact.name.startsWith('variables-')) {
+          const sizes = await label.evaluate(element => {
+            const text = (element.matches('text,tspan') ? element : element.querySelector('text')!) as SVGElement;
+            const previousStyle = text.style.cssText;
+            const before = text.getBoundingClientRect().width;
+            text.style.setProperty('font-size', '48px', 'important');
+            const after = text.getBoundingClientRect().width;
+            text.style.cssText = previousStyle;
+            return { before, after };
+          });
+          assert.ok(sizes.after > sizes.before * 1.4, 'embedded fonts preserve deliberate CSS size edits');
+        }
         for (const gesture of ['pointer', 'Enter', 'Space']) {
           await page.evaluate(() => navigator.clipboard.writeText('cleared'));
           if (gesture === 'pointer') await label.click();
@@ -46,7 +58,7 @@ test('FLOW CSS layers: trusted host styles retain saved/live label selection', {
             const range = element.ownerDocument.createRange(); range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
             const selection = element.ownerDocument.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
           }, { start: span.start, end: span.start + 1 });
-          await page.waitForFunction(() => document.querySelector('[data-mt-role=node-label]')?.getAttribute('data-mt-selected') === 'true');
+          await page.waitForFunction(role => document.querySelector(`[data-mt-role="${role}"]`)?.getAttribute('data-mt-selected') === 'true', artifact.role);
         } else {
           await page.evaluate(() => (window as any).handle.highlight([]));
           assert.equal(await label.getAttribute('data-mt-selected'), null);

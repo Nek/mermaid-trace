@@ -9,7 +9,7 @@ import { renderMarkdownView } from '../src/markdown-view.js';
 import type { MarkdownDocument } from '../src/markdown-source.js';
 import type { Span } from '../src/source-mapping.js';
 
-type LayerArtifact = { name: string; svg: string; source: string; expected: string; label: string; runs?: string[][] };
+type LayerArtifact = { name: string; svg: string; source: string; expected: string; label: string; role: string; runs?: string[][] };
 
 export const cssVariableCases = ['dagre', 'elk'].flatMap(layout => ['classic', 'neo', 'handDrawn'].map(look => {
   const parent = '--Font:monospace;--Size:32px;--size:8px;--weight:700;--paint:rebeccapurple';
@@ -69,6 +69,9 @@ export async function withCssLayerPreview(run: (host: {
     execFileSync('cargo', ['test', '--locked', '--offline', '--manifest-path', '../mermaid-trace-rs/Cargo.toml', '--test', 'font_metrics', 'rich_html_emphasis_matches_explicit_styles_through_wrapping_and_export'], {
       env: { ...process.env, TRACE_CSS_LAYER_ARTIFACTS: directory }, stdio: 'pipe',
     });
+    execFileSync('cargo', ['test', '--locked', '--offline', '--manifest-path', '../mermaid-trace-rs/Cargo.toml', '--test', 'css_variable_export'], {
+      env: { ...process.env, TRACE_CSS_LAYER_ARTIFACTS: directory }, stdio: 'pipe',
+    });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address(); assert.ok(address && typeof address !== 'string');
     const url = `http://127.0.0.1:${address.port}`;
@@ -76,11 +79,12 @@ export async function withCssLayerPreview(run: (host: {
     for (const name of (await readdir(directory)).filter(name => name.endsWith('.json'))) {
       const { svg, mapping, fixture } = JSON.parse(await readFile(join(directory, name), 'utf8'));
       artifacts.push({ name, svg, source: mapping.source, expected: name.includes('rollback') ? '24px' : '32px',
+        role: fixture?.role ?? 'node-label',
         label: fixture?.label ?? (name.startsWith('rich-') ? "<span class='large'>Wide</span> small" : 'Alpha WWWiii'),
         runs: fixture?.runs ?? (name.startsWith('rich-') ? [['Wide', '32px', '400', 'normal'], [' small', '16px', '400', 'normal']] : undefined),
       });
     }
-    assert.equal(artifacts.length, 30);
+    assert.equal(artifacts.length, 66);
     await run({ url, artifacts, show({ svg, source, label }, live) {
       const sourceDocument = { revision: 'fixture', id: '/example/layers.md', source: live ? '# Layers\n\n```mermaid\n' + source + '```\n' : source };
       const span = { start: sourceDocument.source.indexOf(label), end: sourceDocument.source.indexOf(label) + label.length };

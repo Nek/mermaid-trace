@@ -2013,7 +2013,7 @@ dependencies = [
 [[package]]
 name = "usvg"
 version = "0.47.0"
-source = "git+https://github.com/Nek/resvg.git?rev=cf6e6b61e952b9e42fd8d3aa11723c44edd15fcd#cf6e6b61e952b9e42fd8d3aa11723c44edd15fcd"
+source = "git+https://github.com/Nek/resvg.git?rev=69c1e13dfc441ef12a52fccd0a3b9160995c98f6#69c1e13dfc441ef12a52fccd0a3b9160995c98f6"
 dependencies = [
  "base64",
  "data-url",

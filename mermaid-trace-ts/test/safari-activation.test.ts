@@ -483,20 +483,21 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
             for(let i=0;i<200 && document.body.dataset.ready!=='true';i++)await new Promise(r=>setTimeout(r,25));
             if(document.body.dataset.ready!=='true')throw Error('Layer preview did not become ready');
             await document.fonts.ready;
-            window.label=document.querySelector('[data-mt-role=node-label]');
+            window.label=document.querySelector('[data-mt-role="${artifact.role}"]');
             window.trusted=[];
             document.onclick=e=>window.trusted.push({type:e.type,trusted:e.isTrusted});
             document.onkeydown=e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted});
             const owner=window.label.closest('svg').querySelector('[data-mt-key="node:A"][data-mt-role=node]');
             const shape=owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path').getBoundingClientRect();
             const texts=[...window.label.querySelectorAll('text')].map(e=>e.getBoundingClientRect());
-            return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.querySelector('text')).fontSize,
+            return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.matches('text,tspan')?window.label:window.label.querySelector('text')).fontSize,
               runs:[...window.label.querySelectorAll('tspan')].map(e=>{const s=getComputedStyle(e);return [e.textContent,s.fontSize,s.fontWeight,s.fontStyle]}),
               contained:texts.every(text=>text.left>=shape.left-3&&text.right<=shape.right+3&&text.top>=shape.top-3&&text.bottom<=shape.bottom+3)};
           })();`);
           if(artifact.runs) assert.deepEqual(styledCharacters(info.runs), styledCharacters(artifact.runs), artifact.name);
           else assert.equal(info.size, artifact.expected);
-          assert.equal(info.contained, true, `${artifact.name}: CSS-sized text must fit its allocated node`);
+          if (artifact.role === 'node-label') assert.equal(info.contained, true, `${artifact.name}: CSS-sized text must fit its allocated node`);
+          if (artifact.name.startsWith('variables-')) assert.equal(await evaluate(`const text=window.label.matches('text,tspan')?window.label:window.label.querySelector('text'),previousStyle=text.style.cssText,before=text.getBoundingClientRect().width;text.style.setProperty('font-size','48px','important');const after=text.getBoundingClientRect().width;text.style.cssText=previousStyle;return after>before*1.4;`), true, 'CSS size edits remain effective');
           const sentinel = 'CSS layers Safari clipboard sentinel';
           for (const interaction of [
             { type: 'click', ...await pointer(info.aria, undefined), purpose: 'Select the CSS-styled label' },
