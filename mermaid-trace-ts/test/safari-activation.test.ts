@@ -387,9 +387,16 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
             window.trusted=[];
             document.onclick=e=>window.trusted.push({type:e.type,trusted:e.isTrusted});
             document.onkeydown=e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted});
-            return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.querySelector('text')).fontSize};
+            const owner=window.label.closest('svg').querySelector('[data-mt-key="node:A"][data-mt-role=node]');
+            const shape=owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path').getBoundingClientRect();
+            const text=window.label.querySelector('text').getBoundingClientRect();
+            return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.querySelector('text')).fontSize,
+              runs:[...window.label.querySelectorAll('tspan')].map(e=>[e.textContent,getComputedStyle(e).fontSize]),
+              contained:text.left>=shape.left-3&&text.right<=shape.right+3&&text.top>=shape.top-3&&text.bottom<=shape.bottom+3};
           })();`);
-          assert.equal(info.size, artifact.expected);
+          if(artifact.rich) assert.deepEqual(info.runs, [['Wide','32px'],[' small','16px']]);
+          else assert.equal(info.size, artifact.expected);
+          assert.equal(info.contained, true, `${artifact.name}: CSS-sized text must fit its allocated node`);
           const sentinel = 'CSS layers Safari clipboard sentinel';
           for (const interaction of [
             { type: 'click', ...await pointer(info.aria, undefined), purpose: 'Select the CSS-styled label' },
@@ -405,7 +412,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
                 focused:document.activeElement===window.label,stops:window.label.closest('svg').querySelectorAll('[data-mt-selected=true][tabindex="0"]').length,
                 outline:getComputedStyle(document.activeElement).outlineStyle,trusted:window.trusted.at(-1)};`);
             assert.deepEqual(result.span, span);
-            if (live) assert.equal(result.text, 'Alpha WWWiii');
+            if (live) assert.equal(result.text, artifact.label);
             assert.equal(result.selected, true); assert.equal(result.focused, true); assert.equal(result.stops, 1); assert.equal(result.outline, 'none');
             assert.equal(result.trusted.trusted, true);
             assert.equal(result.trusted.type, interaction.type === 'click' ? 'click' : 'keydown');

@@ -15,13 +15,22 @@ test('FLOW CSS layers: trusted host styles retain saved/live label selection', {
         await page.goto(url); await page.waitForSelector('body[data-ready=true]');
         await page.evaluate(() => document.fonts.ready);
         const label = page.locator('[data-mt-role=node-label]').first();
-        assert.equal(await label.locator('text').evaluate(element => getComputedStyle(element).fontSize), artifact.expected, artifact.name);
+        if (artifact.rich) {
+          assert.deepEqual(await label.locator('tspan').evaluateAll(elements => elements.map(element => [element.textContent, getComputedStyle(element).fontSize])), [['Wide', '32px'], [' small', '16px']], artifact.name);
+        } else assert.equal(await label.locator('text').evaluate(element => getComputedStyle(element).fontSize), artifact.expected, artifact.name);
+        assert.ok(await label.evaluate(element => {
+          const owner = element.closest('svg')!.querySelector('[data-mt-key="node:A"][data-mt-role=node]')!;
+          const shape = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path')!.getBoundingClientRect();
+          const text = element.querySelector('text')!.getBoundingClientRect();
+          return text.left >= shape.left - 3 && text.right <= shape.right + 3
+            && text.top >= shape.top - 3 && text.bottom <= shape.bottom + 3;
+        }), `${artifact.name}: CSS-sized text must fit its allocated node`);
         for (const gesture of ['pointer', 'Enter', 'Space']) {
           await page.evaluate(() => navigator.clipboard.writeText('cleared'));
           if (gesture === 'pointer') await label.click();
           else { await label.focus(); await label.press(gesture); }
           await page.waitForFunction(location => navigator.clipboard.readText().then(value => value === location), formatLocation(sourceDocument, span));
-          if (live) assert.equal(await page.frameLocator('#source-frame').locator('#source').evaluate(element => element.ownerDocument.getSelection()!.toString()), 'Alpha WWWiii');
+          if (live) assert.equal(await page.frameLocator('#source-frame').locator('#source').evaluate(element => element.ownerDocument.getSelection()!.toString()), artifact.label);
           else assert.deepEqual(await page.evaluate(() => (window as any).selected), span);
         }
         if (live) {

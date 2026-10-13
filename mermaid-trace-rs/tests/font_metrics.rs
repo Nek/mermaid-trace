@@ -836,6 +836,249 @@ fn missing_characters_preserve_existing_family_source_and_emit_diagnostics() {
 }
 
 #[test]
+fn trusted_css_rich_label_runs_reach_layout_and_export() {
+    for layout in ["dagre", "elk"] {
+        let draw = |inline: bool, size: u32| {
+            let style = if inline {
+                format!(" style='font-size:{size}px'")
+            } else {
+                String::new()
+            };
+            let source =
+                format!("flowchart LR\nA[\"<span class='large'{style}>Wide</span> small\"]\n");
+            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+                MermaidConfig::from_value(json!({"traceSource":true, "htmlLabels":true,
+                    "layout":layout, "fontFamily":"Arial", "themeCSS":if inline { String::new() } else { format!(".nodeLabel .large{{font-size:{size}px}}") }})),
+            ));
+            mermaid_trace_rs::render_with(&renderer, "rich-css", &source).unwrap()
+        };
+        let expected = draw(true, 32);
+        let actual = draw(false, 32);
+        if let Ok(directory) = std::env::var("TRACE_CSS_LAYER_ARTIFACTS") {
+            std::fs::write(
+                std::path::Path::new(&directory).join(format!("rich-{layout}.json")),
+                serde_json::to_vec(&actual).unwrap(),
+            )
+            .unwrap();
+        }
+        let small = draw(true, 16);
+        let dimensions = |result: &serde_json::Value| {
+            let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let owner = doc
+                .descendants()
+                .find(|n| n.attribute("data-mt-role") == Some("node"))
+                .unwrap();
+            let rect = owner.children().find(|n| n.has_tag_name("rect")).unwrap();
+            ["width", "height"].map(|attr| rect.attribute(attr).unwrap().to_owned())
+        };
+        assert_eq!(
+            dimensions(&actual),
+            dimensions(&expected),
+            "{layout}: descendant CSS must use the same run metrics as equivalent inline typography"
+        );
+        let fonts = NativeFontContext::system().unwrap();
+        let advance = |size| {
+            fonts
+                .shape(
+                    "Wide",
+                    &TextStyle {
+                        font_size: size,
+                        font_family: Some("Arial".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+                .bounds
+                .unwrap()
+                .right
+        };
+        let growth = dimensions(&actual)[0].parse::<f64>().unwrap()
+            - dimensions(&small)[0].parse::<f64>().unwrap();
+        assert!(
+            (growth - (advance(32.0) - advance(16.0))).abs() < 0.1,
+            "{layout}: allocated width must grow by the independently shaped run advance: {growth}"
+        );
+        let doc = roxmltree::Document::parse(actual["svg"].as_str().unwrap()).unwrap();
+        assert!(
+            doc.descendants().any(|n| n
+                .attribute("style")
+                .is_some_and(|s| s.contains("font-size:32px"))
+                && n.descendants()
+                    .any(|child| child.text().is_some_and(|t| t.contains("Wide")))),
+            "{layout}: the exported large run must retain its resolved size"
+        );
+    }
+}
+
+#[test]
+fn rich_css_labels_preserve_owned_source_for_nodes_edges_and_groups() {
+    let label = "<span class='large'>Wide</span> small 😀";
+    for layout in ["dagre", "elk"] {
+        let source = format!(
+            "flowchart LR\nsubgraph G[\"{label}\"]\nA[\"{label}\"] e@-->|\"{label}\"| B[Beta]\nend\n"
+        );
+        let draw = |traced| {
+            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "layout":layout, "htmlLabels":true, "traceSource":traced, "themeCSS":".large{font-size:32px}"
+            }))));
+            mermaid_trace_rs::render_with(&renderer, "rich-owners", &source).unwrap()
+        };
+        let mapped = draw(true);
+        assert_eq!(mapped["mapping"]["source"], source);
+        assert_eq!(
+            support::strip_trace(mapped["svg"].as_str().unwrap()),
+            support::strip_trace(draw(false)["svg"].as_str().unwrap()),
+            "{layout}: CSS preparation must not leak mapping into plain output"
+        );
+        let doc = roxmltree::Document::parse(mapped["svg"].as_str().unwrap()).unwrap();
+        let source_utf16 = source.encode_utf16().collect::<Vec<_>>();
+        for role in ["node-label", "edge-label", "control-label"] {
+            let owner = doc
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-mt-role") == Some(role)
+                        && node.descendants().any(|child| {
+                            child.has_tag_name("tspan") && child.text() == Some("Wide")
+                        })
+                })
+                .unwrap_or_else(|| panic!("{layout}: missing {role}"));
+            let start: usize = owner.attribute("data-mt-start").unwrap().parse().unwrap();
+            let end: usize = owner.attribute("data-mt-end").unwrap().parse().unwrap();
+            assert_eq!(
+                String::from_utf16(&source_utf16[start..end]).unwrap(),
+                label,
+                "{layout}/{role}: exact owned source"
+            );
+        }
+    }
+}
+
+#[test]
+fn trusted_css_typography_reaches_layout_before_export() {
+    let mut failures = Vec::new();
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            for (owner, html_selector, svg_selector, declaration) in [
+                (
+                    "node",
+                    ".target .nodeLabel",
+                    ".target .label text",
+                    "style A font-size:32px",
+                ),
+                (
+                    "edge",
+                    ".edgeLabel",
+                    ".edgeLabel text",
+                    "linkStyle 0 font-size:32px",
+                ),
+                (
+                    "group",
+                    ".cluster-label",
+                    ".cluster-label text",
+                    "style G font-size:32px",
+                ),
+            ] {
+                let source = "flowchart LR\n%% 😀\nsubgraph G[Group WWWiii WWWiii WWWiii WWWiii WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend\n";
+                let draw = |css: &str, declaration: &str| {
+                    // Bind after styles establish the subgraph's rendered CSS owner.
+                    let source = format!("{source}{declaration}\nclass A target\n");
+                    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+                        MermaidConfig::from_value(json!({
+                            "traceSource":true, "htmlLabels":html, "layout":layout,
+                            "themeCSS":css, "deterministicIds":true,
+                            "deterministicIDSeed":"css-layout"
+                        })),
+                    ));
+                    let result =
+                        mermaid_trace_rs::render_with(&renderer, "css-layout", &source).unwrap();
+                    assert_eq!(result["mapping"]["source"], source);
+                    let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                    for (key, role, text) in [
+                        ("node:A", "node-label", "Alpha WWWiii"),
+                        ("edge:e", "edge-label", "Next WWWiii"),
+                        (
+                            "flowchart:subgraph:G",
+                            "control-label",
+                            "Group WWWiii WWWiii WWWiii WWWiii WWWiii",
+                        ),
+                    ] {
+                        let label = doc
+                            .descendants()
+                            .find(|n| {
+                                n.attribute("data-mt-key") == Some(key)
+                                    && n.attribute("data-mt-role") == Some(role)
+                            })
+                            .unwrap();
+                        let start: usize =
+                            label.attribute("data-mt-start").unwrap().parse().unwrap();
+                        let end: usize = label.attribute("data-mt-end").unwrap().parse().unwrap();
+                        assert_eq!(
+                            String::from_utf16(
+                                &source.encode_utf16().collect::<Vec<_>>()[start..end]
+                            )
+                            .unwrap(),
+                            text
+                        );
+                    }
+                    // Compare allocated shapes and routes, independently of the CSS/font transport.
+                    ["node:A", "node:B", "flowchart:subgraph:G", "edge:e"]
+                        .into_iter()
+                        .map(|key| {
+                            let owner = doc
+                                .descendants()
+                                .find(|n| {
+                                    n.attribute("data-mt-key") == Some(key)
+                                        && !n.has_attribute("data-mt-label")
+                                })
+                                .unwrap();
+                            let shape = owner
+                                .children()
+                                .find(|n| n.has_tag_name("rect") || n.has_tag_name("path"))
+                                .unwrap_or(owner);
+                            (
+                                key.to_string(),
+                                ["width", "height", "d"]
+                                    .into_iter()
+                                    .filter_map(|attr| {
+                                        shape
+                                            .attribute(attr)
+                                            .map(|value| (attr.to_string(), value.to_string()))
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    draw("", declaration),
+                    draw(".absent{font-size:99px}", declaration),
+                    "nonmatching CSS must not alter authored geometry: {layout}/{html}/{owner}"
+                );
+                let expected = draw("", declaration);
+                let selector = if html { html_selector } else { svg_selector };
+                for layered in [false, true] {
+                    let rule = format!("{selector}{{font-size:32px!important}}");
+                    let css = if layered {
+                        format!("@layer typography{{{rule}}}")
+                    } else {
+                        rule
+                    };
+                    let actual = draw(&css, "");
+                    if actual != expected {
+                        failures.push(format!("{layout}/html={html}/{owner}/layered={layered}:\nactual {actual:?}\nexpected {expected:?}"));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "CSS must affect layout before export:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn trusted_layered_css_preserves_exported_font_and_source() {
     let source = "flowchart LR\n%% 😀\nA[Alpha WWWiii]\n";
     for layout in ["dagre", "elk"] {
