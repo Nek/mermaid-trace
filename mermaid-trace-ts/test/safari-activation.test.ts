@@ -45,6 +45,15 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     return result.content.filter((item: any) => item.type === 'text').map((item: any) => item.text).join('\n') as string;
   };
   const evaluate = async (expression: string) => JSON.parse(await call('evaluate_javascript', { expression }));
+  const waitForClipboard = async (expected: string) => {
+    let actual = '';
+    for (let i = 0; i < 40; i++) {
+      actual = execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' });
+      if (actual === expected) return;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.equal(actual, expected, 'the asynchronous copy must reach the real OS clipboard');
+  };
   let tab: string | undefined;
   try {
     await request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'mermaid-trace-tests', version: '0' } });
@@ -196,12 +205,22 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         throw Error('Mapped body or stroke has no exposed pointer target');`);
       return { point };
     };
+    for (const layout of ['dagre', 'elk']) for (const startOnLoad of [false, true]) for (const suppressErrorRendering of [false, true]) {
+      const config = { layout, startOnLoad, suppressErrorRendering, logLevel: startOnLoad ? 'fatal' : 0 };
+      const source = `%% FLOW-BROWSER-CONTROLS ${layout}/${startOnLoad}/${suppressErrorRendering}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA[Alpha 😀] e@-->|next| B[Beta]`;
+      cases.push([source, 'Alpha 😀'], [source, 'e@-->|next|', 'edge']);
+    }
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
     const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');
     const cssLayers = !sourceFilter || new RegExp(sourceFilter).test('CSS-LAYERS-SAFARI');
     const markers = !sourceFilter || new RegExp(sourceFilter).test('MARKERS-SAFARI');
-    assert.ok(selectedCases.length || fontCss || cssLayers || markers, 'Safari source filter must select at least one case');
+    const watchCases: [string, string[]][] = [
+      ['WATCH-SAFARI', cases.slice(0, 7).map(([source]) => source)],
+      ['WATCH-BROWSER-CONTROLS', cases.filter(([source, , role]) => source.includes('%% FLOW-BROWSER-CONTROLS') && !role).map(([source]) => source.replace('Alpha 😀', 'Alpha'))],
+    ];
+    const selectedWatch = watchCases.filter(([name]) => !sourceFilter || new RegExp(sourceFilter).test(name));
+    assert.ok(selectedCases.length || fontCss || cssLayers || markers || selectedWatch.length, 'Safari source filter must select at least one case');
     for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
@@ -310,7 +329,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           assert.equal(result.trusted.trusted, true);
           assert.equal(result.trusted.type, interaction.type === 'click' ? 'click' : 'keydown');
           if (interaction.type === 'keyPress') assert.equal(result.trusted.key, interaction.value);
-          assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation({ id: filename, source: markdown }, span));
+          await waitForClipboard(formatLocation({ id: filename, source: markdown }, span));
         }
         execFileSync('/usr/bin/pbcopy', { input: sentinel });
         const firstStart = markdown.indexOf(source) + source.indexOf(label);
@@ -417,7 +436,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
             assert.equal(result.trusted.trusted, true);
             assert.equal(result.trusted.type, interaction.type === 'click' ? 'click' : 'keydown');
             if (interaction.type === 'keyPress') assert.equal(result.trusted.key, interaction.value);
-            assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation(sourceDocument, span));
+            await waitForClipboard(formatLocation(sourceDocument, span));
           }
           execFileSync('/usr/bin/pbcopy', { input: sentinel });
           if (live) {
@@ -468,8 +487,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.ok(Math.abs(result.sizes[0].width / 2 - result.sizes[1].width) < 0.1,
         'mixed-font text must scale with authored CSS size');
     });
-    await t.test('WATCH-SAFARI: saves, invalid edits and atomic replacement preserve current mappings', { skip: !!sourceFilter }, async () => {
-      const sources = cases.slice(0, 7).map(([source]) => source);
+    for (const [name, sources] of selectedWatch) await t.test(`${name}: saves, invalid edits and atomic replacement preserve current mappings`, async () => {
       const markdown = '# Watch 🐟\r\n\r\n' + sources.map(source => '```mermaid\r\n' + source.replaceAll('\n', '\r\n') + '\r\n```\r\n').join('\r\n');
       const errors: string[] = [];
       await writeFile(filename, markdown);
@@ -500,7 +518,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           assert.deepEqual(await evaluate(`const selection=document.querySelector('#source-frame').contentDocument.getSelection(),range=selection.getRangeAt(0);
             return {start:range.startOffset,end:range.endOffset,text:range.cloneContents().textContent,trusted:window.trusted.at(-1),selected:window.label.dataset.mtSelected,other:window.roots.filter((_,i)=>i!==${index}).some(root=>root.querySelector('[data-mt-selected]'))};`),
           { ...span, text: label, trusted: true, selected: 'true', other: false });
-          assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation({ id: filename, source: documentSource }, span));
+          await waitForClipboard(formatLocation({ id: filename, source: documentSource }, span));
         }
       };
       try {
@@ -517,10 +535,16 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(await evaluate('return window.watchMarker===undefined;'), true, 'the changed file must really reload');
         await selectLabels(changed, 'Updated 🐟');
         await evaluate('window.watchMarker=true;return true;');
-        await writeFile(filename, '# Broken\n\n```mermaid\nflowchart LR\nA -->\n```');
-        for (let i = 0; i < 100 && !errors.length; i++) await new Promise(resolve => setTimeout(resolve, 100));
-        assert.ok(errors.some(error => /parse|syntax/i.test(error)), 'invalid syntax must report a diagnostic');
-        assert.equal(await evaluate(`return window.watchMarker===true && document.querySelector('#source-frame').contentDocument.querySelector('#source').textContent===${JSON.stringify(changed)} && window.label.dataset.mtSelected==='true' && !document.querySelector('vite-error-overlay');`), true, 'invalid edits retain the interactive last good page');
+        const invalidSources = name === 'WATCH-BROWSER-CONTROLS'
+          ? sources.map(source => source.replace('A[Alpha] e@-->|next| B[Beta]', 'A -->'))
+          : ['flowchart LR\nA -->'];
+        for (const [index, invalid] of invalidSources.entries()) {
+          await writeFile(filename, '# Broken\n\n```mermaid\n' + invalid + '\n```');
+          for (let i = 0; i < 100 && errors.length <= index; i++) await new Promise(resolve => setTimeout(resolve, 100));
+          assert.equal(errors.length, index + 1, 'each invalid configuration variant must report an error');
+          assert.match(errors[index]!, /parse|syntax/i);
+          assert.equal(await evaluate(`return window.watchMarker===true && document.querySelector('#source-frame').contentDocument.querySelector('#source').textContent===${JSON.stringify(changed)} && window.label.dataset.mtSelected==='true' && !document.querySelector('vite-error-overlay');`), true, 'invalid edits retain the interactive last good page');
+        }
         const recovered = changed.replaceAll('Updated 🐟', 'Recovered 🐟');
         const replacement = join(directory, 'replacement.md');
         await writeFile(replacement, recovered); await rename(replacement, filename);

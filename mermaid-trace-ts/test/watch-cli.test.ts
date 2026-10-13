@@ -15,6 +15,41 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
 const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
+test('FLOW-BROWSER-CONTROLS: startup and error-display options preserve watch recovery', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-browser-controls-'));
+  const filename = join(directory, 'controls.md');
+  const errors: string[] = [];
+  let preview: Awaited<ReturnType<typeof watchPreview>> | undefined;
+  const browser = await launchBrowser();
+  try {
+    await writeFile(filename, '# Initial\n');
+    preview = await watchPreview(filename, { port: 0, sourceView: true, onError: error => errors.push(String(error)) });
+    const page = await browser.newPage(); page.setDefaultTimeout(10_000);
+    await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+    let revision = 0;
+    for (const layout of ['dagre', 'elk']) for (const startOnLoad of [false, true]) for (const suppressErrorRendering of [false, true]) {
+      const config = { layout, startOnLoad, suppressErrorRendering, logLevel: startOnLoad ? 'fatal' : 0 };
+      const label = `Revision ${++revision}`;
+      const valid = `# ${label}\n\n\`\`\`mermaid\n---\nconfig: ${JSON.stringify(config)}\n---\nflowchart LR\nA[${label}] --> B[Beta]\n\`\`\`\n`;
+      await writeFile(filename, valid);
+      await page.getByRole('heading', { name: label, exact: true }).waitFor();
+      await page.waitForSelector('body[data-ready=true]');
+      assert.equal(await page.locator('[data-mt-role=edge]').count(), 1);
+      const saved = await page.locator('article').innerHTML();
+      await writeFile(filename, valid.replace(`A[${label}] --> B[Beta]`, 'A['));
+      await assertEventually(() => errors.length === revision);
+      assert.ok(errors.at(-1)!.length > 0, 'invalid syntax must reach the host error callback');
+      assert.equal(await page.locator('article').innerHTML(), saved, 'retain the last good rendering without an error graphic');
+      assert.equal(await page.frameLocator('#source-frame').locator('#source').textContent(), valid);
+      assert.equal(await page.locator('vite-error-overlay').count(), 0);
+    }
+    await writeFile(filename, '# Recovered\n');
+    await page.getByRole('heading', { name: 'Recovered', exact: true }).waitFor();
+    await page.waitForSelector('body[data-ready=true]');
+    assert.equal(await page.locator('svg').count(), 0);
+  } finally { await preview?.close(); await browser.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('SHARED-MAX-TEXT: oversized Unicode edits preserve the last good document for every family', { timeout: 60_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-text-limit-'));
   const filename = join(directory, 'limits.md');

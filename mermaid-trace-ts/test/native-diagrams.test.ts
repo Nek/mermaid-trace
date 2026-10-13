@@ -3015,6 +3015,18 @@ test('FLOW AC5/6: ELK presets preserve nested saved/live selection and overrides
   }
 });
 
+test('FLOW-BROWSER-CONTROLS: explicit saved/live activation ignores browser startup settings', { timeout: 120_000 }, async () => {
+  for (const layout of ['dagre', 'elk']) for (const startOnLoad of [false, true]) for (const suppressErrorRendering of [false, true]) {
+    const group = 'subgraph G[Group]\nA[Alpha 😀] e@-->|next| B[Beta]\nend';
+    const config = { layout, startOnLoad, suppressErrorRendering, logLevel: startOnLoad ? 'fatal' : 0 };
+    const source = `---\nconfig: ${JSON.stringify(config)}\n---\nflowchart LR\n${group}\n`;
+    await verifyNative(source, 'node:A', 'A[Alpha 😀]', 'Alpha 😀', [
+      ['edge:e', 'e@-->|next|', 'edge'], ['edge:e', 'next', 'edge-label'],
+      ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group', 'control-label'],
+    ], { start: source.indexOf('A['), end: source.indexOf('A[') + 1 }, ['node:A'], 'node:A', undefined, true);
+  }
+});
+
 test('FLOW AC5/6: authored ID settings preserve saved/live selection and instance isolation', { timeout: 120_000 }, async () => {
   for (const layout of ['dagre', 'elk']) for (const deterministicIds of [false, true]) for (const deterministicIDSeed of ['', '作者 🐟']) {
     const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
