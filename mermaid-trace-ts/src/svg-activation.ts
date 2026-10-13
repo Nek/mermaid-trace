@@ -23,9 +23,18 @@ export function activateSvg(svg: SVGSVGElement, options: {
   const painted = (element: Element) => {
     const style = svg.ownerDocument.defaultView?.getComputedStyle(element);
     if (style && (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0)) return false;
+    const hasViewport = (part: Element) => {
+      for (let viewport = part.closest('svg'); viewport && viewport !== svg; viewport = viewport.parentElement?.closest('svg') ?? null) {
+        const style = svg.ownerDocument.defaultView?.getComputedStyle(viewport);
+        const width = parseFloat(style?.width ?? ''), height = parseFloat(style?.height ?? '');
+        if ((Number.isFinite(width) ? width : viewport.width.baseVal.value) <= 0
+          || (Number.isFinite(height) ? height : viewport.height.baseVal.value) <= 0) return false;
+      }
+      return true;
+    };
     const shapes = 'rect,path,line,polygon,circle,ellipse,foreignObject,image,use';
-    if (!element.matches(shapes) && ![...element.querySelectorAll(shapes)].some(shape => !hitTargets.has(shape))) {
-      const text = element.localName === 'text' ? [element] : [...element.querySelectorAll('text')];
+    if (!(element.matches(shapes) && hasViewport(element)) && ![...element.querySelectorAll(shapes)].some(shape => !hitTargets.has(shape) && hasViewport(shape))) {
+      const text = (element.localName === 'text' ? [element] : [...element.querySelectorAll('text')]).filter(hasViewport);
       if (!text.length || text.every(line => svg.ownerDocument.defaultView?.getComputedStyle(line).fontSize === '0px')) return false;
     }
     if (element.getAttribute('data-mt-role') !== 'edge' || !['path', 'line'].includes(element.localName)) return true;

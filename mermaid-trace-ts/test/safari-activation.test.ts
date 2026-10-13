@@ -217,6 +217,34 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% FLOW-MULTI-MATH ${layout}/${legacyMathML}/${forceLegacyMathML}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["${label}"] e@-->|"${edge}"| B[Beta]`;
       cases.push([source, label], [source, edge, 'edge-label']);
     }
+    for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const styled of [false, true]) {
+      const config = { layout, look, htmlLabels: true, themeVariables: { fontSize: styled ? 16 : 0 } };
+      cases.push([`%% FLOW-ZERO-MATH ${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["$$x^2$$"] --> B[Beta]\n${styled ? 'style A font-size:0pt' : ''}`, '$$x^2$$']);
+    }
+    const revealMath = async (source: string) => {
+      if (!source.includes('FLOW-ZERO-MATH')) return;
+      const result = await evaluate(`return (async()=>{
+        window.formulaStyles=window.roots.map(root=>{const owner=root.querySelector('[data-mt-role=node-label]'),formula=owner.querySelector('svg');return {owner,formula,style:formula.getAttribute('style')};});
+        const hidden=window.formulaStyles.every(({owner,formula})=>!owner.hasAttribute('tabindex')&&getComputedStyle(formula).fontSize==='0px');
+        const widths=[];
+        for(const size of [11,22,11]){
+          window.formulaStyles.forEach(({formula})=>formula.style.setProperty('font-size',size+'px','important'));
+          for(let i=0;i<100&&!window.formulaStyles.every(({owner})=>owner.tabIndex===0);i++)await new Promise(r=>setTimeout(r,25));
+          widths.push(window.formulaStyles[0].formula.getBoundingClientRect().width);
+        }
+        return {hidden,widths,exposed:window.formulaStyles.every(({owner})=>owner.tabIndex===0)};
+      })();`);
+      assert.equal(result.hidden, true); assert.equal(result.exposed, true);
+      assert.ok(result.widths[0]>0 && Math.abs(result.widths[1]/result.widths[0]-2)<0.01);
+    };
+    const hideMath = async (source: string) => {
+      if (!source.includes('FLOW-ZERO-MATH')) return;
+      assert.equal(await evaluate(`return (async()=>{
+        window.formulaStyles.forEach(({formula,style})=>formula.setAttribute('style',style));
+        for(let i=0;i<100&&window.formulaStyles.some(({owner})=>owner.hasAttribute('tabindex'));i++)await new Promise(r=>setTimeout(r,25));
+        return window.formulaStyles.every(({owner})=>!owner.hasAttribute('tabindex')&&!owner.hasAttribute('data-mt-selected')&&!owner.querySelector('[aria-hidden=true]'));
+      })();`), true);
+    };
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
     const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');
@@ -246,6 +274,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         return window.label.getAttribute('aria-label');
       })();`);
       await checkFontDefault(source);
+      await revealMath(source);
       if (label === missingLabel) {
         const drawn = await evaluate('return window.label.textContent;');
         // SVG row boundaries omit separator spaces; source selection below stays exact.
@@ -281,6 +310,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         }
       }
       assert.equal(await evaluate(`window.handles[0].highlight([{start:${role ? span.start : span.start + 1},end:${role ? span.end : span.start + 2}}]);return window.group.every(e=>e.dataset.mtSelected==='true');`), true);
+      await hideMath(source);
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
@@ -304,6 +334,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           return window.label.getAttribute('aria-label');
         })();`);
         await checkFontDefault(source);
+        await revealMath(source);
         if (label === missingLabel) {
           const drawn = await evaluate('return window.label.textContent;');
           // SVG row boundaries omit separator spaces; source selection below stays exact.
@@ -350,6 +381,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         })();`), true);
         assert.equal(await evaluate("return window.roots[1].querySelectorAll('[data-mt-selected]').length;"), 0);
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
+        await hideMath(source);
       } finally { await preview.close(); preview = undefined; }
     });
     await t.test('MARKERS-SAFARI: portable arrow, circle and cross markers survive HTML base URLs', { skip: !markers }, async () => {

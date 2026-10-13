@@ -398,6 +398,15 @@ test('ACT-NESTED-VIEWPORT: nested SVG labels remain selectable and follow clippi
     }
     assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
     assert.equal(await page.evaluate(() => (window as any).events.filter((event: any) => event.trigger === 'activation').length), 3);
+    for (const axis of ['width', 'height']) {
+      const viewport = label.locator('svg');
+      await viewport.evaluate((element, axis) => element.setAttribute(axis, '0'), axis);
+      await page.waitForFunction(() => !document.querySelector('[data-mt-role=node-label]')!.hasAttribute('tabindex'));
+      assert.equal(await label.getAttribute('data-mt-selected'), null);
+      await viewport.evaluate((element, axis) => (element as SVGElement).style.setProperty(axis, '16px'), axis);
+      await page.waitForFunction(() => document.querySelector('[data-mt-role=node-label]')!.getAttribute('tabindex') === '0');
+      await viewport.evaluate((element, axis) => { element.setAttribute(axis, '16'); element.removeAttribute('style'); }, axis);
+    }
     await label.evaluate(element => { (element as SVGElement).style.transform = 'translateX(1000px)'; });
     await page.waitForFunction(() => !document.querySelector('[data-mt-role=node-label]')!.hasAttribute('tabindex'));
     assert.equal(await label.getAttribute('data-mt-selected'), null);

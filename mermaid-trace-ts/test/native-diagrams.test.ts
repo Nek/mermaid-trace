@@ -1230,7 +1230,7 @@ test('GANTT-2-LATE-EXPOSURE: target stops follow reveal and overflow changes', {
   } finally { await preview?.close(); await browser.close(); await producer.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', { timeout: 180_000 }, async () => {
+for (const labelText of ['Alpha', '$$x^2$$']) test(`FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection: ${labelText}`, { timeout: 180_000 }, async () => {
   const producer = await createMermanProducer();
   const browser = await launchBrowser();
   const directory = await mkdtemp(join(tmpdir(), 'trace-flow-zero-font-'));
@@ -1244,10 +1244,10 @@ test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', 
     const labelSelector = '[data-mt-key="node:A"][data-mt-role=node-label]';
     const ownerSelector = '[data-mt-key="node:A"][data-mt-role=node]';
     for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) {
-      for (const html of [false, true]) for (const styled of [false, true]) {
+      for (const html of (labelText.startsWith('$$') ? [true] : [false, true])) for (const styled of [false, true]) {
         const config = { layout, look, htmlLabels: html, themeVariables: { fontSize: styled ? 16 : 0 } };
-        const source = `%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA[Alpha] --> B[Beta]\n${styled ? 'style A font-size:0pt\n' : ''}`;
-        const span = { start: source.indexOf('Alpha'), end: source.indexOf('Alpha') + 5 };
+        const source = `%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["${labelText}"] --> B[Beta]\n${styled ? 'style A font-size:0pt\n' : ''}`;
+        const span = { start: source.indexOf(labelText), end: source.indexOf(labelText) + labelText.length };
         const markdown = '# Fonts\n\n```mermaid\n' + source + '```\n';
         const { svg } = await producer.render('flow-zero-font', source);
         for (const live of [false, true]) {
@@ -1264,7 +1264,7 @@ test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', 
             }, activation);
           }
           const label = page.locator(labelSelector), owner = page.locator(ownerSelector);
-          const text = label.locator('text').first();
+          const text = label.locator('text,svg').first();
           assert.equal(await text.evaluate(element => getComputedStyle(element).fontSize), '0px', source);
           assert.equal(await label.getAttribute('tabindex'), null);
           assert.equal(await owner.getAttribute('tabindex'), '0');
@@ -1275,7 +1275,7 @@ test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', 
               range.setStart(element.firstChild!, span.start); range.setEnd(element.firstChild!, span.end);
               const selection = element.ownerDocument.getSelection()!;
               selection.removeAllRanges(); selection.addRange(range);
-            }, { start: markdown.indexOf('Alpha'), end: markdown.indexOf('Alpha') + 5 });
+            }, { start: markdown.indexOf(labelText), end: markdown.indexOf(labelText) + labelText.length });
             await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('data-mt-selected') === 'true', ownerSelector);
             assert.equal(await label.getAttribute('data-mt-selected'), null);
           };
@@ -1295,10 +1295,10 @@ test('FLOW AC5/6: zero-font labels retain saved/live CSS reveal and selection', 
             assert.equal(await owner.getAttribute('data-mt-selected'), null);
             if (live) {
               const original = page.frameLocator('#source-frame').locator('#source');
-              assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), 'Alpha');
-              const start = markdown.indexOf('Alpha');
+              assert.equal(await original.evaluate(element => element.ownerDocument.getSelection()!.toString()), labelText);
+              const start = markdown.indexOf(labelText);
               await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
-                formatLocation({ id: filename, source: markdown }, { start, end: start + 5 }));
+                formatLocation({ id: filename, source: markdown }, { start, end: start + labelText.length }));
             } else assert.deepEqual(await page.evaluate(() => (window as any).events.at(-1).span), span);
           }
           await text.evaluate(element => { (element as SVGElement).style.setProperty('font-size', '0px', 'important'); });

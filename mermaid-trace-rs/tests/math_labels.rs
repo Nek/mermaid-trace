@@ -65,8 +65,22 @@ fn multiple_formula_node_width_tracks_emitted_geometry_and_legacy_flags_are_iner
                                     .all(|n| n.descendants().any(|p| p.has_tag_name("path")))
                             );
                             assert_eq!(support::text_content(owner), "before  after");
-                            let formula_width: f64 =
-                                formulas[0].attribute("width").unwrap().parse().unwrap();
+                            let formula_width: f64 = formulas[0]
+                                .attribute("width")
+                                .unwrap()
+                                .strip_suffix("em")
+                                .unwrap()
+                                .parse::<f64>()
+                                .unwrap()
+                                * formulas[0]
+                                    .attribute("style")
+                                    .unwrap()
+                                    .rsplit("font-size:")
+                                    .next()
+                                    .unwrap()
+                                    .trim_end_matches("px")
+                                    .parse::<f64>()
+                                    .unwrap();
                             widths.push(width);
                             assert!(
                                 (width - widths[0] - (count - 1) as f64 * formula_width).abs()
@@ -143,5 +157,58 @@ fn plain_rows_in_math_labels_use_the_measured_wrap_width() {
             rows.windows(2)
                 .all(|pair| pair[0].attribute("y") != pair[1].attribute("y"))
         );
+    }
+}
+
+#[test]
+fn formula_layout_tracks_zero_and_fractional_css_sizes() {
+    for layout in ["dagre", "elk"] {
+        let mut empty_box = None;
+        for size in [0.0, 0.5, 16.0] {
+            let source = format!(
+                "---\nconfig: {{layout: {layout}, htmlLabels: true}}\n---\nflowchart LR\nA[\"$$x^2$$\"]\nstyle A font-size:{size}px\n"
+            );
+            let result = mermaid_trace_rs::render("sized-math", &source).unwrap();
+            let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let node = doc
+                .descendants()
+                .find(|n| n.attribute("data-mt-role") == Some("node"))
+                .unwrap();
+            let rect = node.children().find(|n| n.has_tag_name("rect")).unwrap();
+            let label = doc
+                .descendants()
+                .find(|n| n.attribute("data-mt-role") == Some("node-label"))
+                .unwrap();
+            let formula = label.descendants().find(|n| n.has_tag_name("svg")).unwrap();
+            assert_eq!(
+                formula.attribute("style"),
+                Some(format!("font-size:{size}px").as_str())
+            );
+            assert!(
+                formula.descendants().any(|n| n.has_tag_name("path")),
+                "hidden formulas must retain geometry for CSS reveal"
+            );
+            let mut dimensions = [0.0; 2];
+            for (i, axis) in ["width", "height"].into_iter().enumerate() {
+                dimensions[i] = rect.attribute(axis).unwrap().parse::<f64>().unwrap();
+                if let Some(base) = empty_box {
+                    let em = formula
+                        .attribute(axis)
+                        .unwrap()
+                        .strip_suffix("em")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap();
+                    let base: [f64; 2] = base;
+                    assert!(
+                        (dimensions[i] - base[i] - em * size).abs() < 1e-6,
+                        "{layout}/{size}/{axis}: layout must use actual CSS size"
+                    );
+                }
+            }
+            if size == 0.0 {
+                empty_box = Some(dimensions);
+            }
+        }
     }
 }
