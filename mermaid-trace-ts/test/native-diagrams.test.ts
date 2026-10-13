@@ -9,7 +9,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
-import { styledCharacters, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
+import { styledCharacters, fontPrecedenceCases, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
 
 async function clickExposedTarget(target: Locator) {
   // Nested formula SVGs can inflate Firefox's group bounds; use the actual hit surface.
@@ -3007,9 +3007,7 @@ for (const suite of ['absolute', 'theme', 'authored', 'numeric']) test(`FLOW AC5
 });
 
 test('FLOW AC5/6: explicit default theme font preserves saved/live source ownership', { timeout: 180_000 }, async () => {
-  for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
-    const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';
-    const source = `%% 😀\r\n%%{init: ${JSON.stringify({ layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', themeVariables: { fontFamily: '"trebuchet ms", verdana, arial, sans-serif' } })}}%%\r\nflowchart LR\r\n${group}\r\n`;
+  for (const { source, group } of fontPrecedenceCases) {
     await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
       ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],
       ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group WWWiii', 'control-label'],

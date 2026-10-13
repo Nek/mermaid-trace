@@ -32,6 +32,12 @@ export function inspectVariableTypography(root: SVGSVGElement) {
 
 export const variableTypography = [['32px', '700', 'rgb(102, 51, 153)']];
 
+export const fontPrecedenceCases = ['dagre', 'elk'].flatMap(layout => ['classic', 'neo', 'handDrawn'].flatMap(look => [false, true].map(htmlLabels => {
+  const group = 'subgraph G[Group WWWiii]\r\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\r\nend';
+  const config = { layout, look, handDrawnSeed: 42, htmlLabels, fontFamily: 'Arial', themeVariables: { fontFamily: '"trebuchet ms", verdana, arial, sans-serif' } };
+  return { source: `%% FLOW-FONT-PRECEDENCE ${layout}/${look}/${htmlLabels}\r\n%% 😀\r\n%%{init: ${JSON.stringify(config)}}%%\r\nflowchart LR\r\n${group}\r\n`, group };
+})));
+
 export const altFontCases = ['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels =>
   ['', 'Courier New'].map(altFontFamily => {
     const group = 'subgraph G[Group WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend';

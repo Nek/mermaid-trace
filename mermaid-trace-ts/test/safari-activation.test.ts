@@ -9,7 +9,7 @@ import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { withCssLayerPreview, styledCharacters, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
+import { withCssLayerPreview, styledCharacters, fontPrecedenceCases, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
@@ -78,6 +78,12 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
       `---\nconfig: {fontFamily: Apple Color Emoji}\n---\n${source.replaceAll('Alpha', 'Alpha 🧑‍💻')}`, 'Alpha 🧑‍💻',
     ]));
+    for (const fixture of fontPrecedenceCases) {
+      const source = fixture.source.replaceAll('\r\n', '\n'), group = fixture.group.replaceAll('\r\n', '\n');
+      cases.push([source, 'A[Alpha WWWiii]', 'node'], [source, 'Alpha WWWiii', 'node-label'],
+        [source, 'e@-->|Next WWWiii|', 'edge'], [source, 'Next WWWiii', 'edge-label'],
+        [source, group, 'control'], [source, 'Group WWWiii', 'control-label']);
+    }
     for (const layout of ['dagre', 'elk']) for (const handDrawnSeed of [undefined, 0, 42, 43]) {
       const group = 'subgraph G[Group]\nA[Alpha] e@-->|next| B[Beta]\nend';
       const source = `%% SEED ${layout}/${handDrawnSeed ?? 'omitted'}\n%%{init: ${JSON.stringify({ layout, look: 'handDrawn', handDrawnSeed })}}%%\nflowchart LR\n${group}\n`;
