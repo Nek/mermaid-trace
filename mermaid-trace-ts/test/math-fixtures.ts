@@ -25,6 +25,27 @@ export const crossRowMathCases = ['dagre', 'elk'].flatMap(layout => ['classic', 
   ] };
 }));
 
+export const paintMathCases = ['dagre', 'elk'].flatMap(layout => ['classic', 'neo', 'handDrawn'].map(look => {
+  const formula = String.raw`$$x+\textcolor{black}{y}+\textcolor{blue}{z}+\frac{a}{b}+\sqrt{c}$$`;
+  const label = `<span style='color:red'>${formula}</span>`;
+  const edge = `<span style='color:green'>${formula}</span>`;
+  const title = `<span style='color:purple'>${formula}</span>`;
+  const group = `subgraph G["${title}"]\nA["${label}"] e@-->|"${edge}"| B[Beta]\nend`;
+  const source = `---\nconfig: ${JSON.stringify({ layout, look, handDrawnSeed: 42, htmlLabels: true })}\n---\n%% FLOW-PAINT-MATH ${layout}/${look}\nflowchart LR\n%% 😀\n${group}\n`;
+  return { source, label, edge, title, group };
+}));
+
+export function inspectFormulaPaint(root: Element) {
+  return ['node:A', 'edge:e', 'flowchart:subgraph:G'].map(key => {
+    const formula = root.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"] svg`)!;
+    return ['currentColor', 'rgba(0,0,0,1)', 'rgba(0,0,255,1)'].map(paint =>
+      [...new Set([...formula.querySelectorAll(`[fill="${paint}"]`)].map(e => getComputedStyle(e).fill))]);
+  });
+}
+
+export const expectedFormulaPaint = ['rgb(255, 0, 0)', 'rgb(0, 128, 0)', 'rgb(128, 0, 128)']
+  .map(color => [[color], ['rgb(0, 0, 0)'], ['rgb(0, 0, 255)']]);
+
 export function inspectStyledMath(root: Element) {
   const labels = [...root.querySelectorAll('[data-mt-role$="-label"]')].filter(e => e.querySelector('svg'));
   const byKey = (key: string) => labels.find(e => e.getAttribute('data-mt-key') === key)!;

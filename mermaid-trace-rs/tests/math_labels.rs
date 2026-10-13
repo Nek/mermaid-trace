@@ -4,6 +4,56 @@ use merman::{Engine, MermaidConfig, Renderer};
 use serde_json::json;
 
 #[test]
+fn formula_ink_inherits_label_paint_but_keeps_explicit_tex_colors() {
+    let label = r"<span style='color:red'>$$x+\textcolor{black}{y}+\textcolor{blue}{z}+\frac{a}{b}+\sqrt{c}$$</span>";
+    for layout in ["dagre", "elk"] {
+        for role in ["node-label", "edge-label", "control-label"] {
+            let diagram = match role {
+                "node-label" => format!("A[\"{label}\"]"),
+                "edge-label" => format!("A[One] e@-->|\"{label}\"| B[Two]"),
+                _ => format!("subgraph G[\"{label}\"]\nA[One]\nend"),
+            };
+            let source = format!(
+                "---\r\nconfig: {{layout: {layout}, htmlLabels: true}}\r\n---\r\nflowchart LR\r\n%% 😀\r\n{}\r\n",
+                diagram.replace('\n', "\r\n")
+            );
+            let result = mermaid_trace_rs::render("formula-paint", &source).unwrap();
+            let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let owner = doc
+                .descendants()
+                .find(|n| n.attribute("data-mt-role") == Some(role))
+                .unwrap();
+            let formula = owner.descendants().find(|n| n.has_tag_name("svg")).unwrap();
+            assert_eq!(formula.attribute("color"), Some("red"));
+            for paint in ["currentColor", "rgba(0,0,0,1)", "rgba(0,0,255,1)"] {
+                assert!(
+                    formula
+                        .descendants()
+                        .any(|n| n.attribute("fill") == Some(paint)),
+                    "{layout}/{role}: missing {paint}"
+                );
+            }
+            let start = source[..source.find(label).unwrap()].encode_utf16().count();
+            assert_eq!(
+                owner.attribute("data-mt-start"),
+                Some(start.to_string().as_str())
+            );
+            assert_eq!(
+                owner.attribute("data-mt-end"),
+                Some((start + label.encode_utf16().count()).to_string().as_str())
+            );
+            let plain_renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+            let plain =
+                mermaid_trace_rs::render_with(&plain_renderer, "formula-paint", &source).unwrap();
+            assert!(
+                support::strip_trace(result["svg"].as_str().unwrap())
+                    == support::strip_trace(plain["svg"].as_str().unwrap())
+            );
+        }
+    }
+}
+
+#[test]
 fn multiple_formula_node_width_tracks_emitted_geometry_and_legacy_flags_are_inert() {
     for layout in ["dagre", "elk"] {
         for font_size in [16, 32] {

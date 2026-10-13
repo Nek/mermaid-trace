@@ -10,7 +10,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
-import { styledMathCases, crossRowMathCases, inspectStyledMath } from './math-fixtures.js';
+import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
   // The full matrix has hundreds of saved/live cases; each driver request still times out at 15s.
@@ -225,10 +225,14 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const style = { node: 'style A', edge: 'linkStyle 0', group: 'style G' }[target];
       cases.push([`%% FLOW-ZERO-MATH ${target}/${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${diagram}\n${styled ? style + ' font-size:0pt' : ''}`, '$$x^2$$', target === 'edge' ? 'edge-label' : target === 'group' ? 'control-label' : 'node-label']);
     }
-    for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases]) {
+    for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases, ...paintMathCases]) {
       cases.push([source, label, 'node-label'], [source, edge, 'edge-label'], [source, title, 'control-label']);
     }
     const checkStyledMath = async (source: string) => {
+      if (source.includes('FLOW-PAINT-MATH')) {
+        assert.deepEqual(await evaluate(`return (${inspectFormulaPaint.toString()})(window.roots[0]);`), expectedFormulaPaint);
+        return;
+      }
       const fixture = [...styledMathCases, ...crossRowMathCases].find(fixture => fixture.source === source);
       if (!fixture) return;
       const info = await evaluate(`return (${inspectStyledMath.toString()})(window.roots[0]);`);

@@ -8,7 +8,7 @@ import { launchBrowser, clipboardPermissions } from './browser.js';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { styledMathCases, crossRowMathCases, inspectStyledMath } from './math-fixtures.js';
+import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint } from './math-fixtures.js';
 import { styledCharacters } from './css-layer-fixtures.js';
 
 async function clickExposedTarget(target: Locator) {
@@ -2578,6 +2578,22 @@ test('FLOW AC5/6: native ELK header and configuration retain saved and live sele
   }
 });
 
+
+test('FLOW-PAINT-MATH: inherited glyph colors preserve explicit TeX paint and saved/live ownership', { timeout: 240_000 }, async () => {
+  const producer = await createMermanProducer(), browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const { source, label, edge, title, group } of paintMathCases) {
+      const { svg } = await producer.render('paint-math', source);
+      await page.setContent(svg); await page.evaluate(() => document.fonts.ready);
+      assert.deepEqual(await page.locator('svg').first().evaluate(inspectFormulaPaint), expectedFormulaPaint, source);
+      await verifyNative(source, 'node:A', `A["${label}"]`, label, [
+        ['edge:e', `e@-->|"${edge}"|`, 'edge'], ['edge:e', edge, 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', title, 'control-label'],
+      ]);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
 
 test('FLOW-STYLED-MATH: styled formulas fit and preserve saved/live ownership', { timeout: 180_000 }, async () => {
   const producer = await createMermanProducer(), browser = await launchBrowser();

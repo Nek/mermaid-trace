@@ -1233,8 +1233,7 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 [[package]]
 name = "ratex-font"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7b73531dabe934a3e725ed5c90d18dacf43778b7a208381390943a9a8c24db"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "phf 0.11.3",
  "ratex-types",
@@ -1243,8 +1242,7 @@ dependencies = [
 [[package]]
 name = "ratex-font-loader"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6542b55c6273b2ca3eb66021da061dfc84bc8303b434e1332218b63728742b7e"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "ab_glyph",
  "ratex-font",
@@ -1256,8 +1254,7 @@ dependencies = [
 [[package]]
 name = "ratex-katex-fonts"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c915a17fd71c41374d1ec19651a26ca352e757e1342391c2cbc5b825dacaa64b"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "rust-embed",
 ]
@@ -1265,8 +1262,7 @@ dependencies = [
 [[package]]
 name = "ratex-layout"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1792738e2e36683cd20de742296a5233759565efc8cd03831064a0ccfb1fe0f7"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "ratex-font",
  "ratex-parser",
@@ -1277,8 +1273,7 @@ dependencies = [
 [[package]]
 name = "ratex-lexer"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f704add86d7bf4c4ecc7767f45ab38a44f1bbfa4b49725b2ae53c32e83b8a61e"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "ratex-types",
  "serde",
@@ -1288,8 +1283,7 @@ dependencies = [
 [[package]]
 name = "ratex-parser"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "079ec2e7ac6bc76137a6de093a173d1f901139a51318589ab9ce17139c21a6f0"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "fancy-regex",
  "ratex-font",
@@ -1306,8 +1300,7 @@ dependencies = [
 [[package]]
 name = "ratex-svg"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a0948b4d4926858332fe04471e861f54103e655a64f74cc1b3eac0c59bf67bb"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "ab_glyph",
  "base64",
@@ -1321,8 +1314,7 @@ dependencies = [
 [[package]]
 name = "ratex-types"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cf0be3d050525f0f7d37af55a443d7648c222ccc617639950e3de1f8e6f9900"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "serde",
 ]
@@ -1330,8 +1322,7 @@ dependencies = [
 [[package]]
 name = "ratex-unicode-font"
 version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c460464b7fba27343b2b391179ac6c86fcffac5116455158e2b08ce80866fd8"
+source = "git+https://github.com/Nek/RaTeX.git?rev=0993706e93437710a8fbe1e45710052b06e11b8c#0993706e93437710a8fbe1e45710052b06e11b8c"
 dependencies = [
  "fontdb",
  "system-fonts",
