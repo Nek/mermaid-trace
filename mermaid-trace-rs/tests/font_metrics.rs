@@ -369,7 +369,7 @@ fn authored_font_styles_resolve_once_for_owned_labels() {
                         let config = json!({"layout": layout, "htmlLabels": html,
                             "themeVariables": {"fontSize": format!("{base}px")}});
                         let prior = if cascade == "override" {
-                            "classDef first font-size:2em\nclass A,G first\nlinkStyle default font-size:2em\n"
+                            "classDef first font-size:2em\nlinkStyle default font-size:3em\n"
                         } else {
                             ""
                         };
@@ -380,8 +380,14 @@ fn authored_font_styles_resolve_once_for_owned_labels() {
                                 "style A font-size:{value}\nstyle G font-size:{value}\nlinkStyle 0 font-size:{value}"
                             )
                         };
+                        // Bind the class after styles create the subgraph's rendered CSS owner.
+                        let binding = if cascade == "override" {
+                            "\nclass A,G,e first"
+                        } else {
+                            ""
+                        };
                         let source = format!(
-                            "%%{{init: {config}}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\n{prior}{styles}"
+                            "%%{{init: {config}}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\n{prior}{styles}{binding}"
                         );
                         let output = mermaid_trace_rs::render("relative-style", &source).unwrap();
                         let doc =
@@ -454,6 +460,15 @@ fn authored_font_styles_resolve_once_for_owned_labels() {
                         ("initial", 16.0),
                         ("inherit", base),
                         ("unset", base),
+                        ("revert", base),
+                        (
+                            "revert-layer",
+                            if cascade == "override" {
+                                base * 2.0
+                            } else {
+                                base
+                            },
+                        ),
                         ("smaller", base / 1.2),
                         ("larger", base * 1.2),
                     ] {
@@ -527,6 +542,8 @@ fn relative_theme_fonts_match_pixel_geometry_and_source() {
                     ("initial", 16.0),
                     ("inherit", 16.0),
                     ("unset", 16.0),
+                    ("revert", 16.0),
+                    ("revert-layer", 16.0),
                     ("smaller", 16.0 / 1.2),
                     ("larger", 16.0 * 1.2),
                 ] {

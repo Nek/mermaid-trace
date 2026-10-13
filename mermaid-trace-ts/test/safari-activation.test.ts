@@ -162,10 +162,10 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       ]),
     );
     const fontDefaults = new Map<string, number>();
-    for (const keyword of ['initial', 'inherit', 'unset']) for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) {
+    for (const keyword of ['initial', 'inherit', 'unset', 'revert', 'revert-layer']) for (const layout of ['dagre', 'elk']) for (const htmlLabels of [false, true]) {
       const config = { layout, htmlLabels, themeVariables: { fontSize: '24px' } };
-      const source = `%% FONT-DEFAULT ${keyword}/${layout}/${htmlLabels}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\nclassDef prior font-size:48px\nclass A,G prior\nlinkStyle default font-size:48px\nstyle A font-size:${keyword}\nstyle G font-size:${keyword}\nlinkStyle 0 font-size:${keyword}`;
-      fontDefaults.set(source, keyword === 'initial' ? 16 : 24);
+      const source = `%% FONT-DEFAULT ${keyword}/${layout}/${htmlLabels}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nsubgraph G[Group]\nA[Alpha] e@-->|Next| B[Beta]\nend\nclassDef prior font-size:48px\nlinkStyle default font-size:72px\nstyle A font-size:${keyword}\nstyle G font-size:${keyword}\nlinkStyle 0 font-size:${keyword}\nclass A,G,e prior`;
+      fontDefaults.set(source, keyword === 'initial' ? 16 : keyword === 'revert-layer' ? 48 : 24);
       cases.push([source, 'Alpha'], [source, 'Next', 'edge-label'], [source, 'Group', 'control-label']);
     }
     const checkFontDefault = async (source: string) => {
