@@ -29,6 +29,8 @@ All project Markdown except root `README.md` and `AGENTS.md` belongs under `docs
 
 ## TDD and commits
 
+- Close browser instances, contexts and tabs created for testing as soon as their run finishes, including failure and cancellation paths. Register cleanup when each resource is acquired and verify no test-owned browsers or drivers remain after a batch. Preserve the user's browser windows, tabs and requested live preview; never use blanket browser-process termination.
+
 - Always use TDD for behavioral changes: write a test for the required project behavior, run it and confirm it fails for the expected reason, implement the smallest change that passes, then refactor with tests green. Fixes start with a failing regression test. Do not substitute tests of the compiler or dependencies for tests of project behavior.
 - Documentation-only changes need appropriate review/link checks, not artificial behavior tests.
 - Always use atomic commits: each commit contains one coherent change, including its relevant tests and documentation. Verify it before committing, keep unrelated changes separate, and never bundle unrelated user work into a commit.
