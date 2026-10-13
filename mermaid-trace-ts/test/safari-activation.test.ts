@@ -9,7 +9,7 @@ import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { withCssLayerPreview, styledCharacters, altFontCases } from './css-layer-fixtures.js';
+import { withCssLayerPreview, styledCharacters, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
@@ -231,7 +231,14 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     for (const { source } of altFontCases) {
       cases.push([source, 'Alpha WWWiii', 'node-label'], [source, 'Next WWWiii', 'edge-label'], [source, 'Group WWWiii', 'control-label']);
     }
+    for (const { source, label, edge, title } of cssVariableCases) {
+      cases.push([source, label, 'node-label'], [source, edge, 'edge-label'], [source, title, 'control-label']);
+    }
     const checkStyledMath = async (source: string) => {
+      if (source.includes('FLOW-CSS-VARIABLES')) {
+        assert.deepEqual(await evaluate(`return (${inspectVariableTypography.toString()})(window.roots[0]);`), [variableTypography, variableTypography, variableTypography]);
+        return;
+      }
       const mode = modeMathCases.find(fixture => fixture.source === source);
       if (mode) {
         assert.deepEqual(await evaluate(`return (${inspectFormulaModes.toString()})(window.roots[0]);`), mode.expected);

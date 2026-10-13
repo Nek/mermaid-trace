@@ -11,6 +11,27 @@ import type { Span } from '../src/source-mapping.js';
 
 type LayerArtifact = { name: string; svg: string; source: string; expected: string; label: string; runs?: string[][] };
 
+export const cssVariableCases = ['dagre', 'elk'].flatMap(layout => ['classic', 'neo', 'handDrawn'].map(look => {
+  const parent = '--Font:monospace;--Size:32px;--size:8px;--weight:700;--paint:rebeccapurple';
+  const child = 'font-family:var(--Font);font-size:var(--Size);font-weight:var(--weight);color:var(--paint);line-height:var(--leading,1.5)';
+  const [label, edge, title] = ['Alpha WWWiii', 'Next WWWiii', 'Group WWWiii'].map(text => `<span style='${parent}'><span style='${child}'>${text}</span></span>`);
+  const node = `A["${label}"]`, connector = `e@-->|"${edge}"|`;
+  const group = `subgraph G["${title}"]\n${node} ${connector} B[Beta]\nend`;
+  const config = { layout, look, handDrawnSeed: 42, htmlLabels: true };
+  return { source: `---\nconfig: ${JSON.stringify(config)}\n---\n%% FLOW-CSS-VARIABLES ${layout}/${look}\nflowchart LR\n%% 😀\n${group}\n`, label: label!, edge: edge!, title: title!, node, connector, group };
+}));
+
+export function inspectVariableTypography(root: SVGSVGElement) {
+  return ['node:A', 'edge:e', 'flowchart:subgraph:G'].map(key => {
+    const label = root.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"]`)!;
+    const runs = [...label.querySelectorAll('text,tspan')].filter(element => [...element.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent!.trim()))
+      .map(element => { const style = getComputedStyle(element); return [style.fontSize, style.fontWeight, style.fill]; });
+    return [...new Map(runs.map(run => [run.join('|'), run])).values()];
+  });
+}
+
+export const variableTypography = [['32px', '700', 'rgb(102, 51, 153)']];
+
 export const altFontCases = ['dagre', 'elk'].flatMap(layout => [false, true].flatMap(htmlLabels =>
   ['', 'Courier New'].map(altFontFamily => {
     const group = 'subgraph G[Group WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend';

@@ -1,6 +1,40 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { launchBrowser } from './browser.js';
+
+test('FLOW-CSS-VARIABLES: browser reference for inheritance, cycles, token boundaries and invalid values', async () => {
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const [parent, child, expected] of [
+      ['--Size:32px;--size:8px', 'font-size:var(--Size)', '32px'],
+      ['--a:32px;--b:var(--a)', '--a:8px;font-size:var(--b)', '32px'],
+      ['font-size:24px', 'font-size:32px;font-size:var(--missing)', '24px'],
+      ['font-size:24px', '--a:red;font-size:32px;font-size:var(--a)', '24px'],
+      ['', '--a:var(--b,32px);--b:var(--a);font-size:var(--a,12px)', '12px'],
+      ['--safe:32px', '--a:var(--safe,var(--a));font-size:var(--a,12px)', '32px'],
+      ['', '--a:var(--missing,initial);--b:var(--a,32px);font-size:var(--b)', '32px'],
+      ['--a:40px', '--a:var(--missing,inherit);font-size:var(--a)', '40px'],
+      ['--a:40px', '--a:var(--missing,unset);font-size:var(--a)', '40px'],
+      ['--a:40px', '--a:var(--missing,revert);font-size:var(--a)', '40px'],
+      ['', '--a:;font-size:var(--a,32px)', '16px'],
+      ['', '--a:32;font-size:var(--a)px', '16px'],
+      ['', String.raw`--S\69 ze:32px;font-size:VAR(--Size)`, '32px'],
+      ['', '--size:24px !/**/IMPORTANT;font-size:var(--size)', '24px'],
+      ['', 'font-size:24px;font-size:var(invalid)', '24px'],
+      ['', 'font-size:24px;font-size:var(--missing,!)', '24px'],
+    ]) {
+      await page.setContent('<div style="font-size:16px"><div id="parent"><span id="child">Label</span></div></div>');
+      const actual = await page.evaluate(({ parent, child }) => {
+        document.querySelector('#parent')!.setAttribute('style', parent!);
+        document.querySelector('#child')!.setAttribute('style', child!);
+        return getComputedStyle(document.querySelector('#child')!).fontSize;
+      }, { parent, child });
+      assert.equal(actual, expected, `${parent} / ${child}`);
+    }
+  } finally { await browser.close(); }
+});
 
 test('FLOW-ALT-FONT: pinned Mermaid alternate font variable does not reach inline or standalone labels', async () => {
   const browser = await chromium.launch();

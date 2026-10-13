@@ -258,6 +258,96 @@ fn alternate_font_configuration_does_not_override_flowchart_fonts_or_ownership()
 }
 
 #[test]
+fn css_variable_font_fallback_uses_the_same_metrics_as_its_concrete_value() {
+    for layout in ["dagre", "elk"] {
+        let draw = |family: &str| {
+            let source = format!(
+                "---\nconfig: {{layout: {layout}, htmlLabels: true}}\n---\nflowchart LR\nA[\"<span style='font-family:{family}'>WWWWiiii</span>\"]"
+            );
+            let result = mermaid_trace_rs::render("font-variables", &source).unwrap();
+            let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+            let node = doc
+                .descendants()
+                .find(|n| n.attribute("data-mt-role") == Some("node"))
+                .unwrap();
+            let shape = node.children().find(|n| n.has_tag_name("rect")).unwrap();
+            ["width", "height"].map(|name| shape.attribute(name).unwrap().to_owned())
+        };
+        assert_eq!(
+            draw("var(--missing,monospace)"),
+            draw("monospace"),
+            "{layout}: variable fallback must reach layout"
+        );
+    }
+}
+
+#[test]
+fn css_variables_share_layout_export_and_exact_source_for_all_flowchart_label_owners() {
+    let inherited = "--Font:monospace;--Size:32px;--size:8px;--weight:700;--paint:rebeccapurple";
+    let variables = "font-family:var(--Font);font-size:var(--Size);font-weight:var(--weight);color:var(--paint);line-height:var(--leading,1.5)";
+    let concrete =
+        "font-family:monospace;font-size:32px;font-weight:700;color:rebeccapurple;line-height:1.5";
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for stylesheet in [false, true] {
+                let inline = if stylesheet { "" } else { inherited };
+                let draw = |style: &str, traced| {
+                    let labels = ["Alpha WWWiii", "Next WWWiii", "Group WWWiii"].map(|text| {
+                        format!("<span style='{inline}'><span style='{style}'>{text}</span></span>")
+                    });
+                    let config =
+                        json!({"layout":layout,"look":look,"handDrawnSeed":42,"htmlLabels":true});
+                    let source = format!(
+                        "---\r\nconfig: {config}\r\n---\r\n%% 😀\r\nflowchart LR\r\nsubgraph G[\"{}\"]\r\nA[\"{}\"] e@-->|\"{}\"| B[Beta]\r\nend\r\n",
+                        labels[2], labels[0], labels[1]
+                    );
+                    let css = if stylesheet {
+                        format!(".root{{{inherited}}}")
+                    } else {
+                        String::new()
+                    };
+                    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+                        MermaidConfig::from_value(json!({"traceSource":traced, "themeCSS":css})),
+                    ));
+                    (
+                        mermaid_trace_rs::render_with(&renderer, "css-variables", &source).unwrap(),
+                        source,
+                        labels,
+                    )
+                };
+                let (mapped, source, labels) = draw(variables, true);
+                let svg = mapped["svg"].as_str().unwrap();
+                let painted = support::strip_trace(svg);
+                assert_eq!(
+                    painted,
+                    support::strip_trace(draw(variables, false).0["svg"].as_str().unwrap()),
+                    "{layout}/{look}: mapped/plain parity"
+                );
+                assert_eq!(
+                    painted,
+                    support::strip_trace(draw(concrete, true).0["svg"].as_str().unwrap()),
+                    "{layout}/{look}: variable and concrete styles must measure and paint identically"
+                );
+                let doc = roxmltree::Document::parse(svg).unwrap();
+                let units: Vec<_> = source.encode_utf16().collect();
+                for (role, expected) in ["node-label", "edge-label", "control-label"]
+                    .into_iter()
+                    .zip(labels)
+                {
+                    let owner = doc
+                        .descendants()
+                        .find(|n| n.attribute("data-mt-role") == Some(role))
+                        .unwrap();
+                    let start: usize = owner.attribute("data-mt-start").unwrap().parse().unwrap();
+                    let end: usize = owner.attribute("data-mt-end").unwrap().parse().unwrap();
+                    assert_eq!(String::from_utf16(&units[start..end]).unwrap(), expected);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn fractional_pixel_font_sizes_survive_production_export() {
     for layout in ["dagre", "elk"] {
         for look in ["classic", "neo", "handDrawn"] {

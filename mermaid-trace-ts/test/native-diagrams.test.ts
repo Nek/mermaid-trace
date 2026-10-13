@@ -9,7 +9,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
-import { styledCharacters, altFontCases } from './css-layer-fixtures.js';
+import { styledCharacters, altFontCases, cssVariableCases, inspectVariableTypography, variableTypography } from './css-layer-fixtures.js';
 
 async function clickExposedTarget(target: Locator) {
   // Nested formula SVGs can inflate Firefox's group bounds; use the actual hit surface.
@@ -2578,6 +2578,22 @@ test('FLOW AC5/6: native ELK header and configuration retain saved and live sele
   }
 });
 
+
+test('FLOW-CSS-VARIABLES: computed typography preserves saved/live ownership', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer(), browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const { source, node, connector, label, edge, title, group } of cssVariableCases) {
+      const { svg } = await producer.render('css-variables', source);
+      await page.setContent(svg); await page.evaluate(() => document.fonts.ready);
+      assert.deepEqual(await page.locator('svg').first().evaluate(inspectVariableTypography), [variableTypography, variableTypography, variableTypography], source);
+      await verifyNative(source, 'node:A', node, label, [
+        ['edge:e', connector, 'edge'], ['edge:e', edge, 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', title, 'control-label'],
+      ]);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
 
 test('FLOW-ALT-FONT: inert alternate-font configuration preserves saved/live selection', { timeout: 120_000 }, async () => {
   for (const { source, group } of altFontCases) {
