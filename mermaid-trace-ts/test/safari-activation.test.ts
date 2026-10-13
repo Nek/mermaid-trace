@@ -210,6 +210,13 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const source = `%% FLOW-BROWSER-CONTROLS ${layout}/${startOnLoad}/${suppressErrorRendering}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA[Alpha 😀] e@-->|next| B[Beta]`;
       cases.push([source, 'Alpha 😀'], [source, 'e@-->|next|', 'edge']);
     }
+    for (const layout of ['dagre', 'elk']) for (const legacyMathML of [false, true]) for (const forceLegacyMathML of [false, true]) {
+      const config = { layout, htmlLabels: true, fontSize: legacyMathML ? 32 : 16, flowchart: { wrappingWidth: 90 }, legacyMathML, forceLegacyMathML };
+      const label = 'before $$x^2$$$$y^2$$ after<br/>next $$z^2$$ and $$w^2$$ end<br/>alpha beta gamma delta literal $$';
+      const edge = 'from $$x$$ via $$y$$ to';
+      const source = `%% FLOW-MULTI-MATH ${layout}/${legacyMathML}/${forceLegacyMathML}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\nA["${label}"] e@-->|"${edge}"| B[Beta]`;
+      cases.push([source, label], [source, edge, 'edge-label']);
+    }
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
     const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');

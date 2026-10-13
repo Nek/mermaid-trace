@@ -2566,6 +2566,43 @@ test('FLOW AC5/6: native ELK header and configuration retain saved and live sele
 });
 
 
+test('FLOW-MULTI-MATH: native fragments retain geometry and saved/live ownership', { timeout: 180_000 }, async () => {
+  const producer = await createMermanProducer();
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const layout of ['dagre', 'elk']) for (const legacyMathML of [false, true]) for (const forceLegacyMathML of [false, true]) {
+      const config = { layout, htmlLabels: true, fontSize: legacyMathML ? 32 : 16, flowchart: { wrappingWidth: 90 }, legacyMathML, forceLegacyMathML };
+      const label = 'before $$x^2$$$$y^2$$ after<br/>next $$z^2$$ and $$w^2$$ end<br/>alpha beta gamma delta literal $$';
+      const edge = 'from $$x$$ via $$y$$ to';
+      const group = `subgraph G["Group $$x$$ and $$y$$"]\nA["${label}"] e@-->|"${edge}"| B[Beta]\nend`;
+      const source = `---\nconfig: ${JSON.stringify(config)}\n---\nflowchart LR\n${group}\n`;
+      const { svg } = await producer.render('multi-math', source);
+      await page.setContent(svg); await page.evaluate(() => document.fonts.ready);
+      const metrics = await page.locator('[data-mt-key="node:A"][data-mt-role=node]').evaluate(node => {
+        const frame = node.querySelector(':scope > rect')!.getBoundingClientRect();
+        const label = node.closest('svg')!.querySelector('[data-mt-key="node:A"][data-mt-role=node-label]')!;
+        const formulas = [...label.querySelectorAll('svg')];
+        const text = [...label.querySelectorAll('text')].map(element => element.textContent).join('');
+        const contained = [...label.querySelectorAll('svg,text')].every(element => {
+          const box = element.getBoundingClientRect();
+          return box.left >= frame.left - 1 && box.right <= frame.right + 1 && box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1;
+        });
+        return { count: formulas.length, text, contained, textRows: label.querySelectorAll('text').length };
+      });
+      assert.equal(metrics.count, 4);
+      assert.equal(metrics.contained, true);
+      assert.ok(metrics.text.startsWith('before  afternext  and  end'));
+      assert.equal(metrics.text.slice('before  afternext  and  end'.length).replace(/ /g, ''), 'alphabetagammadeltaliteral$$');
+      assert.ok(metrics.textRows >= 8, 'plain prose must wrap beneath the nonwrapping formula rows');
+      await verifyNative(source, 'node:A', `A["${label}"]`, label, [
+        ['edge:e', `e@-->|"${edge}"|`, 'edge'], ['edge:e', edge, 'edge-label'],
+        ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group $$x$$ and $$y$$', 'control-label'],
+      ]);
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
 test('FLOW AC5/6: formula glyphs retain saved and live label selection', { timeout: 120_000 }, async () => {
   for (const header of ['flowchart LR', 'flowchart-elk LR']) {
     const source = `---\nconfig:\n  htmlLabels: true\n---\n${header}\nA["$$x^2$$"] -->|"$$\\sqrt{x}$$"| B\n`;
