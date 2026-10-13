@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")" && pwd)
 checkout="$root/vendor/merman"
-revision=72e57f4ea7a65bc3bf40eaf58bd1173a9f801bad
+revision=cc496fc9b69f4a7b3307ddcdaeb1987b5fc62486
 if [ ! -e "$checkout/.git" ]; then
   mkdir -p "$root/vendor"
   git clone --no-checkout --depth 1 https://github.com/Nek/merman.git "$checkout"

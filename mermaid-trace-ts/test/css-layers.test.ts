@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { launchBrowser, clipboardPermissions } from './browser.js';
-import { withCssLayerPreview } from './css-layer-fixtures.js';
+import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
 import { formatLocation } from '../src/markdown-source.js';
 
 test('FLOW CSS layers: trusted host styles retain saved/live label selection', { timeout: 120_000 }, async () => {
@@ -15,15 +15,21 @@ test('FLOW CSS layers: trusted host styles retain saved/live label selection', {
         await page.goto(url); await page.waitForSelector('body[data-ready=true]');
         await page.evaluate(() => document.fonts.ready);
         const label = page.locator('[data-mt-role=node-label]').first();
-        if (artifact.rich) {
-          assert.deepEqual(await label.locator('tspan').evaluateAll(elements => elements.map(element => [element.textContent, getComputedStyle(element).fontSize])), [['Wide', '32px'], [' small', '16px']], artifact.name);
+        if (artifact.runs) {
+          const runs = await label.locator('tspan').evaluateAll(elements => elements.map(element => {
+            const style = getComputedStyle(element);
+            return [element.textContent!, style.fontSize, style.fontWeight, style.fontStyle];
+          }));
+          assert.deepEqual(styledCharacters(runs), styledCharacters(artifact.runs), artifact.name);
         } else assert.equal(await label.locator('text').evaluate(element => getComputedStyle(element).fontSize), artifact.expected, artifact.name);
         assert.ok(await label.evaluate(element => {
           const owner = element.closest('svg')!.querySelector('[data-mt-key="node:A"][data-mt-role=node]')!;
           const shape = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path')!.getBoundingClientRect();
-          const text = element.querySelector('text')!.getBoundingClientRect();
-          return text.left >= shape.left - 3 && text.right <= shape.right + 3
-            && text.top >= shape.top - 3 && text.bottom <= shape.bottom + 3;
+          return [...element.querySelectorAll('text')].every(row => {
+            const text = row.getBoundingClientRect();
+            return text.left >= shape.left - 3 && text.right <= shape.right + 3
+              && text.top >= shape.top - 3 && text.bottom <= shape.bottom + 3;
+          });
         }), `${artifact.name}: CSS-sized text must fit its allocated node`);
         for (const gesture of ['pointer', 'Enter', 'Space']) {
           await page.evaluate(() => navigator.clipboard.writeText('cleared'));

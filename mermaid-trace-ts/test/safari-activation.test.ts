@@ -9,7 +9,7 @@ import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { withCssLayerPreview } from './css-layer-fixtures.js';
+import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
   skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 600_000,
@@ -389,12 +389,12 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
             document.onkeydown=e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted});
             const owner=window.label.closest('svg').querySelector('[data-mt-key="node:A"][data-mt-role=node]');
             const shape=owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path').getBoundingClientRect();
-            const text=window.label.querySelector('text').getBoundingClientRect();
+            const texts=[...window.label.querySelectorAll('text')].map(e=>e.getBoundingClientRect());
             return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.querySelector('text')).fontSize,
-              runs:[...window.label.querySelectorAll('tspan')].map(e=>[e.textContent,getComputedStyle(e).fontSize]),
-              contained:text.left>=shape.left-3&&text.right<=shape.right+3&&text.top>=shape.top-3&&text.bottom<=shape.bottom+3};
+              runs:[...window.label.querySelectorAll('tspan')].map(e=>{const s=getComputedStyle(e);return [e.textContent,s.fontSize,s.fontWeight,s.fontStyle]}),
+              contained:texts.every(text=>text.left>=shape.left-3&&text.right<=shape.right+3&&text.top>=shape.top-3&&text.bottom<=shape.bottom+3)};
           })();`);
-          if(artifact.rich) assert.deepEqual(info.runs, [['Wide','32px'],[' small','16px']]);
+          if(artifact.runs) assert.deepEqual(styledCharacters(info.runs), styledCharacters(artifact.runs), artifact.name);
           else assert.equal(info.size, artifact.expected);
           assert.equal(info.contained, true, `${artifact.name}: CSS-sized text must fit its allocated node`);
           const sentinel = 'CSS layers Safari clipboard sentinel';

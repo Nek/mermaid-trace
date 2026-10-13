@@ -911,6 +911,121 @@ fn trusted_css_rich_label_runs_reach_layout_and_export() {
 }
 
 #[test]
+fn rich_html_emphasis_matches_explicit_styles_through_wrapping_and_export() {
+    for layout in ["dagre", "elk"] {
+        for (name, label, runs, min_rows) in [
+            (
+                "nested",
+                "Plain <strong>bold <em>italic</em></strong> <code>code</code> end",
+                json!([
+                    ["Plain ", "16px", "400", "normal"],
+                    ["bold ", "16px", "700", "normal"],
+                    ["italic", "16px", "700", "italic"],
+                    [" code end", "16px", "400", "normal"]
+                ]),
+                1,
+            ),
+            (
+                "wrapped",
+                "Plain <strong>wide wide wide wide wide wide</strong> <em>italic italic</em> end",
+                json!([
+                    ["Plain ", "16px", "400", "normal"],
+                    ["wide wide wide wide wide wide", "16px", "700", "normal"],
+                    [" ", "16px", "400", "normal"],
+                    ["italic italic", "16px", "400", "italic"],
+                    [" end", "16px", "400", "normal"]
+                ]),
+                3,
+            ),
+            (
+                "breaks",
+                "Plain<br/><strong>bold <em>italic</em></strong><br/><code>code</code> end",
+                json!([
+                    ["Plain", "16px", "400", "normal"],
+                    ["bold ", "16px", "700", "normal"],
+                    ["italic", "16px", "700", "italic"],
+                    ["code end", "16px", "400", "normal"]
+                ]),
+                3,
+            ),
+            (
+                "reset",
+                "<span style='font-weight:initial;font-style:initial'>Reset</span> Keep",
+                json!([
+                    ["Reset", "16px", "400", "normal"],
+                    [" Keep", "16px", "700", "italic"]
+                ]),
+                1,
+            ),
+            (
+                "relative",
+                "<span style='font-weight:349.5'>Light <strong>bold</strong></span>",
+                json!([
+                    ["Light ", "16px", "349.5", "normal"],
+                    ["bold", "16px", "400", "normal"]
+                ]),
+                1,
+            ),
+        ] {
+            let renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "layout":layout, "htmlLabels":true, "traceSource":true, "fontFamily":"Arial", "flowchart":{"wrappingWidth":100}, "themeCSS":if name == "reset" {".nodeLabel{font-weight:700;font-style:italic}"} else {""}
+            }))));
+            let draw = |text| {
+                mermaid_trace_rs::render_with(
+                    &renderer,
+                    "emphasis",
+                    &format!("flowchart LR\nA[\"{text}\"]\n"),
+                )
+                .unwrap()
+            };
+            let mut actual = draw(label);
+            let styled = label
+                .replace(
+                    "<strong>",
+                    if name == "relative" {
+                        "<span style='font-weight:400'>"
+                    } else {
+                        "<span style='font-weight:700'>"
+                    },
+                )
+                .replace("</strong>", "</span>")
+                .replace("<em>", "<span style='font-style:italic'>")
+                .replace("</em>", "</span>")
+                .replace("<code>", "<span style='font-family:monospace'>")
+                .replace("</code>", "</span>")
+                .replace("font-weight:initial", "font-weight:normal")
+                .replace("font-style:initial", "font-style:normal");
+            assert_eq!(
+                support::strip_trace(actual["svg"].as_str().unwrap()),
+                support::strip_trace(draw(&styled)["svg"].as_str().unwrap()),
+                "{layout}/{name}: semantic HTML must have the same measured and painted output as its explicit font styles"
+            );
+            let doc = roxmltree::Document::parse(actual["svg"].as_str().unwrap()).unwrap();
+            let owner = doc
+                .descendants()
+                .find(|node| node.attribute("data-mt-role") == Some("node-label"))
+                .unwrap();
+            assert!(
+                owner
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .count()
+                    >= min_rows,
+                "{layout}/{name}: wrapping and explicit breaks must survive"
+            );
+            if let Ok(directory) = std::env::var("TRACE_CSS_LAYER_ARTIFACTS") {
+                actual["fixture"] = json!({"label":label, "runs":runs});
+                std::fs::write(
+                    std::path::Path::new(&directory).join(format!("emphasis-{layout}-{name}.json")),
+                    serde_json::to_vec(&actual).unwrap(),
+                )
+                .unwrap();
+            }
+        }
+    }
+}
+
+#[test]
 fn rich_css_labels_preserve_owned_source_for_nodes_edges_and_groups() {
     let label = "<span class='large'>Wide</span> small 😀";
     for layout in ["dagre", "elk"] {
