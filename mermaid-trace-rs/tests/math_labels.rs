@@ -4,6 +4,104 @@ use merman::{Engine, MermaidConfig, Renderer};
 use serde_json::json;
 
 #[test]
+fn formula_label_modes_preserve_literal_text_markdown_and_source_ownership() {
+    for layout in ["dagre", "elk"] {
+        for html in [false, true] {
+            for markdown in [false, true] {
+                for wrap in [false, true] {
+                    let label = "before **bold** $$x^2$$ after<br/>literal $$";
+                    let quoted = if markdown {
+                        format!("`{label}`")
+                    } else {
+                        label.to_owned()
+                    };
+                    let config = json!({"layout":layout,"htmlLabels":html,"markdownAutoWrap":wrap,"flowchart":{"wrappingWidth":80}});
+                    let source = format!(
+                        "---\r\nconfig: {config}\r\n---\r\nflowchart LR\r\n%% 😀\r\nsubgraph G[\"{quoted}\"]\r\nA[\"{quoted}\"] e@-->|\"{quoted}\"| B[Beta]\r\nend\r\n"
+                    );
+                    let result = mermaid_trace_rs::render("math-modes", &source).unwrap();
+                    let svg = result["svg"].as_str().unwrap();
+                    let doc = roxmltree::Document::parse(svg).unwrap();
+                    for (role, occurrence) in
+                        [("control-label", 0), ("node-label", 1), ("edge-label", 2)]
+                    {
+                        let owner = doc
+                            .descendants()
+                            .find(|n| n.attribute("data-mt-role") == Some(role))
+                            .unwrap();
+                        assert_eq!(
+                            owner
+                                .descendants()
+                                .filter(|n| n.has_tag_name("svg"))
+                                .count(),
+                            usize::from(html),
+                            "{layout}/{html}/{markdown}/{wrap}/{role}"
+                        );
+                        let text = support::text_content(owner)
+                            .split_whitespace()
+                            .collect::<String>();
+                        let rows: std::collections::HashSet<_> = owner
+                            .descendants()
+                            .filter(|n| {
+                                if html {
+                                    n.has_tag_name("text")
+                                } else {
+                                    n.attribute("class").is_some_and(|c| {
+                                        c.split_whitespace().any(|c| c == "text-outer-tspan")
+                                    })
+                                }
+                            })
+                            .filter_map(|n| n.attribute("y"))
+                            .collect();
+                        assert!(
+                            rows.len() >= 2,
+                            "{layout}/{html}/{markdown}/{wrap}/{role}: explicit break must survive"
+                        );
+                        if markdown && !html {
+                            assert!(
+                                owner
+                                    .descendants()
+                                    .any(|n| n.attribute("font-weight") == Some("bold")
+                                        && n.text().is_some_and(|t| t.contains("bold"))),
+                                "{layout}/{role}: literal TeX must not suppress Markdown emphasis"
+                            );
+                        }
+                        let bold = if markdown && !html {
+                            "bold"
+                        } else {
+                            "**bold**"
+                        };
+                        let formula = if html { "" } else { "$$x^2$$" };
+                        assert_eq!(
+                            text,
+                            format!("before{bold}{formula}afterliteral$$"),
+                            "{layout}/{html}/{markdown}/{wrap}/{role}"
+                        );
+                        let byte = source.match_indices(label).nth(occurrence).unwrap().0;
+                        let start = source[..byte].encode_utf16().count();
+                        assert_eq!(
+                            owner.attribute("data-mt-start"),
+                            Some(start.to_string().as_str())
+                        );
+                        assert_eq!(
+                            owner.attribute("data-mt-end"),
+                            Some((start + label.encode_utf16().count()).to_string().as_str())
+                        );
+                    }
+                    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                    let plain =
+                        mermaid_trace_rs::render_with(&renderer, "math-modes", &source).unwrap();
+                    assert!(
+                        support::strip_trace(svg)
+                            == support::strip_trace(plain["svg"].as_str().unwrap())
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn formula_ink_inherits_label_paint_but_keeps_explicit_tex_colors() {
     let label = r"<span style='color:red'>$$x+\textcolor{black}{y}+\textcolor{blue}{z}+\frac{a}{b}+\sqrt{c}$$</span>";
     for layout in ["dagre", "elk"] {

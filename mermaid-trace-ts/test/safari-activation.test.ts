@@ -10,7 +10,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
-import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint } from './math-fixtures.js';
+import { styledMathCases, crossRowMathCases, inspectStyledMath, paintMathCases, inspectFormulaPaint, expectedFormulaPaint, modeMathCases, inspectFormulaModes } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
   // The full matrix has hundreds of saved/live cases; each driver request still times out at 15s.
@@ -72,7 +72,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       ...['flowchart LR', 'flowchart-elk LR'].map((header): [string, string] => [`---\nconfig: {htmlLabels: true}\n---\n${header}\nA["$$Alpha$$"]`, '$$Alpha$$']),
       ...[['A\u20dd A 😀', 'Arial'], ['🧑\u200d💻 123 ABC', 'Arial'], ['🧑\u200d💻 123 ABC', 'Apple Color Emoji']].flatMap(([unit, fontFamily]) => ['dagre', 'elk'].map((layout): [string, string] => {
         const label = Array(12).fill(unit).join(' ');
-        return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily })}\n---\nflowchart LR\nA["\`${label}\`"]`, label];
+        return [`---\nconfig: ${JSON.stringify({ layout, htmlLabels: false, markdownAutoWrap: false, fontFamily })}\n---\n%% FONT-SHAPING\nflowchart LR\nA["\`${label}\`"]`, label];
       })),
     ];
     cases.push(...cases.slice(0, 7).map(([source]): [string, string] => [
@@ -225,10 +225,15 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const style = { node: 'style A', edge: 'linkStyle 0', group: 'style G' }[target];
       cases.push([`%% FLOW-ZERO-MATH ${target}/${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${diagram}\n${styled ? style + ' font-size:0pt' : ''}`, '$$x^2$$', target === 'edge' ? 'edge-label' : target === 'group' ? 'control-label' : 'node-label']);
     }
-    for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases, ...paintMathCases]) {
+    for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases, ...paintMathCases, ...modeMathCases]) {
       cases.push([source, label, 'node-label'], [source, edge, 'edge-label'], [source, title, 'control-label']);
     }
     const checkStyledMath = async (source: string) => {
+      const mode = modeMathCases.find(fixture => fixture.source === source);
+      if (mode) {
+        assert.deepEqual(await evaluate(`return (${inspectFormulaModes.toString()})(window.roots[0]);`), mode.expected);
+        return;
+      }
       if (source.includes('FLOW-PAINT-MATH')) {
         assert.deepEqual(await evaluate(`return (${inspectFormulaPaint.toString()})(window.roots[0]);`), expectedFormulaPaint);
         return;
@@ -281,7 +286,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     ];
     const selectedWatch = watchCases.filter(([name]) => !sourceFilter || new RegExp(sourceFilter).test(name));
     assert.ok(selectedCases.length || fontCss || cssLayers || markers || selectedWatch.length, 'Safari source filter must select at least one case');
-    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('FONT-SHAPING') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
       const aria = await evaluate(`return (async()=>{
@@ -307,7 +312,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(drawn.match(/\ufffd/g)?.length, 2);
         assert.doesNotMatch(drawn, /[\u{10ffff}\u{10fffe}]/u);
       }
-      if (source.includes('markdownAutoWrap')) {
+      if (source.includes('FONT-SHAPING')) {
         const geometry = await evaluate(`const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
           return {label:box(window.label),shape:box(window.roots[0].querySelector('[data-mt-role=node] > rect')),scale:window.roots[0].getScreenCTM().a,text:window.label.textContent};`);
         assert.equal(geometry.text, label);
@@ -340,7 +345,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       assert.equal(await evaluate('window.handles.forEach(handle=>handle.dispose());return window.roots.every((root,i)=>root.outerHTML===window.originals[i]);'), true);
     });
     await call('set_viewport_size', { width: 1280, height: 900 });
-    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + (label === missingLabel ? 'missing characters ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('markdownAutoWrap') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
+    for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((source.startsWith('%% ') ? source.split('\n')[0]! + ' ' : '') + (label === missingLabel ? 'missing characters ' : '') + 'live ' + source.split('\n').find(line => /^(flowchart|sequenceDiagram|gantt|journey|kanban|stateDiagram)/.test(line))! + (source.includes('FONT-SHAPING') ? ' shaping ' + source.split('\n')[1]! : source.includes('$$') ? ' formula' : role ? ` ${role}: ${label}` : ''), async () => {
       const fence = '\n\n```mermaid\n' + source + '\n```\n';
       const markdown = '# Safari preview\n\n' + Array.from({ length: 35 }, (_, i) => `Paragraph ${i}.`).join('\n\n') + fence + fence;
       await writeFile(filename, markdown);

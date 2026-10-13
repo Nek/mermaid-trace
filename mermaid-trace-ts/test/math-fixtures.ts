@@ -35,6 +35,27 @@ export const paintMathCases = ['dagre', 'elk'].flatMap(layout => ['classic', 'ne
   return { source, label, edge, title, group };
 }));
 
+export const modeMathCases = ['dagre', 'elk'].flatMap(layout => [false, true].flatMap(html =>
+  [false, true].flatMap(markdown => [false, true].map(wrap => {
+    const label = 'Node **bold** $$x^2$$ after<br/>literal $$';
+    const edge = label.replace('Node', 'Edge'), title = label.replace('Node', 'Group');
+    const quote = (value: string) => markdown ? `"\`${value}\`"` : `"${value}"`;
+    const node = `A[${quote(label)}]`, connector = `e@-->|${quote(edge)}|`;
+    const group = `subgraph G[${quote(title)}]\n${node} ${connector} B[Beta]\nend`;
+    const config = { layout, htmlLabels: html, markdownAutoWrap: wrap, flowchart: { wrappingWidth: 80 } };
+    const source = `---\nconfig: ${JSON.stringify(config)}\n---\n%% FLOW-MODE-MATH ${layout}/${html}/${markdown}/${wrap}\nflowchart LR\n%% 😀\n${group}\n`;
+    const bold = markdown && !html ? 'bold' : '**bold**', formula = html ? '' : '$$x^2$$';
+    const expected = ['Node', 'Edge', 'Group'].map(prefix => ({ formulas: html ? 1 : 0, text: `${prefix}${bold}${formula}afterliteral$$` }));
+    return { source, label, edge, title, node, connector, group, expected };
+  }))));
+
+export function inspectFormulaModes(root: Element) {
+  return ['node:A', 'edge:e', 'flowchart:subgraph:G'].map(key => {
+    const label = root.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"]`)!;
+    return { formulas: label.querySelectorAll('svg').length, text: label.textContent!.replace(/\s/g, '') };
+  });
+}
+
 export function inspectFormulaPaint(root: Element) {
   return ['node:A', 'edge:e', 'flowchart:subgraph:G'].map(key => {
     const formula = root.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"] svg`)!;
