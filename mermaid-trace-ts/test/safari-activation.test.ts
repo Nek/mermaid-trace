@@ -200,7 +200,8 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
     const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');
     const cssLayers = !sourceFilter || new RegExp(sourceFilter).test('CSS-LAYERS-SAFARI');
-    assert.ok(selectedCases.length || fontCss || cssLayers, 'Safari source filter must select at least one case');
+    const markers = !sourceFilter || new RegExp(sourceFilter).test('MARKERS-SAFARI');
+    assert.ok(selectedCases.length || fontCss || cssLayers || markers, 'Safari source filter must select at least one case');
     for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
@@ -325,7 +326,7 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
         assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
       } finally { await preview.close(); preview = undefined; }
     });
-    await t.test('MARKERS-SAFARI: portable arrow, circle and cross markers survive HTML base URLs', { skip: !!sourceFilter }, async () => {
+    await t.test('MARKERS-SAFARI: portable arrow, circle and cross markers survive HTML base URLs', { skip: !markers }, async () => {
       let html = '';
       const server = createServer((_, response) => { response.setHeader('Content-Type', 'text/html'); response.end(html); });
       await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
