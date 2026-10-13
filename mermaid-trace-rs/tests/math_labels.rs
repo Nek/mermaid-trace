@@ -148,7 +148,7 @@ fn plain_rows_in_math_labels_use_the_measured_wrap_width() {
         );
         assert_eq!(
             rows.iter()
-                .filter_map(|n| n.text())
+                .map(|n| support::text_content(*n))
                 .collect::<String>()
                 .replace(' ', ""),
             "alphabetagammadeltaliteral$$"
@@ -274,6 +274,179 @@ fn connector_and_subgraph_formula_sizes_preserve_source_and_static_parity() {
                             == support::strip_trace(plain["svg"].as_str().unwrap()),
                         "{layout}/{look}/{size}/{styled}: mapped/plain parity"
                     );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn formula_surroundings_preserve_resolved_styles_and_do_not_measure_markup() {
+    for layout in ["dagre", "elk"] {
+        for role in ["node-label", "edge-label", "control-label"] {
+            let mut plain_geometry = None;
+            for label in [
+                "bold $$x^2$$ tail",
+                "<span>bold</span> $$x^2$$ tail",
+                "<strong>bold</strong> $$x^2$$ tail",
+                "<span style='font-size:32px'>bold $$x^2$$</span> tail",
+                "<strong><em>bold</em> $$x^2$$</strong> tail",
+                "<span style='font-size:0.5px;color:red'>bold $$x^2$$</span> tail",
+                "<span style='font-size:0px'>bold $$x^2$$</span> tail",
+            ] {
+                let diagram = match role {
+                    "node-label" => format!("A[\"{label}\"]"),
+                    "edge-label" => format!("A[One] e@-->|\"{label}\"| B[Two]"),
+                    _ => format!("subgraph G[\"{label}\"]\nA[One]\nend"),
+                };
+                let source = format!(
+                    "---\r\nconfig: {{layout: {layout}, htmlLabels: true}}\r\n---\r\nflowchart LR\r\n%% 😀\r\n{}\r\n",
+                    diagram.replace('\n', "\r\n")
+                );
+                let result = mermaid_trace_rs::render("styled-math", &source).unwrap();
+                let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let owner = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-mt-role") == Some(role))
+                    .unwrap();
+                let geometry = doc
+                    .descendants()
+                    .filter(|n| n.is_element())
+                    .flat_map(|n| {
+                        n.attributes()
+                            .filter(|a| {
+                                ["x", "y", "width", "height", "viewBox", "transform", "d"]
+                                    .contains(&a.name())
+                            })
+                            .map(move |a| {
+                                (
+                                    n.tag_name().name().to_owned(),
+                                    a.name().to_owned(),
+                                    a.value().to_owned(),
+                                )
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                if label.starts_with("bold") {
+                    plain_geometry = Some(geometry.clone());
+                }
+                if label.starts_with("<span>") {
+                    assert_eq!(
+                        Some(&geometry),
+                        plain_geometry.as_ref(),
+                        "{layout}/{role}: inert HTML must not change label geometry"
+                    );
+                }
+                let bold = owner
+                    .descendants()
+                    .find(|n| n.is_text() && n.text().is_some_and(|t| t.starts_with("bold")))
+                    .unwrap();
+                if label.starts_with("<strong>") {
+                    assert!(
+                        bold.ancestors()
+                            .any(|n| n.attribute("font-weight") == Some("bold")
+                                || n.attribute("style")
+                                    .is_some_and(|s| s.contains("font-weight:bold")
+                                        || s.contains("font-weight:700"))),
+                        "{layout}/{role}: preserve bold around formulas"
+                    );
+                }
+                let formula = owner.descendants().find(|n| n.has_tag_name("svg")).unwrap();
+                let size = if label.contains("32px") {
+                    "32px"
+                } else if label.contains("0.5px") {
+                    "0.5px"
+                } else if label.contains("0px") {
+                    "0px"
+                } else {
+                    "16px"
+                };
+                assert!(
+                    formula
+                        .attribute("style")
+                        .unwrap()
+                        .contains(&format!("font-size:{size}")),
+                    "{layout}/{role}: formula inherits inline font size"
+                );
+                if label.contains("<em>") {
+                    assert!(bold.ancestors().any(|n| {
+                        n.attribute("style")
+                            .is_some_and(|s| s.contains("font-style:italic"))
+                    }));
+                }
+                if label.contains("color:red") {
+                    assert_eq!(formula.attribute("color"), Some("red"));
+                }
+                let start = source[..source.find(label).unwrap()].encode_utf16().count();
+                assert_eq!(
+                    owner.attribute("data-mt-start"),
+                    Some(start.to_string().as_str())
+                );
+                assert_eq!(
+                    owner.attribute("data-mt-end"),
+                    Some((start + label.encode_utf16().count()).to_string().as_str())
+                );
+                let plain_renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let plain =
+                    mermaid_trace_rs::render_with(&plain_renderer, "styled-math", &source).unwrap();
+                assert!(
+                    support::strip_trace(result["svg"].as_str().unwrap())
+                        == support::strip_trace(plain["svg"].as_str().unwrap()),
+                    "{layout}/{role}: mapped/plain parity"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn trusted_css_formula_styles_match_inline_layout_and_export() {
+    for layout in ["dagre", "elk"] {
+        for size in [0.0, 0.5, 32.0] {
+            let mut geometry = None;
+            for css in [false, true] {
+                let style = format!("font-size:{size}px;font-weight:bold;color:blue");
+                let attribute = if css {
+                    "class='math-style'".to_owned()
+                } else {
+                    format!("style='{style}'")
+                };
+                let source =
+                    format!("flowchart LR\nA[\"<span {attribute}>wide $$x^2$$</span> tail\"]\n");
+                let config = json!({"traceSource":true,"htmlLabels":true,"layout":layout,"themeCSS":if css {format!(".math-style {{{style}}}")} else {String::new()}});
+                let renderer = Renderer::new()
+                    .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(config)));
+                let result = mermaid_trace_rs::render_with(&renderer, "css-math", &source).unwrap();
+                let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let owner = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-mt-role") == Some("node-label"))
+                    .unwrap();
+                let formula = owner.descendants().find(|n| n.has_tag_name("svg")).unwrap();
+                assert_eq!(
+                    formula.attribute("style"),
+                    Some(format!("font-size:{size}px").as_str())
+                );
+                assert_eq!(formula.attribute("color"), Some("blue"));
+                let rect = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-mt-role") == Some("node"))
+                    .unwrap()
+                    .children()
+                    .find(|n| n.has_tag_name("rect"))
+                    .unwrap();
+                let dimensions: Vec<_> = ["width", "height"]
+                    .into_iter()
+                    .map(|name| rect.attribute(name).unwrap().to_owned())
+                    .collect();
+                if css {
+                    assert_eq!(
+                        Some(dimensions),
+                        geometry,
+                        "{layout}/{size}: CSS must reach layout"
+                    );
+                } else {
+                    geometry = Some(dimensions);
                 }
             }
         }
