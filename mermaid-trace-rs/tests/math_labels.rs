@@ -452,3 +452,90 @@ fn trusted_css_formula_styles_match_inline_layout_and_export() {
         }
     }
 }
+
+#[test]
+fn inline_formula_styles_survive_explicit_rows_and_reset_after_the_owner() {
+    for layout in ["dagre", "elk"] {
+        for role in ["node-label", "edge-label", "control-label"] {
+            for br in ["<br>", "<br/>", "<BR />"] {
+                let label = format!(
+                    "<span style='font-size:32px'><strong>before $$x^2$${br}<em>after $$y^2$$</em></strong>{br}plain wrapped words alpha beta gamma</span>{br}reset $$z^2$$"
+                );
+                let diagram = match role {
+                    "node-label" => format!("A[\"{label}\"]"),
+                    "edge-label" => format!("A[One] e@-->|\"{label}\"| B[Two]"),
+                    _ => format!("subgraph G[\"{label}\"]\nA[One]\nend"),
+                };
+                let source = format!(
+                    "---\r\nconfig: {{layout: {layout}, htmlLabels: true, flowchart: {{wrappingWidth: 90}}}}\r\n---\r\nflowchart LR\r\n%% 😀\r\n{}\r\n",
+                    diagram.replace('\n', "\r\n")
+                );
+                let result = mermaid_trace_rs::render("cross-row-math", &source).unwrap();
+                let doc = roxmltree::Document::parse(result["svg"].as_str().unwrap()).unwrap();
+                let owner = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-mt-role") == Some(role))
+                    .unwrap();
+                let formulas: Vec<_> = owner
+                    .descendants()
+                    .filter(|n| n.has_tag_name("svg"))
+                    .collect();
+                assert_eq!(
+                    formulas
+                        .iter()
+                        .map(|n| n.attribute("style").unwrap())
+                        .collect::<Vec<_>>(),
+                    ["font-size:32px", "font-size:32px", "font-size:16px"],
+                    "{layout}/{role}/{br}: retain inline style until its closing tag"
+                );
+                assert!(formulas.windows(2).all(|pair| {
+                    pair[0].attribute("y").unwrap().parse::<f64>().unwrap()
+                        < pair[1].attribute("y").unwrap().parse::<f64>().unwrap()
+                }));
+                let after = owner
+                    .descendants()
+                    .find(|n| {
+                        n.has_tag_name("tspan") && n.text().is_some_and(|t| t.starts_with("after"))
+                    })
+                    .unwrap();
+                let style = after.attribute("style").unwrap();
+                assert!(
+                    style.contains("font-size:32px")
+                        && style.contains("font-weight:700")
+                        && style.contains("font-style:italic")
+                );
+                let rows: Vec<_> = owner
+                    .descendants()
+                    .filter(|n| n.has_tag_name("text"))
+                    .collect();
+                assert!(rows.len() >= 4, "{layout}/{role}: preserve explicit rows");
+                // Plain subgraph titles have no soft-wrap limit; node and edge labels do.
+                if role != "control-label" {
+                    assert!(
+                        rows.len() > 4,
+                        "{layout}/{role}: plain rows must still wrap"
+                    );
+                }
+                let start = source[..source.find(&label).unwrap()]
+                    .encode_utf16()
+                    .count();
+                assert_eq!(
+                    owner.attribute("data-mt-start"),
+                    Some(start.to_string().as_str())
+                );
+                assert_eq!(
+                    owner.attribute("data-mt-end"),
+                    Some((start + label.encode_utf16().count()).to_string().as_str())
+                );
+                let plain_renderer = Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(json!({"traceSource":false,"htmlLabels":false,"deterministicIds":true,"deterministicIDSeed":"mermaid-trace"}))));
+                let plain =
+                    mermaid_trace_rs::render_with(&plain_renderer, "cross-row-math", &source)
+                        .unwrap();
+                assert!(
+                    support::strip_trace(result["svg"].as_str().unwrap())
+                        == support::strip_trace(plain["svg"].as_str().unwrap())
+                );
+            }
+        }
+    }
+}

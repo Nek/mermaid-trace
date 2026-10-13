@@ -10,7 +10,7 @@ import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
 import { withCssLayerPreview, styledCharacters } from './css-layer-fixtures.js';
-import { styledMathCases, styledMathRuns, inspectStyledMath } from './math-fixtures.js';
+import { styledMathCases, crossRowMathCases, inspectStyledMath } from './math-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
   // The full matrix has hundreds of saved/live cases; each driver request still times out at 15s.
@@ -225,16 +225,17 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
       const style = { node: 'style A', edge: 'linkStyle 0', group: 'style G' }[target];
       cases.push([`%% FLOW-ZERO-MATH ${target}/${layout}/${look}/${styled}\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${diagram}\n${styled ? style + ' font-size:0pt' : ''}`, '$$x^2$$', target === 'edge' ? 'edge-label' : target === 'group' ? 'control-label' : 'node-label']);
     }
-    for (const { source, label, edge, title } of styledMathCases) {
+    for (const { source, label, edge, title } of [...styledMathCases, ...crossRowMathCases]) {
       cases.push([source, label, 'node-label'], [source, edge, 'edge-label'], [source, title, 'control-label']);
     }
     const checkStyledMath = async (source: string) => {
-      if (!source.includes('FLOW-STYLED-MATH')) return;
+      const fixture = [...styledMathCases, ...crossRowMathCases].find(fixture => fixture.source === source);
+      if (!fixture) return;
       const info = await evaluate(`return (${inspectStyledMath.toString()})(window.roots[0]);`);
-      assert.deepEqual(info.formulas, ['32px', '24px', '20px']);
-      assert.equal(info.color, 'rgb(255, 0, 0)');
+      assert.deepEqual(info.formulas, fixture.formulas);
+      assert.equal(info.color, fixture.color);
       assert.equal(info.contained, true, source);
-      assert.deepEqual(styledCharacters(info.runs), styledCharacters(styledMathRuns));
+      assert.deepEqual(styledCharacters(info.runs), styledCharacters(fixture.runs));
     };
     const revealMath = async (source: string) => {
       if (!source.includes('FLOW-ZERO-MATH')) return;

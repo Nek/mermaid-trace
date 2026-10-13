@@ -8,7 +8,7 @@ import { launchBrowser, clipboardPermissions } from './browser.js';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
-import { styledMathCases, styledMathRuns, inspectStyledMath } from './math-fixtures.js';
+import { styledMathCases, crossRowMathCases, inspectStyledMath } from './math-fixtures.js';
 import { styledCharacters } from './css-layer-fixtures.js';
 
 async function clickExposedTarget(target: Locator) {
@@ -18,7 +18,8 @@ async function clickExposedTarget(target: Locator) {
   await target.scrollIntoViewIfNeeded();
   const position = await target.evaluate(element => {
     const box = element.getBoundingClientRect();
-    for (const x of [0.1, 0.3, 0.5, 0.7, 0.9]) for (const y of [0.1, 0.5, 0.9]) {
+    // Tall labels can cover the interior samples while leaving the node's padding exposed.
+    for (const x of [0.1, 0.3, 0.5, 0.7, 0.9, 0.01, 0.99]) for (const y of [0.1, 0.5, 0.9, 0.01, 0.99]) {
       // Firefox delivers integer pointer coordinates; hit-test the pixel we actually click.
       const point = { x: Math.round(box.x + box.width * x), y: Math.round(box.y + box.height * y) };
       const hit = element.ownerDocument.elementFromPoint(point.x, point.y);
@@ -2582,14 +2583,14 @@ test('FLOW-STYLED-MATH: styled formulas fit and preserve saved/live ownership', 
   const producer = await createMermanProducer(), browser = await launchBrowser();
   try {
     const page = await browser.newPage();
-    for (const { source, label, edge, title, group } of styledMathCases) {
+    for (const { source, label, edge, title, group, formulas, runs, color } of [...styledMathCases, ...crossRowMathCases]) {
       const { svg } = await producer.render('styled-math', source);
       await page.setContent(svg); await page.evaluate(() => document.fonts.ready);
       const info = await page.locator('svg').first().evaluate(inspectStyledMath);
-      assert.deepEqual(info.formulas, ['32px', '24px', '20px']);
-      assert.equal(info.color, 'rgb(255, 0, 0)');
+      assert.deepEqual(info.formulas, formulas);
+      assert.equal(info.color, color);
       assert.equal(info.contained, true, source);
-      assert.deepEqual(styledCharacters(info.runs), styledCharacters(styledMathRuns));
+      assert.deepEqual(styledCharacters(info.runs), styledCharacters(runs));
       await verifyNative(source, 'node:A', `A["${label}"]`, label, [
         ['edge:e', `e@-->|"${edge}"|`, 'edge'], ['edge:e', edge, 'edge-label'],
         ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', title, 'control-label'],
