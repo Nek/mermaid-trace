@@ -360,12 +360,12 @@ fn numeric_theme_fonts_match_pixel_strings_in_production() {
 }
 
 #[test]
-fn relative_authored_font_styles_resolve_once_for_owned_labels() {
+fn authored_font_styles_resolve_once_for_owned_labels() {
     for layout in ["dagre", "elk"] {
         for html in [false, true] {
             for base in [16.0, 20.5, 0.5, 0.0] {
                 for cascade in ["inline", "class", "override"] {
-                    let draw = |value: &str| {
+                    let draw = |value: &str, expected_size: f64| {
                         let config = json!({"layout": layout, "htmlLabels": html,
                             "themeVariables": {"fontSize": format!("{base}px")}});
                         let prior = if cascade == "override" {
@@ -419,7 +419,7 @@ fn relative_authored_font_styles_resolve_once_for_owned_labels() {
                                     .parse::<f64>()
                                     .unwrap();
                                 assert!(
-                                    (size - base * 1.5).abs() < 1e-6,
+                                    (size - expected_size).abs() < 1e-6,
                                     "{layout}/{html}/{base}/{cascade}/{value}/{role}: exported {size}px"
                                 );
                             }
@@ -439,9 +439,23 @@ fn relative_authored_font_styles_resolve_once_for_owned_labels() {
                         }
                         bounds
                     };
-                    let expected = draw(&format!("{}px", base * 1.5));
-                    for value in ["1.5em", "150%", "1.5rem"] {
-                        let actual = draw(value);
+                    for (value, pixels) in [
+                        ("1.5em", base * 1.5),
+                        ("150%", base * 1.5),
+                        ("1.5rem", base * 1.5),
+                        ("xx-small", 9.0),
+                        ("x-small", 10.0),
+                        ("small", 13.0),
+                        ("medium", 16.0),
+                        ("large", 18.0),
+                        ("x-large", 24.0),
+                        ("xx-large", 32.0),
+                        ("xxx-large", 48.0),
+                        ("smaller", base / 1.2),
+                        ("larger", base * 1.2),
+                    ] {
+                        let expected = draw(&format!("{pixels}px"), pixels);
+                        let actual = draw(value, pixels);
                         for (actual, expected) in actual.into_iter().zip(&expected) {
                             assert!(
                                 (actual - expected).abs() < 1e-6,
@@ -497,6 +511,23 @@ fn relative_theme_fonts_match_pixel_geometry_and_source() {
                             "{layout}/{look}/{html}/{relative}"
                         );
                     }
+                }
+                for (keyword, pixels) in [
+                    ("xx-small", 9.0),
+                    ("x-small", 10.0),
+                    ("small", 13.0),
+                    ("medium", 16.0),
+                    ("large", 18.0),
+                    ("x-large", 24.0),
+                    ("xx-large", 32.0),
+                    ("xxx-large", 48.0),
+                    ("smaller", 16.0 / 1.2),
+                    ("larger", 16.0 * 1.2),
+                ] {
+                    assert!(
+                        draw(keyword) == draw(&format!("{pixels}px")),
+                        "{layout}/{look}/{html}/{keyword}: differs from pixel control"
+                    );
                 }
             }
         }

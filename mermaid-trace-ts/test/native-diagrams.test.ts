@@ -2801,6 +2801,43 @@ test('FLOW AC5/6: scoped appearance preserves saved/live source and connector se
   }
 });
 
+for (const [keyword, absolute] of [['xx-small', 9], ['x-small', 10], ['small', 13], ['medium', 16], ['large', 18], ['x-large', 24], ['xx-large', 32], ['xxx-large', 48], ['smaller', 0], ['larger', 0]] as const) test(`FLOW AC5/6: ${keyword} font keywords retain measured paint and saved/live ownership`, { timeout: 600_000 }, async () => {
+  const producer = await createMermanProducer(), browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    for (const origin of ['theme', 'inline', 'class']) {
+      const base = origin === 'theme' ? 16 : 24;
+      const expected = keyword === 'smaller' ? base / 1.2 : keyword === 'larger' ? base * 1.2 : absolute;
+      for (const layout of ['dagre', 'elk']) for (const look of ['classic', 'neo', 'handDrawn']) for (const htmlLabels of [false, true]) {
+        const group = 'subgraph G[Group WWWiii]\nA[Alpha WWWiii] e@-->|Next WWWiii| B[Beta]\nend';
+        const config = { layout, look, htmlLabels, handDrawnSeed: 42, fontFamily: 'Arial', themeVariables: { fontSize: origin === 'theme' ? keyword : '24px' } };
+        const styles = origin === 'theme' ? '' : origin === 'class' ? `classDef last font-size:${keyword}\nclass A,G,e last` :
+          `classDef first font-size:2em\nclass A,G first\nlinkStyle default font-size:2em\nstyle A font-size:${keyword}\nstyle G font-size:${keyword}\nlinkStyle 0 font-size:${keyword}`;
+        const source = `%% 😀\n%%{init: ${JSON.stringify(config)}}%%\nflowchart LR\n${group}\n${styles}`;
+        const { svg } = await producer.render('keyword-font', source);
+        await page.setContent(svg); await page.evaluate(() => document.fonts.ready);
+        const result = await page.evaluate(expected => {
+          const labels = ['node:A', 'edge:e', 'flowchart:subgraph:G'].map(key => document.querySelector(`[data-mt-key="${key}"][data-mt-role$="-label"]`)!);
+          const owner = document.querySelector('[data-mt-key="node:A"][data-mt-role=node]')!;
+          const shape = owner.querySelector(':scope > rect, :scope > g.basic.label-container, :scope > g > path')!.getBoundingClientRect();
+          const label = labels[0]!.getBoundingClientRect();
+          // Compare within the browser: Firefox quantizes even explicit fractional pixel sizes.
+          const control = document.createElement('span'); control.style.fontSize = `${expected}px`; document.body.append(control);
+          const expectedSize = getComputedStyle(control).fontSize; control.remove();
+          return { expectedSize, sizes: labels.flatMap(label => [...label.querySelectorAll('text,tspan')].map(text => getComputedStyle(text).fontSize)),
+            contained: label.left >= shape.left - 3 && label.right <= shape.right + 3 && label.top >= shape.top - 3 && label.bottom <= shape.bottom + 3 };
+        }, expected);
+        assert.ok(result.sizes.length && result.sizes.every(size => size === result.expectedSize), `${keyword}/${origin}/${layout}/${look}/${htmlLabels}: ${result.sizes}`);
+        assert.ok(result.contained, `${keyword}/${origin}/${layout}/${look}/${htmlLabels}: measured text must fit its node`);
+        if (look === 'classic' || keyword === 'small') await verifyNative(source, 'node:A', 'A[Alpha WWWiii]', 'Alpha WWWiii', [
+          ['edge:e', 'e@-->|Next WWWiii|', 'edge'], ['edge:e', 'Next WWWiii', 'edge-label'],
+          ['flowchart:subgraph:G', group], ['flowchart:subgraph:G', 'Group WWWiii', 'control-label'],
+        ]);
+      }
+    }
+  } finally { await browser.close(); await producer.close(); }
+});
+
 for (const suite of ['absolute', 'theme', 'authored', 'numeric']) test(`FLOW AC5/6: ${suite === 'numeric' ? 'numeric theme' : suite === 'authored' ? 'relative authored' : suite === 'theme' ? 'relative theme' : 'absolute and fractional'} fonts retain painted size, containment and selection`, { timeout: 600_000 }, async () => {
   const relative = suite !== 'absolute', authored = suite === 'authored', numeric = suite === 'numeric';
   const producer = await createMermanProducer();
