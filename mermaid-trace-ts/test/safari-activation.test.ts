@@ -9,6 +9,7 @@ import test from 'node:test';
 import { createMermanProducer } from '../src/producer/merman.js';
 import { watchPreview } from '../src/watch.js';
 import { formatLocation } from '../src/markdown-source.js';
+import { withCssLayerPreview } from './css-layer-fixtures.js';
 
 test('SAFARI: saved and live native selections retain gestures, source ownership and clipboard', {
   skip: process.env.TRACE_TEST_SAFARI !== '1', timeout: 600_000,
@@ -198,7 +199,8 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
     const sourceFilter = process.env.TRACE_TEST_SAFARI_SOURCE;
     const selectedCases = sourceFilter ? cases.filter(([source]) => new RegExp(sourceFilter).test(source)) : cases;
     const fontCss = !sourceFilter || new RegExp(sourceFilter).test('FONT-CSS-SAFARI');
-    assert.ok(selectedCases.length || fontCss, 'Safari source filter must select at least one case');
+    const cssLayers = !sourceFilter || new RegExp(sourceFilter).test('CSS-LAYERS-SAFARI');
+    assert.ok(selectedCases.length || fontCss || cssLayers, 'Safari source filter must select at least one case');
     for (const [source, label, role, groupSize = 1] of selectedCases) await t.test((label === missingLabel ? 'missing characters ' : '') + (source.includes('markdownAutoWrap') ? 'shaping ' + source.split('\n')[1]! : source.includes('$$') ? source.split('\n')[3]! + ' formula' : source.split('\n')[0]! + (role ? ` ${role}: ${label}` : '')), async () => {
       const { svg } = await producer.render('safari-native', source);
       const span = { start: source.indexOf(label), end: source.indexOf(label) + label.length };
@@ -370,6 +372,65 @@ test('SAFARI: saved and live native selections retain gestures, source ownership
           }
         }
       } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+    });
+    await t.test('CSS-LAYERS-SAFARI: trusted CSS retains saved/live label selection', { skip: !cssLayers }, async t => {
+      await withCssLayerPreview(async ({ url, artifacts, show }) => {
+        for (const artifact of artifacts) for (const live of [false, true]) await t.test(`${artifact.name} ${live ? 'live' : 'saved'}`, async () => {
+          const { sourceDocument, span } = show(artifact, live);
+          await call('navigate_to_url', { tab_uuid: tab, url });
+          const info = await evaluate(`return (async()=>{
+            for(let i=0;i<200 && document.body.dataset.ready!=='true';i++)await new Promise(r=>setTimeout(r,25));
+            if(document.body.dataset.ready!=='true')throw Error('Layer preview did not become ready');
+            await document.fonts.ready;
+            window.label=document.querySelector('[data-mt-role=node-label]');
+            window.trusted=[];
+            document.onclick=e=>window.trusted.push({type:e.type,trusted:e.isTrusted});
+            document.onkeydown=e=>window.trusted.push({type:e.type,key:e.key,trusted:e.isTrusted});
+            return {aria:window.label.getAttribute('aria-label'),size:getComputedStyle(window.label.querySelector('text')).fontSize};
+          })();`);
+          assert.equal(info.size, artifact.expected);
+          const sentinel = 'CSS layers Safari clipboard sentinel';
+          for (const interaction of [
+            { type: 'click', ...await pointer(info.aria, undefined), purpose: 'Select the CSS-styled label' },
+            { type: 'keyPress', value: 'Enter', purpose: 'Activate the label with Enter' },
+            { type: 'keyPress', value: ' ', purpose: 'Activate the label with Space' },
+          ]) {
+            execFileSync('/usr/bin/pbcopy', { input: sentinel });
+            await call('page_interactions', { interactions: [interaction] });
+            const result = await evaluate(`const selection=${live ? "document.querySelector('#source-frame').contentDocument.getSelection()" : 'null'};
+              const range=selection?.getRangeAt(0);
+              return {span:range?{start:range.startOffset,end:range.endOffset}:window.selected,
+                text:selection?.toString(),selected:window.label.dataset.mtSelected==='true',
+                focused:document.activeElement===window.label,stops:window.label.closest('svg').querySelectorAll('[data-mt-selected=true][tabindex="0"]').length,
+                outline:getComputedStyle(document.activeElement).outlineStyle,trusted:window.trusted.at(-1)};`);
+            assert.deepEqual(result.span, span);
+            if (live) assert.equal(result.text, 'Alpha WWWiii');
+            assert.equal(result.selected, true); assert.equal(result.focused, true); assert.equal(result.stops, 1); assert.equal(result.outline, 'none');
+            assert.equal(result.trusted.trusted, true);
+            assert.equal(result.trusted.type, interaction.type === 'click' ? 'click' : 'keydown');
+            if (interaction.type === 'keyPress') assert.equal(result.trusted.key, interaction.value);
+            assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), formatLocation(sourceDocument, span));
+          }
+          execFileSync('/usr/bin/pbcopy', { input: sentinel });
+          if (live) {
+            const selectSource = async (start: number, end: number, selected: boolean) => evaluate(`return (async()=>{
+              const doc=document.querySelector('#source-frame').contentDocument,range=doc.createRange();
+              range.setStart(doc.querySelector('#source').firstChild,${start});range.setEnd(doc.querySelector('#source').firstChild,${end});
+              doc.getSelection().removeAllRanges();doc.getSelection().addRange(range);
+              for(let i=0;i<100 && (window.label.dataset.mtSelected==='true')!==${selected};i++)await new Promise(r=>setTimeout(r,25));
+              return window.label.dataset.mtSelected==='true';
+            })();`);
+            assert.equal(await selectSource(0, 1, false), false);
+            assert.equal(await selectSource(span.start, span.start + 1, true), true);
+          } else {
+            assert.equal(await evaluate("window.handle.highlight([]);return window.label.dataset.mtSelected==='true';"), false);
+            assert.equal(await evaluate(`window.handle.highlight([${JSON.stringify(span)}]);return window.label.dataset.mtSelected==='true';`), true);
+            assert.equal(await evaluate("return document.querySelectorAll('svg')[1].querySelectorAll('[data-mt-selected]').length;"), 0);
+            assert.equal(await evaluate("window.handle.dispose();return document.querySelectorAll('[tabindex],[data-mt-selected]').length;"), 0);
+          }
+          assert.equal(execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }), sentinel, 'reverse selection must not copy');
+        });
+      });
     });
     await t.test('FONT-CSS-SAFARI: embedded mixed-font labels preserve selectors and size edits', { skip: !fontCss }, async () => {
       const source = '---\nconfig:\n  fontFamily: Arial\n---\nstateDiagram-v2\nstate "Alpha 😀 中文" as A';
