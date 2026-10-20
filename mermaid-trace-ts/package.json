@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && node -e \"require('node:fs').chmodSync('dist/src/cli.js', 0o755)\"",
     "test": "corepack pnpm run build && node --test dist/test/*.test.js",
     "snapshots:update": "corepack pnpm run build && node dist/scripts/svg-baselines.js --update",
     "preview": "corepack pnpm run build && node dist/src/cli.js"

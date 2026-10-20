@@ -116,7 +116,15 @@ Flowchart nodes/references, connectors and labels, plus sequence participants, m
 
 Future browser rendering will compile the same Rust core to WASM, optionally in a Worker. Static SVG and separate activation remain available independently; see [BROWSER-1](docs/specs/sequence-mapping/spec.md#browser-1-future-dynamic-rust-browser-renderer).
 
-The package declares a `mermaid-trace` executable for future installation. In this unpublished checkout, `make preview ARGS='watch /path/to/file.md'` builds and runs it; after `make build`, `node /absolute/path/to/mermaid-trace/mermaid-trace-ts/dist/src/cli.js watch /path/to/file.md` works from another directory. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
+After `make build`, the CLI is executable. Link it into your user command directory once, from the repository root:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s "$PWD/mermaid-trace-ts/dist/src/cli.js" "$HOME/.local/bin/mermaid-trace"
+mermaid-trace watch /path/to/file.md --source --port 0
+```
+
+Ensure `~/.local/bin` and Node.js are on your shell's `PATH`. No administrator access is needed. The link survives rebuilds and works from other directories; keep this checkout in place. The command launches the built Rust renderer automatically. This is a local installation, not a self-contained distributable binary. [WATCH-1](docs/specs/watch-cli/spec.md) records the contract and verification.
 
 ## Try the example document
 
