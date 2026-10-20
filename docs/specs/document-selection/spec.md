@@ -1,6 +1,6 @@
 # DOC-1 — consistent Markdown and diagram selection
 
-Status: implemented (experimental CommonMark view; pinned Chromium). As a document reader, I want click/focus selection and text dragging to identify original Markdown, including whole diagrams and headings.
+Status: implemented (CommonMark plus GFM tables). As a document reader, I want click/focus selection and text dragging to identify original Markdown, including whole diagrams and headings.
 
 ## Contracts
 
@@ -10,6 +10,10 @@ Status: implemented (experimental CommonMark view; pinned Chromium). As a docume
 - **DOC-AC4:** Source text dragging and keyboard focus remain usable. Clipboard writes happen on explicit activation or completion of a rendered text drag, not on Tab or source-view selection. Block activation does not swallow the native text drag that produces a range. Mapping/focus events from inside SVG must not also activate ancestor Markdown blocks.
 
 ## Plan
+
+**DOC-AC6 — tables:** Render GFM pipe tables with headers, column alignment and readable borders/padding. Preserve nested quote/list positions, inline formatting, escaped pipes (including code spans), entities, Unicode and CRLF. Table, row and authored cell ranges support the existing click/keyboard/copy and reverse-source selection; rendered text retains exact character origins. Generated empty cells have no invented source target. Invalid tables remain ordinary Markdown; sanitization and adjacent Mermaid fences remain unchanged.
+
+Table fix plan: first reproduce missing table HTML and provenance in `markdown-view.test.ts`, then enable the standard micromark/mdast GFM table extensions in the existing pipeline. Annotate table/row/cell elements using their AST positions, style them in the watch page, and verify selection, clipboard, source pane and save refresh through the CLI route. Rebuild the installed CLI symlink target. Other GFM extensions are outside this fix.
 
 Use the unified ecosystem for inline positions: `mdast-util-from-markdown`, `mdast-util-to-hast`, `hast-util-sanitize`, `hast-util-to-html`. Keep browser selection independent. Annotate rendered text with origin runs and block targets with AST positions; derive entity/escape offsets within those bounded spans using the existing Markdown decoder. No document-wide string searches. The markdown-it adapter remains supported; its fence origins are reused by the live preview.
 
@@ -21,11 +25,12 @@ Tests first: document rendering/provenance/security, background selection, focus
 | --- | --- | --- |
 | DOC-AC1/2/3 | Static Markdown AST provenance and sanitization | Pass: `mermaid-trace-ts/test/markdown-view.test.ts` |
 | DOC-AC1/4/5 | Native live preview selection, clipboard, source pane and saves | Pass: `mermaid-trace-ts/test/watch-cli.test.ts` |
+| DOC-AC6 | Table rendering, exact provenance, sanitization, selection, clipboard and reload | Pass: producer tests, CLI test, Chromium and Firefox preview checks; Safari table gestures not yet checked |
 | DOC-AC1–4 | Former demo-only browser drag, scripts-disabled and denied-clipboard matrix | Historical; its generator/test were retired, so these cases need a current-route acceptance check |
 
 The former demo established the detailed drag and focus behavior; its test was retired with that route. The criteria above remain requirements for the native preview. The initial section-selection behavior is superseded by the heading correction below.
 
-The view currently handles CommonMark through mdast/hast and reuses markdown-it fence extraction. It is not a general remark plugin or GFM implementation. Character origins are UTF-16 spans; a rendered entity may map to several source characters. Unsupported text transformations explicitly use the enclosing AST span. Native rendered-text drags keep their own highlight; reverse source selection identifies the enclosing Markdown block and mapped diagram elements. Links retain native navigation. Wider browser verification remains pending.
+The view handles CommonMark plus GFM tables through mdast/hast and reuses markdown-it fence extraction. It is not a general remark plugin or full GFM implementation. Cell source ranges follow the parser's cell boundaries, including adjacent pipe delimiters and padding; text drags identify just the authored characters. Character origins are UTF-16 spans; a rendered entity may map to several source characters. Unsupported text transformations explicitly use the enclosing AST span. Native rendered-text drags keep their own highlight; reverse source selection identifies the enclosing Markdown block and mapped diagram elements. Links retain native navigation. Wider browser verification remains pending.
 
 ## Heading selection correction
 

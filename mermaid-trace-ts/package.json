@@ -29,7 +29,9 @@
     "hast-util-to-html": "9.0.5",
     "markdown-it": "15.0.2",
     "mdast-util-from-markdown": "2.0.3",
-    "mdast-util-to-hast": "13.2.1"
+    "mdast-util-gfm-table": "2.0.0",
+    "mdast-util-to-hast": "13.2.1",
+    "micromark-extension-gfm-table": "2.1.2"
   },
   "bin": {
     "mermaid-trace": "./dist/src/cli.js"

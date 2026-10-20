@@ -15,6 +15,67 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const sequence = 'sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Hi\n';
 const markdown = '# Title\n\nSelect **these words**.\n\n![asset](asset.svg)\n\n```mermaid\nsequenceDiagram\nparticipant A as Draft\nparticipant B as Publish\nA->>B: review\nB-->>A: \n```\n\n```mermaid\n' + sequence + '```\n';
 
+test('DOC-AC6: preview tables support pointer, keyboard, reverse source, text drag and saves', { timeout: 60_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'trace-tables-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filename = join(directory, 'table.md');
+  const source = '# Table\r\n\r\n| Name | Status | Code |\r\n| :--- | :---: | ---: |\r\n| **Alpha** | Ready | `a\\|b` |\r\n';
+  await writeFile(filename, source);
+  const preview = await watchPreview(filename, { port: 0, sourceView: true });
+  t.after(() => preview.close());
+  const browser = await launchBrowser();
+  t.after(() => browser.close());
+  const context = await browser.newContext({ permissions: clipboardPermissions });
+  const page = await context.newPage(); page.setDefaultTimeout(10_000);
+  await page.goto(preview.url); await page.waitForSelector('body[data-ready=true]');
+  const original = page.frameLocator('#source-frame').locator('#source');
+  const selected = () => original.evaluate(element => element.ownerDocument.getSelection()!.getRangeAt(0).cloneContents().textContent);
+  assert.deepEqual(await page.locator('th').evaluateAll(cells => cells.map(cell => getComputedStyle(cell).textAlign.replace(/^-(webkit|moz)-/, ''))), ['left', 'center', 'right']);
+  assert.equal(await page.locator('td').first().evaluate(cell => getComputedStyle(cell).borderTopWidth), '1px');
+  await page.locator('td').first().click();
+  assert.equal(await selected(), '| **Alpha** ');
+  const cellStart = source.indexOf('| **Alpha** ');
+  await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+    formatLocation({ id: filename, source }, { start: cellStart, end: cellStart + '| **Alpha** '.length }));
+  for (const selector of ['tbody tr', 'table']) {
+    await page.locator(selector).focus(); await page.keyboard.press('Enter');
+    const start = selector === 'table' ? source.indexOf('| Name') : cellStart;
+    const end = source.length - 2;
+    assert.equal(await selected(), source.slice(start, end));
+    await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+      formatLocation({ id: filename, source }, { start, end }));
+    assert.equal(await page.locator('[data-md-selected]').count(), 1);
+  }
+  await original.evaluate(element => {
+    const doc = element.ownerDocument, text = element.firstChild!;
+    const start = text.textContent!.indexOf('a\\|b');
+    const range = doc.createRange(); range.setStart(text, start); range.setEnd(text, start + 4);
+    doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+  });
+  await page.waitForSelector('td:last-child[data-md-selected]');
+  assert.equal(await page.locator('[data-md-selected]').count(), 1);
+  const points = await page.locator('td code [data-md-text]').evaluate(element => {
+    const range = element.ownerDocument.createRange();
+    range.selectNodeContents(element);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2, end: rect.right };
+  });
+  await page.mouse.move(points.x, points.y); await page.mouse.down();
+  await page.mouse.move(points.end, points.y, { steps: 12 }); await page.mouse.up();
+  assert.equal(await page.evaluate(() => document.getSelection()!.toString()), 'a|b');
+  assert.equal(await selected(), 'a\\|b');
+  const codeStart = source.indexOf('a\\|b');
+  await page.waitForFunction(expected => navigator.clipboard.readText().then(text => text === expected),
+    formatLocation({ id: filename, source }, { start: codeStart, end: codeStart + 4 }));
+  await writeFile(filename, source.replace('Ready', 'Updated'));
+  await page.locator('td').filter({ hasText: 'Updated' }).waitFor();
+  const staticContext = await browser.newContext({ javaScriptEnabled: false });
+  const staticPage = await staticContext.newPage();
+  await staticPage.goto(preview.url);
+  assert.equal(await staticPage.locator('table').count(), 1);
+  assert.equal(await staticPage.locator('td').count(), 3);
+});
+
 test('FLOW-BROWSER-CONTROLS: startup and error-display options preserve watch recovery', { timeout: 60_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-browser-controls-'));
   const filename = join(directory, 'controls.md');
@@ -427,7 +488,7 @@ test('WATCH-SOURCE-AC1/2/3: optional native source selection, scrolling, reverse
 test('WATCH-AC1/2: actual CLI renders from another cwd and closes on SIGTERM', { timeout: 30_000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mermaid-trace-cli-'));
   const filename = join(directory, 'input.md');
-  await writeFile(filename, '# CLI preview');
+  await writeFile(filename, '# CLI preview\n\n| Name | Status |\n| --- | --- |\n| Table | Ready |\n');
   const child = spawn(process.execPath, [cli, 'watch', filename, '--port', '0', '--source'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   let diagnostic = '';
@@ -440,6 +501,8 @@ test('WATCH-AC1/2: actual CLI renders from another cwd and closes on SIGTERM', {
     const url = output.match(/http:\/\/127\.0\.0\.1:\d+\//)![0];
     const html = await (await fetch(url)).text();
     assert.match(html, /CLI preview/);
+    assert.match(html, /<table\b/);
+    assert.match(html, /<td\b/);
     assert.match(html, /source-frame/);
     assert.doesNotMatch(html, /selection-status|textarea/);
     await writeFile(filename, '# Plain Markdown save');

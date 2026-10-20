@@ -2,6 +2,8 @@ import type { Span } from './source-mapping.js';
 import type { MarkdownBlock, MarkdownDocument } from './markdown-source.js';
 import MarkdownIt from 'markdown-it';
 import { fromMarkdown } from 'mdast-util-from-markdown';
+import { gfmTable } from 'micromark-extension-gfm-table';
+import { gfmTableFromMarkdown } from 'mdast-util-gfm-table';
 import { toHast } from 'mdast-util-to-hast';
 import { sanitize } from 'hast-util-sanitize';
 import { toHtml } from 'hast-util-to-html';
@@ -15,22 +17,26 @@ export type DocumentView = { readonly html: string; readonly targets: readonly D
 const normalize = (value: string) => value.replace(/\r\n|\r/g, '\n');
 const decode = new MarkdownIt().utils.unescapeAll;
 
-function units(raw: string, start: number, literal: boolean) {
+function units(raw: string, start: number, literal: boolean, tableCode = false) {
   const result: { value: string; span: Span }[] = [];
   for (let i = 0; i < raw.length;) {
     let token = raw[i]!;
     if (token === '\r') token = raw[i + 1] === '\n' ? '\r\n' : '\r';
+    else if (tableCode && token === '\\' && /[\\|]/.test(raw[i + 1] ?? '')) token = raw.slice(i, i + 2);
     else if (!literal && token === '\\' && i + 1 < raw.length && decode(raw.slice(i, i + 2)) !== raw.slice(i, i + 2)) token = raw.slice(i, i + 2);
     else if (!literal && token === '&') token = raw.slice(i).match(/^&(?:#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]+);/)?.[0] ?? token;
-    const value = normalize(literal ? token : decode(token)).replace(/\0/g, '\uFFFD');
-    for (const char of value.split('')) result.push({ value: char, span: { start: start + i, end: start + i + token.length } });
+    const value = normalize(tableCode && token === '\\|' ? '|' : literal ? token : decode(token)).replace(/\0/g, '\uFFFD');
+    for (const [offset, char] of value.split('').entries()) result.push({
+      value: char,
+      span: value === token ? { start: start + i + offset, end: start + i + offset + 1 } : { start: start + i, end: start + i + token.length },
+    });
     i += token.length;
   }
   return result;
 }
 
 export function renderMarkdownView(document: MarkdownDocument, blocks: readonly MarkdownBlock[], svgs: ReadonlyMap<string, string>): DocumentView {
-  const tree = fromMarkdown(document.source);
+  const tree = fromMarkdown(document.source, { extensions: [gfmTable()], mdastExtensions: [gfmTableFromMarkdown()] });
   const targets: DocumentTarget[] = [];
   const texts: DocumentText[] = [];
   const nodes = new Map<string, MarkdownNode>();
@@ -38,7 +44,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
   const lines = [...document.source.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)];
   const key = (node: { position?: MarkdownNode['position'] }) => `${node.position?.start.offset}:${node.position?.end.offset}`;
   const spanOf = (node: { position?: MarkdownNode['position'] }): Span => ({ start: node.position!.start.offset!, end: node.position!.end.offset! });
-  const visitMarkdown = (node: MarkdownNode) => {
+  const visitMarkdown = (node: MarkdownNode, inTable = false) => {
     if (node.position) nodes.set(key(node), node);
     if (node.type === 'text' || node.type === 'inlineCode' || node.type === 'code') {
       const span = spanOf(node);
@@ -47,7 +53,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
       let mapped: { value: string; span: Span }[] = [];
       if (node.type === 'inlineCode') {
         const width = raw.match(/^`+/)![0].length;
-        mapped = units(raw.slice(width, -width), span.start + width, true).map(unit => ({ ...unit, value: unit.value === '\n' ? ' ' : unit.value }));
+        mapped = units(raw.slice(width, -width), span.start + width, true, inTable).map(unit => ({ ...unit, value: unit.value === '\n' ? ' ' : unit.value }));
         if (mapped[0]?.value === ' ' && mapped.at(-1)?.value === ' ' && mapped.some(unit => unit.value !== ' ')) mapped = mapped.slice(1, -1);
       } else {
         const fenced = node.type === 'code' && /^(?:`{3,}|~{3,})/.test(raw);
@@ -69,7 +75,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
       const exact = mapped.map(unit => unit.value).join('') === value;
       textMaps.set(key(node), { value, exact, origins: exact ? mapped.map(unit => unit.span) : value.split('').map(() => span) });
     }
-    if ('children' in node) node.children.forEach(visitMarkdown);
+    if ('children' in node) node.children.forEach(child => visitMarkdown(child, inTable || node.type === 'table'));
   };
   visitMarkdown(tree);
   const safe = sanitize(toHast(tree)) as Root;
@@ -92,7 +98,7 @@ export function renderMarkdownView(document: MarkdownDocument, blocks: readonly 
         if (svg === undefined) throw new Error(`Missing SVG artifact: ${block.id}`);
         return { type: 'element', tagName: 'div', properties: { 'data-mt-block': block.id }, children: [{ type: 'raw', value: svg }] };
       }
-      if (/^(p|h[1-6]|blockquote|ul|ol|li|pre|hr)$/.test(node.tagName)) {
+      if (/^(p|h[1-6]|blockquote|ul|ol|li|pre|hr|table|tr|th|td)$/.test(node.tagName)) {
         const target = { id: `block-${targets.length}`, kind: node.tagName, span: spanOf(node) };
         targets.push(target);
         node.properties['data-md-target'] = target.id;
